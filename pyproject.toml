@@ -1,0 +1,30 @@
+[build-system]
+requires = ["maturin>=1.5,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "pyreqwest_impersonate"
+description = "HTTP requests with impersonating web browsers. Impersonate browsers headers, `TLS/JA3` and `HTTP/2` fingerprints."
+requires-python = ">=3.8"
+license = {text = "MIT License"}
+keywords = ["python", "request", "impersonate"]
+authors = [
+  {name = "deedy5"}
+]
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dynamic = ["version"]
+[tool.maturin]
+features = ["pyo3/extension-module"]

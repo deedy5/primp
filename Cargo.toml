@@ -1,0 +1,31 @@
+[package]
+name = "pyreqwest_impersonate"
+version = "0.1.0"
+edition = "2021"
+description = "HTTP requests with impersonating web browsers. Impersonate browsers headers, `TLS/JA3` and `HTTP/2` fingerprints."
+authors = ["deedy5"]
+
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "pyreqwest_impersonate"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.21", features = ["extension-module"] }
+reqwest-impersonate = { version = "0.11", default-features = false, features = [
+    "cookies",
+    "blocking",
+    "boring-tls",
+    "impersonate",
+    "socks",
+    "gzip",
+    "brotli",
+    "deflate",
+] }
+# bindgen = { version = "0.69", default-features = false, features = ["runtime"] }
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
