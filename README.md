@@ -24,6 +24,7 @@ class Client:
     """Initializes a blocking HTTP client that can impersonate web browsers.
     
     Args:
+        headers (dict, optional): headers to send with requests. If `impersonate` is set, this will be ignored.
         timeout (float, optional): HTTP request timeout in seconds. Default is 30.
         proxy (str, optional): Proxy URL for HTTP requests. Example: "socks5://127.0.0.1:9150". Default is None.
         impersonate (str, optional): Entity to impersonate. Example: "chrome_123". Default is None.
@@ -33,6 +34,10 @@ class Client:
             Safari: "safari_12","safari_15_3","safari_15_5","safari_15_6_1","safari_16","safari_16_5","safari_17_2_1"
             OkHttp: "okhttp_3_9","okhttp_3_11","okhttp_3_13","okhttp_3_14","okhttp_4_9","okhttp_4_10","okhttp_5"
             Edge: "edge_99","edge_101","edge_120"
+        redirects (int, optional): number of redirects. If set to 0|False, no redirects will be followed. Default is 10.
+        verify (bool, optional): verify SSL certificates. Default is True.
+        http1 (bool, optional): use only HTTP/1.1. Default is None.
+        http2 (bool, optional): use only HTTP/2. Default is None.
     """
 ```
 Example:
@@ -40,7 +45,7 @@ Example:
 from pyreqwest_impersonate import Client
 
 client = Client(impersonate="chrome_123")
-resp = client.request("GET", "https://tls.peet.ws/api/all")
+resp = client.get("https://tls.peet.ws/api/all")
 print(resp.text)
 print(resp.status_code)
 print(resp.url)

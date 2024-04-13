@@ -1,6 +1,8 @@
 use pyo3::exceptions;
 use pyo3::prelude::*;
+use reqwest_impersonate::header::{HeaderMap, HeaderName, HeaderValue};
 use reqwest_impersonate::impersonate::Impersonate;
+use reqwest_impersonate::redirect::Policy;
 use reqwest_impersonate::Method;
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -21,10 +23,7 @@ struct Response {
 }
 
 #[pyclass]
-/// A client for making HTTP requests with specific configurations.
-///
-/// This class allows for making HTTP requests with customizable timeout, proxy, and impersonation settings.
-/// It is designed to be used in scenarios where you need to make HTTP requests that mimic the behavior of a specific browser or entity.
+/// A blocking HTTP client that can impersonate web browsers.
 struct Client {
     client: reqwest_impersonate::blocking::Client,
 }
@@ -32,19 +31,75 @@ struct Client {
 #[pymethods]
 impl Client {
     #[new]
-    /// Creates a new `Client` instance with the specified configurations.
+    /// Initializes a blocking HTTP client that can impersonate web browsers.
     ///
-    /// Args:
-    ///     timeout (float, optional): The timeout for the HTTP requests in seconds. Default is None.
-    ///     proxy (str, optional): The proxy URL to use for the HTTP requests. Default is None.
-    ///     impersonate (str, optional): The identifier for the entity to impersonate. Default is None.
-    fn new(timeout: Option<f64>, proxy: Option<&str>, impersonate: Option<&str>) -> PyResult<Self> {
+    /// This function creates a new instance of a blocking HTTP client that can impersonate various web browsers.
+    /// It allows for customization of headers, proxy settings, timeout, impersonation type, SSL certificate verification,
+    /// and HTTP version preferences.
+    ///
+    /// # Arguments
+    ///
+    /// * `headers` - An optional map of HTTP headers to send with requests. If `impersonate` is set, this will be ignored.
+    /// * `proxy` - An optional proxy URL for HTTP requests.
+    /// * `timeout` - An optional timeout for HTTP requests in seconds.
+    /// * `impersonate` - An optional entity to impersonate. Supported browsers and versions include Chrome, Safari, OkHttp, and Edge.
+    /// * `redirects` - An optional number of redirects to follow. If set to 0, no redirects will be followed. Default is 10.
+    /// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is `true`.
+    /// * `http1` - An optional boolean indicating whether to use only HTTP/1.1. Default is `false`.
+    /// * `http2` - An optional boolean indicating whether to use only HTTP/2. Default is `false`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// from reqwest_impersonate import Client
+    ///
+    /// client = Client(
+    ///     headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.150 Safari/537.36"},
+    ///     proxy="http://127.0.0.1:8080",
+    ///     timeout=10,
+    ///     impersonate="chrome_123",
+    ///     redirects=0,
+    ///     verify=False,
+    ///     http1=True,
+    ///     http2=False,
+    /// )
+    /// ```
+    fn new(
+        headers: Option<HashMap<String, String>>,
+        proxy: Option<&str>,
+        timeout: Option<f64>,
+        impersonate: Option<&str>,
+        redirects: Option<usize>,
+        verify: Option<bool>,
+        http1: Option<bool>,
+        http2: Option<bool>,
+    ) -> PyResult<Self> {
         let mut client_builder = reqwest_impersonate::blocking::Client::builder()
-            .danger_accept_invalid_certs(true)
             .enable_ech_grease(true)
             .permute_extensions(true)
             .cookie_store(true)
             .timeout(timeout.map(Duration::from_secs_f64));
+
+        if let Some(headers) = headers {
+            let mut headers_new = HeaderMap::new();
+            for (key, value) in headers {
+                headers_new.insert(
+                    HeaderName::from_bytes(key.as_bytes()).map_err(|_| {
+                        PyErr::new::<exceptions::PyValueError, _>("Invalid header name")
+                    })?,
+                    HeaderValue::from_str(&value).map_err(|_| {
+                        PyErr::new::<exceptions::PyValueError, _>("Invalid header value")
+                    })?,
+                );
+            }
+            client_builder = client_builder.default_headers(headers_new);
+        }
+
+        if let Some(proxy_url) = proxy {
+            let proxy = reqwest_impersonate::Proxy::all(proxy_url)
+                .map_err(|_| PyErr::new::<exceptions::PyValueError, _>("Invalid proxy URL"))?;
+            client_builder = client_builder.proxy(proxy);
+        }
 
         if let Some(impersonation_type) = impersonate {
             let impersonation = Impersonate::from_str(impersonation_type).map_err(|_| {
@@ -53,10 +108,27 @@ impl Client {
             client_builder = client_builder.impersonate(impersonation);
         }
 
-        if let Some(proxy_url) = proxy {
-            let proxy = reqwest_impersonate::Proxy::all(proxy_url)
-                .map_err(|_| PyErr::new::<exceptions::PyValueError, _>("Invalid proxy URL"))?;
-            client_builder = client_builder.proxy(proxy);
+        match redirects {
+            Some(0) => client_builder = client_builder.redirect(Policy::none()),
+            Some(n) => client_builder = client_builder.redirect(Policy::limited(n)),
+            None => client_builder = client_builder.redirect(Policy::limited(10)), // default to 10 redirects
+        }
+
+        if let Some(verify) = verify {
+            if !verify {
+                client_builder = client_builder.danger_accept_invalid_certs(true);
+            }
+        }
+
+        match (http1, http2) {
+            (Some(true), Some(true)) => {
+                return Err(PyErr::new::<exceptions::PyValueError, _>(
+                    "Both http1 and http2 cannot be true",
+                ));
+            }
+            (Some(true), _) => client_builder = client_builder.http1_only(),
+            (_, Some(true)) => client_builder = client_builder.http2_prior_knowledge(),
+            _ => (),
         }
 
         let client = client_builder
@@ -66,14 +138,13 @@ impl Client {
         Ok(Client { client })
     }
 
-    ///
     /// This method constructs an HTTP request with the given method and URL, and optionally sets a timeout.
     /// It then sends the request and returns a `Response` object containing the server's response.
     ///
     /// Args:
     ///     method (str): The HTTP method to use (e.g., "GET", "POST").
     ///     url (str): The URL to which the request will be made.
-    ///     timeout (float, optional): The timeout for the request in seconds. Default is None.
+    ///     timeout (float, optional): The timeout for the request in seconds. Default is 30.
     ///
     /// Returns:
     ///     Response: A response object containing the server's response to the request.
@@ -84,13 +155,11 @@ impl Client {
         let method = match method {
             "GET" => Ok(Method::GET),
             "POST" => Ok(Method::POST),
-            "PUT" => Ok(Method::PUT),
-            "DELETE" => Ok(Method::DELETE),
             "HEAD" => Ok(Method::HEAD),
             "OPTIONS" => Ok(Method::OPTIONS),
-            "CONNECT" => Ok(Method::CONNECT),
-            "TRACE" => Ok(Method::TRACE),
+            "PUT" => Ok(Method::PUT),
             "PATCH" => Ok(Method::PATCH),
+            "DELETE" => Ok(Method::DELETE),
             &_ => Err(PyErr::new::<exceptions::PyException, _>(
                 "Unrecognized HTTP method",
             )),
@@ -126,6 +195,34 @@ impl Client {
             text,
             url,
         })
+    }
+
+    fn get(&self, url: &str, timeout: Option<f64>) -> PyResult<Response> {
+        self.request("GET", url, timeout)
+    }
+
+    fn post(&self, url: &str, timeout: Option<f64>) -> PyResult<Response> {
+        self.request("POST", url, timeout)
+    }
+
+    fn head(&self, url: &str, timeout: Option<f64>) -> PyResult<Response> {
+        self.request("HEAD", url, timeout)
+    }
+
+    fn options(&self, url: &str, timeout: Option<f64>) -> PyResult<Response> {
+        self.request("OPTIONS", url, timeout)
+    }
+
+    fn put(&self, url: &str, timeout: Option<f64>) -> PyResult<Response> {
+        self.request("PUT", url, timeout)
+    }
+
+    fn patch(&self, url: &str, timeout: Option<f64>) -> PyResult<Response> {
+        self.request("PATCH", url, timeout)
+    }
+
+    fn delete(&self, url: &str, timeout: Option<f64>) -> PyResult<Response> {
+        self.request("DELETE", url, timeout)
     }
 }
 
