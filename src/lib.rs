@@ -78,6 +78,7 @@ impl Client {
             .enable_ech_grease(true)
             .permute_extensions(true)
             .cookie_store(true)
+            .trust_dns(true)
             .timeout(timeout.map(Duration::from_secs_f64));
 
         if let Some(headers) = headers {
