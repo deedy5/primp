@@ -23,9 +23,10 @@ reqwest-impersonate = { version = "0.11", default-features = false, features = [
     "brotli",
     "deflate",
 ] }
-# bindgen = { version = "0.69", default-features = false, features = ["runtime"] }
 
 [profile.release]
-strip = true
-lto = true
 codegen-units = 1
+lto = "fat"
+opt-level = 3
+panic = "abort"
+strip = "symbols"
