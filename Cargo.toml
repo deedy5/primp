@@ -2,7 +2,7 @@
 name = "pyreqwest_impersonate"
 version = "0.1.1"
 edition = "2021"
-description = "HTTP requests with impersonating web browsers. Impersonate browsers headers, `TLS/JA3` and `HTTP/2` fingerprints."
+description = "HTTP client that can impersonate web browsers, mimicking their headers and `TLS/JA3/JA4/HTTP2` fingerprints"
 authors = ["deedy5"]
 
 

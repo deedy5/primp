@@ -1,8 +1,13 @@
-# pyreqwest_impersonate
+![Python >= 3.8](https://img.shields.io/badge/python->=3.8-red.svg) [![](https://badgen.net/github/release/deedy5/pyreqwest-impersonate)](https://github.com/deedy5/pyreqwest-impersonate/releases) [![](https://badge.fury.io/py/pyreqwest_impersonate.svg)](https://pypi.org/project/pyreqwest_impersonate) [![Downloads](https://static.pepy.tech/badge/pyreqwest_impersonate/week)](https://pepy.tech/project/pyreqwest_impersonate) [![CI](https://github.com/deedy5/pyreqwest-impersonate/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/deedy5/pyreqwest-impersonate/actions/workflows/CI.yml)
+# Pyreqwest_impersonate
 
-HTTP requests with impersonating web browsers.</br>
-Impersonate browsers headers, `TLS/JA3` and `HTTP/2` fingerprints.</br>
+HTTP client that can impersonate web browsers, mimicking their headers and `TLS/JA3/JA4/HTTP2` fingerprints.</br>
 Binding to the Rust `reqwest_impersonate` library.
+
+Provides precompiled wheels:
+- [x] Linux:  `amd64`, `aarch64`.
+- [x] Windows: `amd64`.
+- [x] MacOS:  `amd64`, `aarch64`.
 
 ## Installation
 
@@ -13,79 +18,35 @@ pip install -U pyreqwest_impersonate
 ## Usage
 ### I. Client
 
-A blocking client for making HTTP requests with specific configurations.
-
-Attributes:
-- `timeout` (float, optional): The timeout for the HTTP requests in seconds. Default is 30.
-- `proxy` (str, optional): The proxy URL to use for the HTTP requests. Default is None.
-- `impersonate` (str, optional): The identifier for the entity to impersonate. Default is None.
-
+A blocking HTTP client that can impersonate web browsers.
 ```python3
-from pyreqwest_impersonate import Client
-client = Client(
-    timeout=10,
-    proxy="socks5://127.0.0.1:9150",
-    impersonate="chrome_123",
-)
+class Client:
+    """Initializes a blocking HTTP client that can impersonate web browsers.
+    
+    Args:
+        timeout (float, optional): HTTP request timeout in seconds. Default is 30.
+        proxy (str, optional): Proxy URL for HTTP requests. Example: "socks5://127.0.0.1:9150". Default is None.
+        impersonate (str, optional): Entity to impersonate. Example: "chrome_123". Default is None.
+            Chrome: "chrome_99","chrome_100","chrome_101","chrome_104","chrome_105","chrome_106","chrome_108", 
+                "chrome_107","chrome_109","chrome_114","chrome_116","chrome_117","chrome_118","chrome_119", 
+                "chrome_120","chrome_123"
+            Safari: "safari_12","safari_15_3","safari_15_5","safari_15_6_1","safari_16","safari_16_5","safari_17_2_1"
+            OkHttp: "okhttp_3_9","okhttp_3_11","okhttp_3_13","okhttp_3_14","okhttp_4_9","okhttp_4_10","okhttp_5"
+            Edge: "edge_99","edge_101","edge_120"
+    """
 ```
-example:
+Example:
 ```python
 from pyreqwest_impersonate import Client
 
 client = Client(impersonate="chrome_123")
-response = client.request("GET", "https://httpbin.org/anything")
-
-print(response.text)
-print(response.status_code)
-print(response.url)
-print(response.headers)
-print(response.cookies)
-
-resp = Client(impersonate="chrome_123").request("GET", "https://tls.browserleaks.com/json")
+resp = client.request("GET", "https://tls.peet.ws/api/all")
 print(resp.text)
-
-resp = Client(impersonate="chrome_123").request("GET", "https://check.ja3.zone/")
-print(resp.text)
+print(resp.status_code)
+print(resp.url)
+print(resp.headers)
+print(resp.cookies)
 ```
 ### II. AsyncClient
 
 TODO
-___
-
-### Impersonate 
-Variants of the `impersonate` parameter:
-```python3
-"chrome_99"
-"chrome_100"
-"chrome_101"
-"chrome_104"
-"chrome_105"
-"chrome_106"
-"chrome_108"
-"chrome_107"
-"chrome_109"
-"chrome_114"
-"chrome_116"
-"chrome_117"
-"chrome_118"
-"chrome_119"
-"chrome_120"
-"chrome_123"
-"safari_12"
-"safari_15_3" 
-"safari_15_5" 
-"safari_15_6_1"
-"safari_16"
-"safari_16_5"
-"safari_17_2_1"
-"okhttp_3_9"
-"okhttp_3_11"
-"okhttp_3_13"
-"okhttp_3_14"
-"okhttp_4_9"
-"okhttp_4_10"
-"okhttp_5"
-"edge_99"
-"edge_101"
-"edge_120"
-```

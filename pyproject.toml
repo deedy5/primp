@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "pyreqwest_impersonate"
-description = "HTTP requests with impersonating web browsers. Impersonate browsers headers, `TLS/JA3` and `HTTP/2` fingerprints."
+description = "HTTP client that can impersonate web browsers, mimicking their headers and `TLS/JA3/JA4/HTTP2` fingerprints"
 requires-python = ">=3.8"
 license = {text = "MIT License"}
 keywords = ["python", "request", "impersonate"]
