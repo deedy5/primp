@@ -139,20 +139,32 @@ impl Client {
         Ok(Client { client })
     }
 
-    /// This method constructs an HTTP request with the given method and URL, and optionally sets a timeout.
-    /// It then sends the request and returns a `Response` object containing the server's response.
+    /// Constructs an HTTP request with the given method, URL, and optionally sets a timeout, headers, and query parameters.
+    /// Sends the request and returns a `Response` object containing the server's response.
     ///
-    /// Args:
-    ///     method (str): The HTTP method to use (e.g., "GET", "POST").
-    ///     url (str): The URL to which the request will be made.
-    ///     timeout (float, optional): The timeout for the request in seconds. Default is 30.
+    /// # Arguments
     ///
-    /// Returns:
-    ///     Response: A response object containing the server's response to the request.
+    /// * `method` - The HTTP method to use (e.g., "GET", "POST").
+    /// * `url` - The URL to which the request will be made.
+    /// * `params` - A map of query parameters to append to the URL. Default is None.
+    /// * `headers` - A map of HTTP headers to send with the request. Default is None.
+    /// * `timeout` - The timeout for the request in seconds. Default is 30.
     ///
-    /// Raises:
-    ///     PyException: If there is an error making the request.
-    fn request(&self, method: &str, url: &str, timeout: Option<f64>) -> PyResult<Response> {
+    /// # Returns
+    ///
+    /// * `Response` - A response object containing the server's response to the request.
+    ///
+    /// # Errors
+    ///
+    /// * `PyException` - If there is an error making the request.
+    fn request(
+        &self,
+        method: &str,
+        url: &str,
+        params: Option<HashMap<String, String>>,
+        headers: Option<HashMap<String, String>>,
+        timeout: Option<f64>,
+    ) -> PyResult<Response> {
         let method = match method {
             "GET" => Ok(Method::GET),
             "POST" => Ok(Method::POST),
@@ -166,13 +178,31 @@ impl Client {
             )),
         };
         let method = method?;
-        let request_builder = match timeout {
+        let mut request_builder = match timeout {
             Some(timeout_seconds) => {
                 let timeout_duration = Duration::from_secs_f64(timeout_seconds);
                 self.client.request(method, url).timeout(timeout_duration)
             }
             None => self.client.request(method, url),
         };
+        if let Some(params) = params {
+            request_builder = request_builder.query(&params);
+        }
+
+        if let Some(headers) = headers {
+            let mut headers_new = HeaderMap::new();
+            for (key, value) in headers {
+                headers_new.insert(
+                    HeaderName::from_bytes(key.as_bytes()).map_err(|_| {
+                        PyErr::new::<exceptions::PyValueError, _>("Invalid header name")
+                    })?,
+                    HeaderValue::from_str(&value).map_err(|_| {
+                        PyErr::new::<exceptions::PyValueError, _>("Invalid header value")
+                    })?,
+                );
+            }
+            request_builder = request_builder.headers(headers_new);
+        }
         let resp = request_builder.send().map_err(|e| {
             PyErr::new::<exceptions::PyException, _>(format!("Error in request: {}", e))
         })?;
@@ -198,32 +228,32 @@ impl Client {
         })
     }
 
-    fn get(&self, url: &str, timeout: Option<f64>) -> PyResult<Response> {
-        self.request("GET", url, timeout)
+    fn get(&self, url: &str, params: Option<HashMap<String, String>>, headers: Option<HashMap<String, String>>, timeout: Option<f64>) -> PyResult<Response> {
+        self.request("GET", url, params, headers, timeout)
     }
 
-    fn post(&self, url: &str, timeout: Option<f64>) -> PyResult<Response> {
-        self.request("POST", url, timeout)
+    fn post(&self, url: &str, params: Option<HashMap<String, String>>, headers: Option<HashMap<String, String>>, timeout: Option<f64>) -> PyResult<Response> {
+        self.request("POST", url, params, headers, timeout)
     }
 
-    fn head(&self, url: &str, timeout: Option<f64>) -> PyResult<Response> {
-        self.request("HEAD", url, timeout)
+    fn head(&self, url: &str, params: Option<HashMap<String, String>>, headers: Option<HashMap<String, String>>, timeout: Option<f64>) -> PyResult<Response> {
+        self.request("HEAD", url, params, headers, timeout)
     }
 
-    fn options(&self, url: &str, timeout: Option<f64>) -> PyResult<Response> {
-        self.request("OPTIONS", url, timeout)
+    fn options(&self, url: &str, params: Option<HashMap<String, String>>, headers: Option<HashMap<String, String>>, timeout: Option<f64>) -> PyResult<Response> {
+        self.request("OPTIONS", url, params, headers, timeout)
     }
 
-    fn put(&self, url: &str, timeout: Option<f64>) -> PyResult<Response> {
-        self.request("PUT", url, timeout)
+    fn put(&self, url: &str, params: Option<HashMap<String, String>>, headers: Option<HashMap<String, String>>, timeout: Option<f64>) -> PyResult<Response> {
+        self.request("PUT", url, params, headers, timeout)
     }
 
-    fn patch(&self, url: &str, timeout: Option<f64>) -> PyResult<Response> {
-        self.request("PATCH", url, timeout)
+    fn patch(&self, url: &str, params: Option<HashMap<String, String>>, headers: Option<HashMap<String, String>>, timeout: Option<f64>) -> PyResult<Response> {
+        self.request("PATCH", url, params, headers, timeout)
     }
 
-    fn delete(&self, url: &str, timeout: Option<f64>) -> PyResult<Response> {
-        self.request("DELETE", url, timeout)
+    fn delete(&self, url: &str, params: Option<HashMap<String, String>>, headers: Option<HashMap<String, String>>, timeout: Option<f64>) -> PyResult<Response> {
+        self.request("DELETE", url, params, headers, timeout)
     }
 }
 
