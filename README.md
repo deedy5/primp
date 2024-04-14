@@ -24,7 +24,10 @@ class Client:
     """Initializes a blocking HTTP client that can impersonate web browsers.
     
     Args:
-        headers (dict, optional): headers to send with requests. If `impersonate` is set, this will be ignored.
+        auth (tuple, optional): A tuple containing the username and password for basic authentication. Default is None.
+        auth_bearer (str, optional): Bearer token for authentication. Default is None.
+        params (dict, optional): Default query parameters to include in all requests. Default is None.
+        headers (dict, optional): Default headers to send with requests. If `impersonate` is set, this will be ignored.
         timeout (float, optional): HTTP request timeout in seconds. Default is 30.
         proxy (str, optional): Proxy URL for HTTP requests. Example: "socks5://127.0.0.1:9150". Default is None.
         impersonate (str, optional): Entity to impersonate. Example: "chrome_123". Default is None.
@@ -34,13 +37,48 @@ class Client:
             Safari: "safari_12","safari_15_3","safari_15_5","safari_15_6_1","safari_16","safari_16_5","safari_17_2_1"
             OkHttp: "okhttp_3_9","okhttp_3_11","okhttp_3_13","okhttp_3_14","okhttp_4_9","okhttp_4_10","okhttp_5"
             Edge: "edge_99","edge_101","edge_120"
-        redirects (int, optional): number of redirects. If set to 0|False, no redirects will be followed. Default is 10.
-        verify (bool, optional): verify SSL certificates. Default is True.
-        http1 (bool, optional): use only HTTP/1.1. Default is None.
-        http2 (bool, optional): use only HTTP/2. Default is None.
+        follow_redirects (bool, optional): Whether to follow redirects. Default is False.
+        max_redirects (int, optional): Maximum redirects to follow. Default 20. Applies if `follow_redirects` is True.
+        verify (bool, optional): Verify SSL certificates. Default is True.
+        http1 (bool, optional): Use only HTTP/1.1. Default is None.
+        http2 (bool, optional): Use only HTTP/2. Default is None.
     """
 ```
-Example:
+
+### Client Methods
+
+The `Client` class provides a set of methods for making HTTP requests: `get`, `head`, `options`, `delete`, `post`, `put`, `patch`, each of which internally utilizes the `request()` method for execution. The parameters for these methods closely resemble those in `httpx`.
+```python
+get(url, *, params=None, headers=None, auth=None, auth_bearer=None, timeout=None)
+
+Performs a GET request to the specified URL.
+
+- url (str): The URL to which the request will be made.
+- params (Optional[Dict[str, str]]): A map of query parameters to append to the URL. Default is None.
+- headers (Optional[Dict[str, str]]): A map of HTTP headers to send with the request. Default is None.
+- auth (Optional[Tuple[str, Optional[str]]]): A tuple containing the username and an optional password for basic authentication. Default is None.
+- auth_bearer (Optional[str]): A string representing the bearer token for bearer token authentication. Default is None.
+- timeout (Optional[float]): The timeout for the request in seconds. Default is 30.
+```
+```python
+post(url, *, params=None, headers=None, content=None, data=None, files=None, auth=None, auth_bearer=None, timeout=None)
+
+Performs a POST request to the specified URL.
+
+- url (str): The URL to which the request will be made.
+- params (Optional[Dict[str, str]]): A map of query parameters to append to the URL. Default is None.
+- headers (Optional[Dict[str, str]]): A map of HTTP headers to send with the request. Default is None.
+- content (Optional[bytes]): The content to send in the request body as bytes. Default is None.
+- data (Optional[Dict[str, str]]): The form data to send in the request body. Default is None.
+- files (Optional[Dict[str, str]]): A map of file fields to file paths to be sent as multipart/form-data. Default is None.
+- auth (Optional[Tuple[str, Optional[str]]]): A tuple containing the username and an optional password for basic authentication. Default is None.
+- auth_bearer (Optional[str]): A string representing the bearer token for bearer token authentication. Default is None.
+- timeout (Optional[float]): The timeout for the request in seconds. Default is 30.
+```
+
+#### Examples:
+
+_Client.get()_
 ```python
 from pyreqwest_impersonate import Client
 
@@ -51,6 +89,15 @@ print(resp.status_code)
 print(resp.url)
 print(resp.headers)
 print(resp.cookies)
+```
+_Client.post()_
+```python
+from pyreqwest_impersonate import Client
+
+data = {"key1": "value1", "key2": "value2"}
+auth = ("user", "password")
+resp = Client().post(url="https://httpbin.org/anything", data=data, auth=auth)
+print(resp.text)
 ```
 ### II. AsyncClient
 
