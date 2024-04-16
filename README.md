@@ -9,6 +9,15 @@ Provides precompiled wheels:
 - [x] Windows: `amd64`.
 - [x] MacOS:  `amd64`, `aarch64`.
 
+## Table of Contents
+
+- [Installation](#installation)
+- [Usage](#usage)
+ - [I. Client](#i-client)
+ - [II. AsyncClient](#ii-asyncclient)
+ - [III. Response Object](#iii-response-object)
+
+
 ## Installation
 
 ```python
@@ -45,7 +54,7 @@ class Client:
     """
 ```
 
-### Client Methods
+#### Client Methods
 
 The `Client` class provides a set of methods for making HTTP requests: `get`, `head`, `options`, `delete`, `post`, `put`, `patch`, each of which internally utilizes the `request()` method for execution. The parameters for these methods closely resemble those in `httpx`.
 ```python
@@ -76,29 +85,59 @@ Performs a POST request to the specified URL.
 - timeout (Optional[float]): The timeout for the request in seconds. Default is 30.
 ```
 
-#### Examples:
+#### Example
 
-_Client.get()_
 ```python
 from pyreqwest_impersonate import Client
 
 client = Client(impersonate="chrome_123")
-resp = client.get("https://tls.peet.ws/api/all")
-print(resp.text)
-print(resp.status_code)
-print(resp.url)
-print(resp.headers)
-print(resp.cookies)
-```
-_Client.post()_
-```python
-from pyreqwest_impersonate import Client
 
+# get request
+resp = client.get("https://tls.peet.ws/api/all")
+print(resp.json())
+
+# post request
 data = {"key1": "value1", "key2": "value2"}
 auth = ("user", "password")
-resp = Client().post(url="https://httpbin.org/anything", data=data, auth=auth)
+resp = client.post(url="https://httpbin.org/anything", data=data, auth=auth)
 print(resp.text)
 ```
 ### II. AsyncClient
 
 TODO
+
+### III. Response Object
+
+#### Key Features
+
+- `High Performance`: The attributes of the `Response` object are executed in Rust, which is known for its high performance. This ensures that operations like accessing headers, decoding text, or parsing JSON are very fast.
+- `Lazy Execution`: All attributes of the `Response` object are executed lazily. This means that the actual computation or data retrieval happens only when you access the attribute, not when the `Response` object is created. This approach optimizes performance by avoiding unnecessary computations.
+- `Automatic Character Encoding Detection`: The `Response` object intelligently detects the character encoding of the response body from the "Content-Type" header. If the encoding is not specified, it defaults to "UTF-8".
+
+#### Response attributes and methods
+
+- `cookies`: Fetches the cookies from the response as a dictionary.
+- `headers`: Retrieves the headers from the response as a dictionary.
+- `status_code`: Gets the status code of the response as an integer.
+- `url`: Returns the URL of the response as a string.
+- `content`: Provides the content of the response as bytes.
+- `text`: Decodes the response body into text, automatically detecting the character encoding.
+- `json()`: Parses the response body as JSON, converting it into a Python object for easy manipulation.
+
+#### Example
+
+```python
+from pyreqwest_impersonate import Client
+
+client = Client()
+
+response = client.get("https://example.com")
+
+print(response.status_code)  # Access the status code
+print(response.url)  # Access the URL
+print(response.headers)  # Access headers
+print(response.cookies)  # Access cookies
+print(response.content)  # Get the content as bytes
+print(response.text)  # Decode the content as text
+print(response.json())  # Parse the content as JSON
+```
