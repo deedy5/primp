@@ -3,7 +3,7 @@
 
 The fastest python HTTP client that can impersonate web browsers by mimicking their headers and `TLS/JA3/JA4/HTTP2` fingerprints.</br>
 Binding to the Rust `reqwest_impersonate` library.</br>
-🏁 Check the benchmarks for more details.
+🏁 Check the [benchmark](https://github.com/deedy5/pyreqwest_impersonate/tree/main/benchmark) for more details.
 
 
 Provides precompiled wheels:
@@ -118,13 +118,14 @@ TODO
 
 #### Response attributes and methods
 
-- `cookies`: Fetches the cookies from the response as a dictionary.
-- `headers`: Retrieves the headers from the response as a dictionary.
-- `status_code`: Gets the status code of the response as an integer.
-- `url`: Returns the URL of the response as a string.
-- `content`: Provides the content of the response as bytes.
-- `text`: Decodes the response body into text, automatically detecting the character encoding.
-- `json()`: Parses the response body as JSON, converting it into a Python object for easy manipulation.
+- `content` (bytes): Provides the content of the response as bytes.
+- `cookies` (dict): Fetches the cookies from the response as a dictionary.
+- `headers` (dict): Retrieves the headers from the response as a dictionary.
+- `json()` (function): Parses the response body as JSON, converting it into a Python object for easy manipulation.
+- `raw` (list[int]): Contains the raw byte representation of the HTTP response body.
+- `status_code` (int): Gets the status code of the response as an integer.
+- `text` (str): Decodes the response body into text, automatically detecting the character encoding.
+- `url` (str): Returns the URL of the response as a string.
 
 #### Example
 
@@ -135,11 +136,12 @@ client = Client()
 
 response = client.get("https://example.com")
 
-print(response.status_code)  # Access the status code
-print(response.url)  # Access the URL
-print(response.headers)  # Access headers
-print(response.cookies)  # Access cookies
 print(response.content)  # Get the content as bytes
-print(response.text)  # Decode the content as text
+print(response.cookies)  # Access cookies
+print(response.headers)  # Access headers
 print(response.json())  # Parse the content as JSON
+print(response.raw) # Raw response
+print(response.status_code)  # Access the status code
+print(response.text)  # Decode the content as text
+print(response.url)  # Access the URL
 ```

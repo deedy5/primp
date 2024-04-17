@@ -292,15 +292,52 @@ impl Client {
                 }
 
                 // Send request
-                let resp = request_builder.send().map_err(|e| {
+                let mut resp = request_builder.send().map_err(|e| {
                     PyErr::new::<exceptions::PyException, _>(format!("Error in request: {}", e))
                 })?;
 
+                // Response items
+                let mut raw: Vec<u8> = vec![];
+                resp.copy_to(&mut raw).map_err(|e| {
+                    PyErr::new::<exceptions::PyIOError, _>(format!("Error in get resp.raw: {}", e))
+                })?;
+                let cookies: HashMap<String, String> = resp
+                    .cookies()
+                    .map(|cookie| (cookie.name().to_string(), cookie.value().to_string()))
+                    .collect();
+                // Encoding from "Content-Type" header or "UTF-8"
+                let encoding = resp
+                    .headers()
+                    .get("Content-Type")
+                    .and_then(|ct| ct.to_str().ok())
+                    .and_then(|ct| {
+                        ct.split(';').find_map(|param| {
+                            let mut kv = param.splitn(2, '=');
+                            let key = kv.next()?.trim();
+                            let value = kv.next()?.trim();
+                            if key.eq_ignore_ascii_case("charset") {
+                                Some(value.to_string())
+                            } else {
+                                None
+                            }
+                        })
+                    })
+                    .unwrap_or("UTF-8".to_string());
+                let headers: HashMap<String, String> = resp
+                    .headers()
+                    .iter()
+                    .map(|(k, v)| (k.as_str().to_string(), v.to_str().unwrap_or("").to_string()))
+                    .collect();
+                let status_code = resp.status().as_u16();
+                let url = resp.url().to_string();
+
                 Ok(Response {
-                    resp,
-                    encoding: "utf-8".to_string(),
-                    _content_as_vec: None,
-                    _text: None,
+                    cookies,
+                    encoding,
+                    headers,
+                    raw,
+                    status_code,
+                    url,
                 })
             })
         })
