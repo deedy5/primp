@@ -1,12 +1,28 @@
 import json
+from time import sleep
 from urllib.parse import parse_qs
-
-
-import pytest
 
 from pyreqwest_impersonate import Client
 
 
+def retry(max_retries=3, delay=1):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        sleep(delay)
+                        continue
+                    else:
+                        raise e
+
+        return wrapper
+
+    return decorator
+
+@retry()
 def test_client_init_params():
     auth = ("user", "password")
     headers = {"X-Test": "test"}
@@ -20,6 +36,7 @@ def test_client_init_params():
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
 
 
+@retry()
 def test_client_get():
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
     headers = {"X-Test": "test"}
@@ -38,6 +55,7 @@ def test_client_get():
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
 
 
+@retry()
 def test_client_post_content():
     auth = ("user", "password")
     headers = {"X-Test": "test"}
@@ -59,6 +77,7 @@ def test_client_post_content():
     assert json_data["data"] == "test content"
 
 
+@retry()
 def test_client_post_data():
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
     headers = {"X-Test": "test"}
@@ -81,6 +100,7 @@ def test_client_post_data():
     assert received_data_dict == {"key1": ["value1"], "key2": ["value2"]}
 
 
+@retry()
 def test_client_get_impersonate():
     client = Client(impersonate="chrome_123", verify=False)
     response = client.get("https://tls.peet.ws/api/all")
