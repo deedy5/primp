@@ -50,7 +50,7 @@ for response_size in ["5k", "50k"]:
                 "cpu_time": cpu_dur,
             }
         )
-        print(f"    name: {name:<22} time: {dur} cpu_time: {cpu_dur}")
+        print(f"    name: {name:<30} time: {dur} cpu_time: {cpu_dur}")
 
 
 # multiple threads
@@ -80,7 +80,7 @@ for response_size in ["5k", "50k"]:
                 "cpu_time": cpu_dur,
             }
         )
-        print(f"    name: {name:<22} time: {dur} cpu_time: {cpu_dur}")
+        print(f"    name: {name:<30} time: {dur} cpu_time: {cpu_dur}")
 
 
 df = pd.DataFrame(results)
