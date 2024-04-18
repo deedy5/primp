@@ -86,11 +86,11 @@ impl Client {
         }
 
         let mut client_builder = reqwest_impersonate::blocking::Client::builder()
-            .enable_ech_grease(true)
-            .permute_extensions(true)
-            .cookie_store(true)
-            .trust_dns(true)
-            .timeout(timeout.map(Duration::from_secs_f64));
+                .enable_ech_grease(true)
+                .permute_extensions(true)
+                .cookie_store(true)
+                .trust_dns(true)
+                .timeout(timeout.map(Duration::from_secs_f64));
 
         // Headers
         if let Some(headers) = headers {
@@ -198,111 +198,143 @@ impl Client {
         auth_bearer: Option<String>,
         timeout: Option<f64>,
     ) -> PyResult<Response> {
-        Python::with_gil(|py| {
-            // Release the gil
-            py.allow_threads(|| {
-                // Check if method is POST || PUT || PATCH
-                let is_post_put_patch = method == "POST" || method == "PUT" || method == "PATCH";
+        // Check if method is POST || PUT || PATCH
+        let is_post_put_patch = method == "POST" || method == "PUT" || method == "PATCH";
 
-                // Method
-                let method = match method {
-                    "GET" => Ok(Method::GET),
-                    "POST" => Ok(Method::POST),
-                    "HEAD" => Ok(Method::HEAD),
-                    "OPTIONS" => Ok(Method::OPTIONS),
-                    "PUT" => Ok(Method::PUT),
-                    "PATCH" => Ok(Method::PATCH),
-                    "DELETE" => Ok(Method::DELETE),
-                    &_ => Err(PyErr::new::<exceptions::PyException, _>(
-                        "Unrecognized HTTP method",
-                    )),
-                };
-                let method = method?;
+        // Method
+        let method = match method {
+            "GET" => Ok(Method::GET),
+            "POST" => Ok(Method::POST),
+            "HEAD" => Ok(Method::HEAD),
+            "OPTIONS" => Ok(Method::OPTIONS),
+            "PUT" => Ok(Method::PUT),
+            "PATCH" => Ok(Method::PATCH),
+            "DELETE" => Ok(Method::DELETE),
+            &_ => Err(PyErr::new::<exceptions::PyException, _>(
+                "Unrecognized HTTP method",
+            )),
+        };
+        let method = method?;
 
-                // Create request builder
+        // Create request builder
                 let mut request_builder = self.client.request(method, url);
 
-                // Params (use the provided `params` if available; otherwise, fall back to `self.params`)
-                let params_to_use = params.or(self.params.clone()).unwrap_or_default();
-                if !params_to_use.is_empty() {
-                    request_builder = request_builder.query(&params_to_use);
+        // Params (use the provided `params` if available; otherwise, fall back to `self.params`)
+        let params_to_use = params.or(self.params.clone()).unwrap_or_default();
+        if !params_to_use.is_empty() {
+            request_builder = request_builder.query(&params_to_use);
+        }
+
+        // Headers
+        if let Some(headers) = headers {
+            let mut headers_new = HeaderMap::new();
+            for (key, value) in headers {
+                headers_new.insert(
+                    HeaderName::from_bytes(key.as_bytes()).map_err(|_| {
+                        PyErr::new::<exceptions::PyValueError, _>("Invalid header name")
+                    })?,
+                    HeaderValue::from_str(&value).map_err(|_| {
+                        PyErr::new::<exceptions::PyValueError, _>("Invalid header value")
+                    })?,
+                );
+            }
+            request_builder = request_builder.headers(headers_new);
+        }
+
+        // Only if method POST || PUT || PATCH
+        if is_post_put_patch {
+            // Content
+            if let Some(content) = content {
+                request_builder = request_builder.body(content);
+            }
+            // Data
+            if let Some(data) = data {
+                request_builder = request_builder.form(&data);
+            }
+            // Files
+            if let Some(files) = files {
+                let mut form = multipart::Form::new();
+                for (field, path) in files {
+                    form = form.file(field, path)?;
                 }
+                request_builder = request_builder.multipart(form);
+            }
+        }
 
-                // Headers
-                if let Some(headers) = headers {
-                    let mut headers_new = HeaderMap::new();
-                    for (key, value) in headers {
-                        headers_new.insert(
-                            HeaderName::from_bytes(key.as_bytes()).map_err(|_| {
-                                PyErr::new::<exceptions::PyValueError, _>("Invalid header name")
-                            })?,
-                            HeaderValue::from_str(&value).map_err(|_| {
-                                PyErr::new::<exceptions::PyValueError, _>("Invalid header value")
-                            })?,
-                        );
-                    }
-                    request_builder = request_builder.headers(headers_new);
-                }
+        // Auth
+        match (auth, auth_bearer, &self.auth, &self.auth_bearer) {
+            (Some((username, password)), None, _, _) => {
+                request_builder = request_builder.basic_auth(username, password.as_deref());
+            }
+            (None, Some(token), _, _) => {
+                request_builder = request_builder.bearer_auth(token);
+            }
+            (None, None, Some((username, password)), None) => {
+                request_builder = request_builder.basic_auth(username, password.as_deref());
+            }
+            (None, None, None, Some(token)) => {
+                request_builder = request_builder.bearer_auth(token);
+            }
+            (Some(_), Some(_), None, None) | (None, None, Some(_), Some(_)) => {
+                return Err(PyErr::new::<exceptions::PyValueError, _>(
+                    "Cannot provide both auth and auth_bearer",
+                ));
+            }
+            _ => {} // No authentication provided
+        }
 
-                // Only if method POST || PUT || PATCH
-                if is_post_put_patch {
-                    // Content
-                    if let Some(content) = content {
-                        request_builder = request_builder.body(content);
-                    }
-                    // Data
-                    if let Some(data) = data {
-                        request_builder = request_builder.form(&data);
-                    }
-                    // Files
-                    if let Some(files) = files {
-                        let mut form = multipart::Form::new();
-                        for (field, path) in files {
-                            form = form.file(field, path)?;
-                        }
-                        request_builder = request_builder.multipart(form);
-                    }
-                }
+        // Timeout
+        if let Some(seconds) = timeout {
+            request_builder = request_builder.timeout(Duration::from_secs_f64(seconds));
+        }
 
-                // Auth
-                match (auth, auth_bearer, &self.auth, &self.auth_bearer) {
-                    (Some((username, password)), None, _, _) => {
-                        request_builder = request_builder.basic_auth(username, password.as_deref());
-                    }
-                    (None, Some(token), _, _) => {
-                        request_builder = request_builder.bearer_auth(token);
-                    }
-                    (None, None, Some((username, password)), None) => {
-                        request_builder = request_builder.basic_auth(username, password.as_deref());
-                    }
-                    (None, None, None, Some(token)) => {
-                        request_builder = request_builder.bearer_auth(token);
-                    }
-                    (Some(_), Some(_), None, None) | (None, None, Some(_), Some(_)) => {
-                        return Err(PyErr::new::<exceptions::PyValueError, _>(
-                            "Cannot provide both auth and auth_bearer",
-                        ));
-                    }
-                    _ => {} // No authentication provided
-                }
+        // Send request
+        let mut resp = request_builder.send().map_err(|e| {
+            PyErr::new::<exceptions::PyException, _>(format!("Error in request: {}", e))
+        })?;
 
-                // Timeout
-                if let Some(seconds) = timeout {
-                    request_builder = request_builder.timeout(Duration::from_secs_f64(seconds));
-                }
-
-                // Send request
-                let resp = request_builder.send().map_err(|e| {
-                    PyErr::new::<exceptions::PyException, _>(format!("Error in request: {}", e))
-                })?;
-
-                Ok(Response {
-                    resp,
-                    encoding: "utf-8".to_string(),
-                    _content_as_vec: None,
-                    _text: None,
+        // Response items
+        let mut raw: Vec<u8> = vec![];
+        resp.copy_to(&mut raw).map_err(|e| {
+            PyErr::new::<exceptions::PyIOError, _>(format!("Error in get resp.raw: {}", e))
+        })?;
+        let cookies: HashMap<String, String> = resp
+            .cookies()
+            .map(|cookie| (cookie.name().to_string(), cookie.value().to_string()))
+            .collect();
+        // Encoding from "Content-Type" header or "UTF-8"
+        let encoding = resp
+            .headers()
+            .get("Content-Type")
+            .and_then(|ct| ct.to_str().ok())
+            .and_then(|ct| {
+                ct.split(';').find_map(|param| {
+                    let mut kv = param.splitn(2, '=');
+                    let key = kv.next()?.trim();
+                    let value = kv.next()?.trim();
+                    if key.eq_ignore_ascii_case("charset") {
+                        Some(value.to_string())
+                    } else {
+                        None
+                    }
                 })
             })
+            .unwrap_or("UTF-8".to_string());
+        let headers: HashMap<String, String> = resp
+            .headers()
+            .iter()
+            .map(|(k, v)| (k.as_str().to_string(), v.to_str().unwrap_or("").to_string()))
+            .collect();
+        let status_code = resp.status().as_u16();
+        let url = resp.url().to_string();
+
+        Ok(Response {
+            cookies,
+            encoding,
+            headers,
+            raw,
+            status_code,
+            url,
         })
     }
 

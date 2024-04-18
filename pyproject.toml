@@ -32,13 +32,7 @@ dependencies = []
 [project.optional-dependencies]
 dev = [
     "pytest>=8.1.1",
-    "pytest-retry>=1.6.2",
 ]
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
-
-[tool.pytest.ini_options]
-retries = 3
-retry_delay = 0.5
-cumulative_timing = false
