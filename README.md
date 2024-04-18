@@ -29,7 +29,7 @@ pip install -U pyreqwest_impersonate
 ## Usage
 ### I. Client
 
-A blocking HTTP client that can impersonate web browsers.
+A blocking HTTP client that can impersonate web browsers. Not thread-safe!
 ```python3
 class Client:
     """Initializes a blocking HTTP client that can impersonate web browsers.
@@ -53,6 +53,10 @@ class Client:
         verify (bool, optional): Verify SSL certificates. Default is True.
         http1 (bool, optional): Use only HTTP/1.1. Default is None.
         http2 (bool, optional): Use only HTTP/2. Default is None.
+        
+    Note:
+        The Client instance is not thread-safe, meaning it should be initialized once and reused across a multi-threaded environment.
+    
     """
 ```
 
@@ -92,7 +96,8 @@ Performs a POST request to the specified URL.
 ```python
 from pyreqwest_impersonate import Client
 
-client = Client(impersonate="chrome_123")
+# Not thread-safe! Initialize the Client instance once and reuse it across threads
+client = Client(impersonate="chrome_123")  
 
 # get request
 resp = client.get("https://tls.peet.ws/api/all")
@@ -132,6 +137,7 @@ TODO
 ```python
 from pyreqwest_impersonate import Client
 
+# Not thread-safe! Initialize the Client instance once and reuse it across threads
 client = Client()
 
 response = client.get("https://example.com")
