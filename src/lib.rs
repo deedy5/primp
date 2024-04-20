@@ -45,7 +45,7 @@ impl Client {
     /// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is `true`.
     /// * `http1` - An optional boolean indicating whether to use only HTTP/1.1. Default is `false`.
     /// * `http2` - An optional boolean indicating whether to use only HTTP/2. Default is `false`.
-    /// 
+    ///
     /// # Note
     /// The Client instance is not thread-safe, meaning it should be initialized once and reused across a multi-threaded environment.
     ///
@@ -89,11 +89,11 @@ impl Client {
         }
 
         let mut client_builder = reqwest_impersonate::blocking::Client::builder()
-                .enable_ech_grease(true)
-                .permute_extensions(true)
-                .cookie_store(true)
-                .trust_dns(true)
-                .timeout(timeout.map(Duration::from_secs_f64));
+            .enable_ech_grease(true)
+            .permute_extensions(true)
+            .cookie_store(true)
+            .trust_dns(true)
+            .timeout(timeout.map(Duration::from_secs_f64));
 
         // Headers
         if let Some(headers) = headers {
@@ -220,7 +220,7 @@ impl Client {
         let method = method?;
 
         // Create request builder
-                let mut request_builder = self.client.request(method, url);
+        let mut request_builder = self.client.request(method, url);
 
         // Params (use the provided `params` if available; otherwise, fall back to `self.params`)
         let params_to_use = params.or(self.params.clone()).unwrap_or_default();
@@ -292,8 +292,12 @@ impl Client {
         }
 
         // Send request
-        let mut resp = request_builder.send().map_err(|e| {
-            PyErr::new::<exceptions::PyException, _>(format!("Error in request: {}", e))
+        let mut resp = Python::with_gil(|py| {
+            py.allow_threads(|| {
+                request_builder.send().map_err(|e| {
+                    PyErr::new::<exceptions::PyException, _>(format!("Error in request: {}", e))
+                })
+            })
         })?;
 
         // Response items
