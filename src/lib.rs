@@ -37,11 +37,14 @@ impl Client {
     /// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
     /// * `params` - A map of query parameters to append to the URL. Default is None.
     /// * `headers` - An optional map of HTTP headers to send with requests. If `impersonate` is set, this will be ignored.
+    /// * `cookie_store` - Enable a persistent cookie store. Received cookies will be preserved and included
+    ///         in additional requests. Default is `true`.
+    /// * `referer` - Enable or disable automatic setting of the `Referer` header. Default is `true`.
     /// * `proxy` - An optional proxy URL for HTTP requests.
     /// * `timeout` - An optional timeout for HTTP requests in seconds.
     /// * `impersonate` - An optional entity to impersonate. Supported browsers and versions include Chrome, Safari, OkHttp, and Edge.
-    /// * `follow_redirects` - A boolean to enable or disable following redirects. Default is `false`.
-    /// * `max_redirects` - The maximum number of redirects to follow. Default is 20. Only applies if `follow_redirects` is `true`.
+    /// * `follow_redirects` - A boolean to enable or disable following redirects. Default is `true`.
+    /// * `max_redirects` - The maximum number of redirects to follow. Default is 20. Applies if `follow_redirects` is `true`.
     /// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is `true`.
     /// * `http1` - An optional boolean indicating whether to use only HTTP/1.1. Default is `false`.
     /// * `http2` - An optional boolean indicating whether to use only HTTP/2. Default is `false`.
@@ -58,6 +61,8 @@ impl Client {
     ///     auth=("name", "password"),
     ///     params={"p1k": "p1v", "p2k": "p2v"},
     ///     headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.150 Safari/537.36"},
+    ///     cookie_store=False,
+    ///     referer=False,
     ///     proxy="http://127.0.0.1:8080",
     ///     timeout=10,
     ///     impersonate="chrome_123",
@@ -73,6 +78,8 @@ impl Client {
         auth_bearer: Option<String>,
         params: Option<HashMap<String, String>>,
         headers: Option<HashMap<String, String>>,
+        cookie_store: Option<bool>,
+        referer: Option<bool>,
         proxy: Option<&str>,
         timeout: Option<f64>,
         impersonate: Option<&str>,
@@ -91,7 +98,6 @@ impl Client {
         let mut client_builder = reqwest_impersonate::blocking::Client::builder()
             .enable_ech_grease(true)
             .permute_extensions(true)
-            .cookie_store(true)
             .trust_dns(true)
             .timeout(timeout.map(Duration::from_secs_f64));
 
@@ -111,6 +117,16 @@ impl Client {
             client_builder = client_builder.default_headers(headers_new);
         }
 
+        // Cookie_store
+        if cookie_store.unwrap_or(true) {
+            client_builder = client_builder.cookie_store(true);
+        }
+
+        // Referer
+        if referer.unwrap_or(true) {
+            client_builder = client_builder.referer(true);
+        }
+
         // Proxy
         if let Some(proxy_url) = proxy {
             let proxy = reqwest_impersonate::Proxy::all(proxy_url)
@@ -128,7 +144,7 @@ impl Client {
 
         // Redirects
         let max_redirects = max_redirects.unwrap_or(20); // Default to 20 if not provided
-        if follow_redirects.unwrap_or(false) {
+        if follow_redirects.unwrap_or(true) {
             client_builder = client_builder.redirect(Policy::limited(max_redirects));
         } else {
             client_builder = client_builder.redirect(Policy::none());
