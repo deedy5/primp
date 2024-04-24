@@ -4,6 +4,8 @@ use std::time::Duration;
 
 use pyo3::exceptions;
 use pyo3::prelude::*;
+use pyo3::types::PyBytes;
+use pyo3::types::{PyDict, PyString};
 use reqwest_impersonate::blocking::multipart;
 use reqwest_impersonate::header::{HeaderMap, HeaderName, HeaderValue};
 use reqwest_impersonate::impersonate::Impersonate;
@@ -206,6 +208,7 @@ impl Client {
     /// * `PyException` - If there is an error making the request.
     fn request(
         &self,
+        py: Python,
         method: &str,
         url: &str,
         params: Option<HashMap<String, String>>,
@@ -307,55 +310,66 @@ impl Client {
             request_builder = request_builder.timeout(Duration::from_secs_f64(seconds));
         }
 
-        // Send request
-        let mut resp = Python::with_gil(|py| {
-            py.allow_threads(|| {
-                request_builder.send().map_err(|e| {
-                    PyErr::new::<exceptions::PyException, _>(format!("Error in request: {}", e))
-                })
+        // Send request | release GIL
+        let resp = py.allow_threads(|| {
+            request_builder.send().map_err(|e| {
+                PyErr::new::<exceptions::PyException, _>(format!("Error in request: {}", e))
             })
         })?;
 
         // Response items
-        let mut raw: Vec<u8> = vec![];
-        resp.copy_to(&mut raw).map_err(|e| {
-            PyErr::new::<exceptions::PyIOError, _>(format!("Error in get resp.raw: {}", e))
-        })?;
-        let cookies: HashMap<String, String> = resp
-            .cookies()
-            .map(|cookie| (cookie.name().to_string(), cookie.value().to_string()))
-            .collect();
+        let cookies_dict = PyDict::new_bound(py);
+        for cookie in resp.cookies() {
+            let key = cookie.name().to_string();
+            let value = cookie.value().to_string();
+            cookies_dict.set_item(key, value)?;
+        }
+        let cookies = cookies_dict.unbind();
+
         // Encoding from "Content-Type" header or "UTF-8"
-        let encoding = resp
-            .headers()
-            .get("Content-Type")
-            .and_then(|ct| ct.to_str().ok())
-            .and_then(|ct| {
-                ct.split(';').find_map(|param| {
-                    let mut kv = param.splitn(2, '=');
-                    let key = kv.next()?.trim();
-                    let value = kv.next()?.trim();
-                    if key.eq_ignore_ascii_case("charset") {
-                        Some(value.to_string())
-                    } else {
-                        None
-                    }
+        let encoding = {
+            let encoding_str = resp
+                .headers()
+                .get("Content-Type")
+                .and_then(|ct| ct.to_str().ok())
+                .and_then(|ct| {
+                    ct.split(';').find_map(|param| {
+                        let mut kv = param.splitn(2, '=');
+                        let key = kv.next()?.trim();
+                        let value = kv.next()?.trim();
+                        if key.eq_ignore_ascii_case("charset") {
+                            Some(value.to_string())
+                        } else {
+                            None
+                        }
+                    })
                 })
-            })
-            .unwrap_or("UTF-8".to_string());
-        let headers: HashMap<String, String> = resp
-            .headers()
-            .iter()
-            .map(|(k, v)| (k.as_str().to_string(), v.to_str().unwrap_or("").to_string()))
-            .collect();
-        let status_code = resp.status().as_u16();
-        let url = resp.url().to_string();
+                .unwrap_or("UTF-8".to_string());
+            PyString::new_bound(py, &encoding_str).unbind()
+        };
+
+        let headers_dict = PyDict::new_bound(py);
+        for (key, value) in resp.headers().iter() {
+            let key_str = key.as_str();
+            let value_str = value.to_str().unwrap_or("");
+            headers_dict.set_item(key_str, value_str)?;
+        }
+        let headers = headers_dict.unbind();
+
+        let status_code = resp.status().as_u16().into_py(py);
+
+        let url = PyString::new_bound(py, &resp.url().to_string()).into();
+
+        let buf = resp.bytes().map_err(|e| {
+            PyErr::new::<exceptions::PyException, _>(format!("Error reading response bytes: {}", e))
+        })?;
+        let content = PyBytes::new_bound(py, &buf).unbind();
 
         Ok(Response {
+            content,
             cookies,
             encoding,
             headers,
-            raw,
             status_code,
             url,
         })
@@ -364,6 +378,7 @@ impl Client {
     fn get(
         &self,
         url: &str,
+        py: Python,
         params: Option<HashMap<String, String>>,
         headers: Option<HashMap<String, String>>,
         auth: Option<(String, Option<String>)>,
@@ -371,6 +386,7 @@ impl Client {
         timeout: Option<f64>,
     ) -> PyResult<Response> {
         self.request(
+            py,
             "GET",
             url,
             params,
@@ -385,6 +401,7 @@ impl Client {
     }
     fn head(
         &self,
+        py: Python,
         url: &str,
         params: Option<HashMap<String, String>>,
         headers: Option<HashMap<String, String>>,
@@ -393,6 +410,7 @@ impl Client {
         timeout: Option<f64>,
     ) -> PyResult<Response> {
         self.request(
+            py,
             "HEAD",
             url,
             params,
@@ -407,6 +425,7 @@ impl Client {
     }
     fn options(
         &self,
+        py: Python,
         url: &str,
         params: Option<HashMap<String, String>>,
         headers: Option<HashMap<String, String>>,
@@ -415,6 +434,7 @@ impl Client {
         timeout: Option<f64>,
     ) -> PyResult<Response> {
         self.request(
+            py,
             "OPTIONS",
             url,
             params,
@@ -429,6 +449,7 @@ impl Client {
     }
     fn delete(
         &self,
+        py: Python,
         url: &str,
         params: Option<HashMap<String, String>>,
         headers: Option<HashMap<String, String>>,
@@ -437,6 +458,7 @@ impl Client {
         timeout: Option<f64>,
     ) -> PyResult<Response> {
         self.request(
+            py,
             "DELETE",
             url,
             params,
@@ -452,6 +474,7 @@ impl Client {
 
     fn post(
         &self,
+        py: Python,
         url: &str,
         params: Option<HashMap<String, String>>,
         headers: Option<HashMap<String, String>>,
@@ -463,6 +486,7 @@ impl Client {
         timeout: Option<f64>,
     ) -> PyResult<Response> {
         self.request(
+            py,
             "POST",
             url,
             params,
@@ -477,6 +501,7 @@ impl Client {
     }
     fn put(
         &self,
+        py: Python,
         url: &str,
         params: Option<HashMap<String, String>>,
         headers: Option<HashMap<String, String>>,
@@ -488,6 +513,7 @@ impl Client {
         timeout: Option<f64>,
     ) -> PyResult<Response> {
         self.request(
+            py,
             "PUT",
             url,
             params,
@@ -502,6 +528,7 @@ impl Client {
     }
     fn patch(
         &self,
+        py: Python,
         url: &str,
         params: Option<HashMap<String, String>>,
         headers: Option<HashMap<String, String>>,
@@ -513,6 +540,7 @@ impl Client {
         timeout: Option<f64>,
     ) -> PyResult<Response> {
         self.request(
+            py,
             "PATCH",
             url,
             params,
