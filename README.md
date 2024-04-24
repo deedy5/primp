@@ -122,7 +122,6 @@ print(response.content)  # Get the content as bytes
 print(response.cookies)  # Access cookies
 print(response.headers)  # Access headers
 print(response.json())  # Parse the content as JSON
-print(response.raw) # Raw response
 print(response.status_code)  # Access the status code
 print(response.text)  # Decode the content as text
 print(response.url)  # Access the URL
