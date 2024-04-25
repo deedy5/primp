@@ -7,7 +7,7 @@ Binding to the Rust `reqwest_impersonate` library.</br>
 
 
 Provides precompiled wheels:
-- [x] Linux:  `amd64`, `aarch64`.
+- [x] Linux:  `amd64`, `aarch64`, `armv7`.
 - [x] Windows: `amd64`.
 - [x] MacOS:  `amd64`, `aarch64`.
 
