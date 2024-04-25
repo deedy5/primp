@@ -19,7 +19,6 @@ reqwest-impersonate = { version = "0.11", default-features = false, features = [
     "boring-tls",
     "impersonate",
     "json",
-    "trust-dns",  # async resolver instead of a default threadpool using `getaddrinfo`
     "multipart",  # to send a multipart/form-data body
     "socks",
     "gzip",

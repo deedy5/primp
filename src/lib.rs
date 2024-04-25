@@ -100,7 +100,6 @@ impl Client {
         let mut client_builder = reqwest_impersonate::blocking::Client::builder()
             .enable_ech_grease(true)
             .permute_extensions(true)
-            .trust_dns(true)
             .timeout(timeout.map(Duration::from_secs_f64));
 
         // Headers
