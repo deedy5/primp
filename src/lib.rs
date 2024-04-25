@@ -16,7 +16,7 @@ mod response;
 use response::Response;
 
 #[pyclass]
-/// A blocking HTTP client that can impersonate web browsers.
+/// HTTP client that can impersonate web browsers.
 struct Client {
     client: reqwest_impersonate::blocking::Client,
     auth: Option<(String, Option<String>)>,
@@ -27,9 +27,9 @@ struct Client {
 #[pymethods]
 impl Client {
     #[new]
-    /// Initializes a blocking HTTP client that can impersonate web browsers. Not thread-safe!
+    /// Initializes an HTTP client that can impersonate web browsers.
     ///
-    /// This function creates a new instance of a blocking HTTP client that can impersonate various web browsers.
+    /// This function creates a new HTTP client instance that can impersonate various web browsers.
     /// It allows for customization of headers, proxy settings, timeout, impersonation type, SSL certificate verification,
     /// and HTTP version preferences.
     ///
@@ -50,9 +50,6 @@ impl Client {
     /// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is `true`.
     /// * `http1` - An optional boolean indicating whether to use only HTTP/1.1. Default is `false`.
     /// * `http2` - An optional boolean indicating whether to use only HTTP/2. Default is `false`.
-    ///
-    /// # Note
-    /// The Client instance is not thread-safe, meaning it should be initialized once and reused across a multi-threaded environment.
     ///
     /// # Example
     ///
