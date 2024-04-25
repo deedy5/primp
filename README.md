@@ -7,7 +7,7 @@ Binding to the Rust `reqwest_impersonate` library.</br>
 
 
 Provides precompiled wheels:
-- [x] Linux:  `amd64`, `aarch64`.
+- [x] Linux:  `amd64`, `aarch64`, `armv7`.
 - [x] Windows: `amd64`.
 - [x] MacOS:  `amd64`, `aarch64`.
 
@@ -27,7 +27,8 @@ pip install -U pyreqwest_impersonate
 ```
 
 ## Key Features
-
+- `Impersonate`: The `Client` offers an `impersonate` option, enabling it to mimic web browsers by replicating their headers and `TLS/JA3/JA4/HTTP2` fingerprints. This feature is crucial for avoiding detection as a bot and potential blocking by websites.
+- `Thread-safe`: The `Client` is designed to be thread-safe, allowing it to be safely used in multithreaded environments.
 - `High Performance`: The attributes of the `Response` object are executed in Rust, which is known for its high performance. This ensures that operations like accessing headers, decoding text, or parsing JSON are very fast.
 - `Lazy Execution`: All attributes of the `Response` object are executed lazily. This means that the actual computation or data retrieval happens only when you access the attribute, not when the `Response` object is created.
 - `Automatic Character Encoding Detection`: The `Response` object intelligently detects the character encoding of the response body from the "Content-Type" header. If the encoding is not specified, it defaults to "UTF-8".
@@ -35,10 +36,10 @@ pip install -U pyreqwest_impersonate
 ## Usage
 ### I. Client
 
-A blocking HTTP client that can impersonate web browsers. Not thread-safe!
-```python3
+HTTP client that can impersonate web browsers.
+```python
 class Client:
-    """Initializes a blocking HTTP client that can impersonate web browsers.
+    """Initializes an HTTP client that can impersonate web browsers.
     
     Args:
         auth (tuple, optional): A tuple containing the username and password for basic authentication. Default is None.
@@ -62,19 +63,16 @@ class Client:
         verify (bool, optional): Verify SSL certificates. Default is True.
         http1 (bool, optional): Use only HTTP/1.1. Default is None.
         http2 (bool, optional): Use only HTTP/2. Default is None.
-        
-    Note:
-        The Client instance is not thread-safe, meaning it should be initialized once and reused across a multi-threaded environment.
-    
+         
     """
 ```
 
 #### Client Methods
 
 The `Client` class provides a set of methods for making HTTP requests: `get`, `head`, `options`, `delete`, `post`, `put`, `patch`, each of which internally utilizes the `request()` method for execution. The parameters for these methods closely resemble those in `httpx`.
-```python3
-def get(url, *, params=None, headers=None, auth=None, auth_bearer=None, timeout=None)
-    """Performs a GET request to the specified URL."""
+```python
+def get(url, *, params=None, headers=None, auth=None, auth_bearer=None, timeout=None):
+    """Performs a GET request to the specified URL.
 
     Args:
         url (str): The URL to which the request will be made.
@@ -84,10 +82,12 @@ def get(url, *, params=None, headers=None, auth=None, auth_bearer=None, timeout=
             for basic authentication. Default is None.
         auth_bearer (Optional[str]): A string representing the bearer token for bearer token authentication. Default is None.
         timeout (Optional[float]): The timeout for the request in seconds. Default is 30.
+
+    """
 ```
 ```python
-def post(url, *, params=None, headers=None, content=None, data=None, files=None, auth=None, auth_bearer=None, timeout=None)
-    """Performs a POST request to the specified URL."""
+def post(url, *, params=None, headers=None, content=None, data=None, files=None, auth=None, auth_bearer=None, timeout=None):
+    """Performs a POST request to the specified URL.
 
     Args:
         url (str): The URL to which the request will be made.
@@ -100,6 +100,8 @@ def post(url, *, params=None, headers=None, content=None, data=None, files=None,
             for basic authentication. Default is None.
         auth_bearer (Optional[str]): A string representing the bearer token for bearer token authentication. Default is None.
         timeout (Optional[float]): The timeout for the request in seconds. Default is 30.
+
+    """
 ```
 
 #### Example
@@ -107,8 +109,7 @@ def post(url, *, params=None, headers=None, content=None, data=None, files=None,
 ```python
 from pyreqwest_impersonate import Client
 
-# Not thread-safe! Initialize the Client instance once and reuse it across threads
-client = Client(impersonate="chrome_123")  
+client = Client(impersonate="chrome_123")
 
 # get request
 resp = client.get("https://tls.peet.ws/api/all")
