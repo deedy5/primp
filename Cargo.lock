@@ -913,7 +913,7 @@ dependencies = [
 
 [[package]]
 name = "pyreqwest_impersonate"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "encoding_rs",
  "pyo3",
