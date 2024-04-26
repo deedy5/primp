@@ -60,7 +60,7 @@ class Client:
             Edge: "edge_99","edge_101","edge_120"
         follow_redirects (bool, optional): Whether to follow redirects. Default is True.
         max_redirects (int, optional): Maximum redirects to follow. Default 20. Applies if `follow_redirects` is True.
-        verify (bool, optional): Verify SSL certificates. Default is True.
+        verify (bool, optional): Verify SSL certificates. Default is False.
         http1 (bool, optional): Use only HTTP/1.1. Default is None.
         http2 (bool, optional): Use only HTTP/2. Default is None.
          
