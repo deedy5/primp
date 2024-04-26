@@ -107,9 +107,9 @@ def post(url, *, params=None, headers=None, content=None, data=None, files=None,
 #### Example
 
 ```python
-from pyreqwest_impersonate import Client
+import pyreqwest_impersonate as pri
 
-client = Client(impersonate="chrome_123")
+client = pri.Client(impersonate="chrome_123")
 
 # get request
 resp = client.get("https://tls.peet.ws/api/all")
@@ -119,13 +119,18 @@ print(resp.json())
 data = {"key1": "value1", "key2": "value2"}
 auth = ("user", "password")
 resp = client.post(url="https://httpbin.org/anything", data=data, auth=auth)
-print(response.content)  # Get the content as bytes
-print(response.cookies)  # Access cookies
-print(response.headers)  # Access headers
-print(response.json())  # Parse the content as JSON
-print(response.status_code)  # Access the status code
-print(response.text)  # Decode the content as text
-print(response.url)  # Access the URL
+print(resp.content)
+print(resp.cookies)
+print(resp.headers)
+print(resp.json())
+print(resp.status_code)
+print(resp.text)
+print(resp.url)
+
+# You can also use convenience functions that use a default Client instance under the hood:
+# pri.get() | pri.head() | pri.options() | pri.delete() | pri.post | pri.patch | pri.put
+resp = pri.get("https://httpbin.org/anything") # Default Client does not impersonate a browser
+resp = pri.Client(impersonate="chrome_123").get("https://httpbin.org/anything")  
 ```
 ### II. AsyncClient
 

@@ -373,8 +373,8 @@ impl Client {
 
     fn get(
         &self,
-        url: &str,
         py: Python,
+        url: &str,
         params: Option<HashMap<String, String>>,
         headers: Option<HashMap<String, String>>,
         auth: Option<(String, Option<String>)>,
@@ -551,8 +551,170 @@ impl Client {
     }
 }
 
+/// Convenience functions that use a default Client instance under the hood
+#[pyfunction]
+fn get(
+    py: Python,
+    url: &str,
+    params: Option<HashMap<String, String>>,
+    headers: Option<HashMap<String, String>>,
+    auth: Option<(String, Option<String>)>,
+    auth_bearer: Option<String>,
+    timeout: Option<f64>,
+) -> PyResult<Response> {
+    let client = Client::new(
+        None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+    )?;
+    client.get(py, url, params, headers, auth, auth_bearer, timeout)
+}
+
+#[pyfunction]
+fn head(
+    py: Python,
+    url: &str,
+    params: Option<HashMap<String, String>>,
+    headers: Option<HashMap<String, String>>,
+    auth: Option<(String, Option<String>)>,
+    auth_bearer: Option<String>,
+    timeout: Option<f64>,
+) -> PyResult<Response> {
+    let client = Client::new(
+        None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+    )?;
+    client.head(py, url, params, headers, auth, auth_bearer, timeout)
+}
+
+#[pyfunction]
+fn options(
+    py: Python,
+    url: &str,
+    params: Option<HashMap<String, String>>,
+    headers: Option<HashMap<String, String>>,
+    auth: Option<(String, Option<String>)>,
+    auth_bearer: Option<String>,
+    timeout: Option<f64>,
+) -> PyResult<Response> {
+    let client = Client::new(
+        None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+    )?;
+    client.options(py, url, params, headers, auth, auth_bearer, timeout)
+}
+
+#[pyfunction]
+fn delete(
+    py: Python,
+    url: &str,
+    params: Option<HashMap<String, String>>,
+    headers: Option<HashMap<String, String>>,
+    auth: Option<(String, Option<String>)>,
+    auth_bearer: Option<String>,
+    timeout: Option<f64>,
+) -> PyResult<Response> {
+    let client = Client::new(
+        None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+    )?;
+    client.delete(py, url, params, headers, auth, auth_bearer, timeout)
+}
+
+#[pyfunction]
+fn post(
+    py: Python,
+    url: &str,
+    params: Option<HashMap<String, String>>,
+    headers: Option<HashMap<String, String>>,
+    content: Option<Vec<u8>>,
+    data: Option<HashMap<String, String>>,
+    files: Option<HashMap<String, String>>,
+    auth: Option<(String, Option<String>)>,
+    auth_bearer: Option<String>,
+    timeout: Option<f64>,
+) -> PyResult<Response> {
+    let client = Client::new(
+        None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+    )?;
+    client.post(
+        py,
+        url,
+        params,
+        headers,
+        content,
+        data,
+        files,
+        auth,
+        auth_bearer,
+        timeout,
+    )
+}
+
+#[pyfunction]
+fn put(
+    py: Python,
+    url: &str,
+    params: Option<HashMap<String, String>>,
+    headers: Option<HashMap<String, String>>,
+    content: Option<Vec<u8>>,
+    data: Option<HashMap<String, String>>,
+    files: Option<HashMap<String, String>>,
+    auth: Option<(String, Option<String>)>,
+    auth_bearer: Option<String>,
+    timeout: Option<f64>,
+) -> PyResult<Response> {
+    let client = Client::new(
+        None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+    )?;
+    client.put(
+        py,
+        url,
+        params,
+        headers,
+        content,
+        data,
+        files,
+        auth,
+        auth_bearer,
+        timeout,
+    )
+}
+
+#[pyfunction]
+fn patch(
+    py: Python,
+    url: &str,
+    params: Option<HashMap<String, String>>,
+    headers: Option<HashMap<String, String>>,
+    content: Option<Vec<u8>>,
+    data: Option<HashMap<String, String>>,
+    files: Option<HashMap<String, String>>,
+    auth: Option<(String, Option<String>)>,
+    auth_bearer: Option<String>,
+    timeout: Option<f64>,
+) -> PyResult<Response> {
+    let client = Client::new(
+        None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+    )?;
+    client.patch(
+        py,
+        url,
+        params,
+        headers,
+        content,
+        data,
+        files,
+        auth,
+        auth_bearer,
+        timeout,
+    )
+}
+
 #[pymodule]
 fn pyreqwest_impersonate(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Client>()?;
+    m.add_function(wrap_pyfunction!(get, m)?)?;
+    m.add_function(wrap_pyfunction!(head, m)?)?;
+    m.add_function(wrap_pyfunction!(options, m)?)?;
+    m.add_function(wrap_pyfunction!(delete, m)?)?;
+    m.add_function(wrap_pyfunction!(post, m)?)?;
+    m.add_function(wrap_pyfunction!(patch, m)?)?;
+    m.add_function(wrap_pyfunction!(put, m)?)?;
     Ok(())
 }
