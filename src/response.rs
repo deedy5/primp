@@ -37,13 +37,13 @@ impl Response {
 
         // Release the GIL here because decoding can be CPU-intensive
         let (decoded_str, detected_encoding_name) = py.allow_threads(move || {
-            let encoding = Encoding::for_label(&encoding_bytes).ok_or_else(|| {
+            let encoding = Encoding::for_label(encoding_bytes).ok_or_else(|| {
                 PyErr::new::<exceptions::PyValueError, _>(format!(
                     "Unsupported charset: {}",
-                    String::from_utf8_lossy(&encoding_bytes)
+                    String::from_utf8_lossy(encoding_bytes)
                 ))
             })?;
-            let (decoded_str, detected_encoding, _) = encoding.decode(&raw_bytes);
+            let (decoded_str, detected_encoding, _) = encoding.decode(raw_bytes);
             // Return the decoded string and the name of the detected encoding
             Ok::<(String, String), PyErr>((
                 decoded_str.to_string(),

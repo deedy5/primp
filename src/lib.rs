@@ -353,7 +353,7 @@ impl Client {
 
         let status_code = resp.status().as_u16().into_py(py);
 
-        let url = PyString::new_bound(py, &resp.url().to_string()).into();
+        let url = PyString::new_bound(py, resp.url().as_ref()).into();
 
         let buf = resp.bytes().map_err(|e| {
             PyErr::new::<exceptions::PyException, _>(format!("Error reading response bytes: {}", e))
