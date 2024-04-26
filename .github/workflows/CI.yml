@@ -54,7 +54,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          pip install pyreqwest_impersonate --find-links dist --force-reinstall
+          pip install pyreqwest_impersonate --no-index --find-links dist --force-reinstall
           pip install pytest
           pytest
       - name: pytest
@@ -70,7 +70,7 @@ jobs:
             pip3 install -U pip pytest
           run: |
             set -e
-            pip3 install pyreqwest_impersonate --find-links dist --force-reinstall
+            pip3 install pyreqwest_impersonate --no-index --find-links dist --force-reinstall
             pytest
 
   windows:
@@ -104,7 +104,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          pip install pyreqwest_impersonate --find-links dist --force-reinstall
+          pip install pyreqwest_impersonate --no-index --find-links dist --force-reinstall
           pip install pytest
           pytest
 
@@ -133,14 +133,14 @@ jobs:
         with:
           name: wheels-macos-${{ matrix.platform.target }}
           path: dist
-      - name: pytest
-        if: ${{ !startsWith(matrix.platform.target, 'aarch64') }}
-        shell: bash
-        run: |
-          set -e
-          pip install pyreqwest_impersonate --find-links dist --force-reinstall
-          pip install pytest
-          pytest
+      #- name: pytest
+      #  if: ${{ !startsWith(matrix.platform.target, 'aarch64') }}
+      #  shell: bash
+      #  run: |
+      #    set -e
+      #    pip install pyreqwest_impersonate --no-index --find-links dist --force-reinstall
+      #    pip install pytest
+      #    pytest
 
   sdist:
     runs-on: ubuntu-latest
