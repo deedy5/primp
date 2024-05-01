@@ -70,3 +70,7 @@ docs/_build/
 
 # Pyenv
 .python-version
+
+# Ignore csv and jpg files in benchmark folder
+benchmark/*.csv
+benchmark/*.jpg

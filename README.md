@@ -2,9 +2,7 @@
 # Pyreqwest_impersonate
 
 The fastest python HTTP client that can impersonate web browsers by mimicking their headers and `TLS/JA3/JA4/HTTP2` fingerprints.</br>
-Binding to the Rust `reqwest_impersonate` library.</br>
-🏁 Check the [benchmark](https://github.com/deedy5/pyreqwest_impersonate/tree/main/benchmark) for more details.
-
+Binding to the Rust [reqwest_impersonate](https://github.com/gngpp/reqwest-impersonate) library.</br>
 
 Provides precompiled wheels:
 - [x] Linux:  `amd64`, `aarch64`, `armv7`.
@@ -27,11 +25,13 @@ pip install -U pyreqwest_impersonate
 ```
 
 ## Key Features
-- `Impersonate`: The `Client` offers an `impersonate` option, enabling it to mimic web browsers by replicating their headers and `TLS/JA3/JA4/HTTP2` fingerprints. This feature is crucial for avoiding detection as a bot and potential blocking by websites.
-- `Thread-safe`: The `Client` is designed to be thread-safe, allowing it to be safely used in multithreaded environments.
-- `High Performance`: The attributes of the `Response` object are executed in Rust, which is known for its high performance. This ensures that operations like accessing headers, decoding text, or parsing JSON are very fast.
-- `Lazy Execution`: All attributes of the `Response` object are executed lazily. This means that the actual computation or data retrieval happens only when you access the attribute, not when the `Response` object is created.
-- `Automatic Character Encoding Detection`: The `Response` object intelligently detects the character encoding of the response body from the "Content-Type" header. If the encoding is not specified, it defaults to "UTF-8".
+- Impersonate: The Client offers an `impersonate` option, enabling it to mimic web browsers by replicating their headers and TLS/JA3/JA4/HTTP2 fingerprints.
+- Thread-safe: The Client is designed to be thread-safe, allowing it to be safely used in multithreaded environments.
+- Automatic Character Encoding Detection: The encoding is taken from the "Content-Type" header, but if not specified, "UTF-8".
+- Small Size: The compiled library is about 5.8MB in size.
+- High Performance: The library is designed for a large number of threads, uses all processors, and releases the GIL. All operations like accessing headers, decoding text, or parsing JSON are executed in Rust.
+
+![](https://github.com/deedy5/pyreqwest_impersonate/blob/benchmark/benchmark.jpg?raw=true)
 
 ## Usage
 ### I. Client
@@ -72,7 +72,7 @@ class Client:
 
 The `Client` class provides a set of methods for making HTTP requests: `get`, `head`, `options`, `delete`, `post`, `put`, `patch`, each of which internally utilizes the `request()` method for execution. The parameters for these methods closely resemble those in `httpx`.
 ```python
-def get(url, *, params=None, headers=None, auth=None, auth_bearer=None, timeout=None):
+def get(url, params=None, headers=None, auth=None, auth_bearer=None, timeout=None):
     """Performs a GET request to the specified URL.
 
     Args:
@@ -87,7 +87,7 @@ def get(url, *, params=None, headers=None, auth=None, auth_bearer=None, timeout=
     """
 ```
 ```python
-def post(url, *, params=None, headers=None, content=None, data=None, files=None, auth=None, auth_bearer=None, timeout=None):
+def post(url, params=None, headers=None, content=None, data=None, files=None, auth=None, auth_bearer=None, timeout=None):
     """Performs a POST request to the specified URL.
 
     Args:

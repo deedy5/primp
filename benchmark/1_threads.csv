@@ -1,6 +1,0 @@
-name,threads,cpu_time 50k,cpu_time 5k,time 50k,time 5k
-curl_cffi 0.6.3,1,2.511,0.988,4.365,2.181
-httpx 0.27.0,1,2.904,2.386,4.418,4.049
-pyreqwest_impersonate 0.3.2,1,1.75,0.355,3.469,0.948
-requests 2.31.0,1,3.573,3.754,5.145,5.495
-tls_client 1.0.1,1,6.852,2.06,7.216,2.903

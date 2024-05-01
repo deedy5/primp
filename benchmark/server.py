@@ -11,6 +11,9 @@ random_5k = gzip.compress(random_5k.encode('utf-8'))
 random_50k = base64.b64encode(os.urandom(50 * 1024)).decode('utf-8')
 random_50k = gzip.compress(random_50k.encode('utf-8'))
 
+random_200k = base64.b64encode(os.urandom(200 * 1024)).decode('utf-8')
+random_200k = gzip.compress(random_200k.encode('utf-8'))
+
 
 def gzip_response(gzipped_content):
     headers = {
@@ -23,6 +26,7 @@ app = Starlette(
     routes=[
         Route("/5k", lambda r: gzip_response(random_5k)),
         Route("/50k", lambda r: gzip_response(random_50k)),
+        Route("/200k", lambda r: gzip_response(random_200k)),
     ],
 )
 
