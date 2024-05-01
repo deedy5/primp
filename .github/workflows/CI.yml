@@ -171,3 +171,34 @@ jobs:
         with:
           command: upload
           args: --non-interactive --skip-existing wheels-*/*
+
+  benchmark:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r benchmark/requirements.txt
+      - name: Start Uvicorn server
+        run: |
+          uvicorn benchmark.server:app --host 0.0.0.0 --port 8000 &
+          sleep 10
+      - name: Run benchmark
+        run: python benchmark/benchmark.py
+      - name: Generate image and commit
+        if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          python benchmark/generate_image.py
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add \*.jpg
+          git commit -m "Update generated image" || echo "No changes to commit"
+          git pull origin benchmark --allow-unrelated-histories || echo "No changes to pull"
+          git push https://${{ secrets.PUSH_TOKEN }}@github.com/${{ github.repository }}
