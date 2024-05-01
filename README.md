@@ -130,8 +130,8 @@ print(resp.url)
 
 # You can also use convenience functions that use a default Client instance under the hood:
 # pri.get() | pri.head() | pri.options() | pri.delete() | pri.post | pri.patch | pri.put
-resp = pri.get("https://httpbin.org/anything") # Default Client does not impersonate a browser
-resp = pri.Client(impersonate="chrome_123").get("https://httpbin.org/anything")  
+# These functions can accept the `impersonate` parameter:
+resp = pri.get("https://httpbin.org/anything", impersonate="chrome_123")  
 ```
 ### II. AsyncClient
 

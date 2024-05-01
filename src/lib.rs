@@ -614,9 +614,10 @@ fn get(
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
+    impersonate: Option<&str>,
 ) -> PyResult<Response> {
     let client = Client::new(
-        None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+        None, None, None, None, None, None, None, None, impersonate, None, None, None, None, None,
     )?;
     client.get(py, url, params, headers, auth, auth_bearer, timeout)
 }
@@ -630,9 +631,10 @@ fn head(
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
+    impersonate: Option<&str>,
 ) -> PyResult<Response> {
     let client = Client::new(
-        None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+        None, None, None, None, None, None, None, None, impersonate, None, None, None, None, None,
     )?;
     client.head(py, url, params, headers, auth, auth_bearer, timeout)
 }
@@ -646,9 +648,10 @@ fn options(
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
+    impersonate: Option<&str>,
 ) -> PyResult<Response> {
     let client = Client::new(
-        None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+        None, None, None, None, None, None, None, None, impersonate, None, None, None, None, None,
     )?;
     client.options(py, url, params, headers, auth, auth_bearer, timeout)
 }
@@ -662,9 +665,10 @@ fn delete(
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
+    impersonate: Option<&str>,
 ) -> PyResult<Response> {
     let client = Client::new(
-        None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+        None, None, None, None, None, None, None, None, impersonate, None, None, None, None, None,
     )?;
     client.delete(py, url, params, headers, auth, auth_bearer, timeout)
 }
@@ -681,9 +685,10 @@ fn post(
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
+    impersonate: Option<&str>,
 ) -> PyResult<Response> {
     let client = Client::new(
-        None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+        None, None, None, None, None, None, None, None, impersonate, None, None, None, None, None,
     )?;
     client.post(
         py,
@@ -711,9 +716,10 @@ fn put(
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
+    impersonate: Option<&str>,
 ) -> PyResult<Response> {
     let client = Client::new(
-        None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+        None, None, None, None, None, None, None, None, impersonate, None, None, None, None, None,
     )?;
     client.put(
         py,
@@ -741,9 +747,10 @@ fn patch(
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
+    impersonate: Option<&str>,
 ) -> PyResult<Response> {
     let client = Client::new(
-        None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+        None, None, None, None, None, None, None, None, impersonate, None, None, None, None, None,
     )?;
     client.patch(
         py,
