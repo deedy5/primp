@@ -15,7 +15,6 @@ crate-type = ["cdylib"]
 pyo3 = { version = "0.21", features = ["extension-module", "abi3-py38"] }
 reqwest-impersonate = { version = "0.11", default-features = false, features = [
     "cookies",
-    "blocking",
     "boring-tls",
     "impersonate",
     "json",
@@ -28,6 +27,8 @@ reqwest-impersonate = { version = "0.11", default-features = false, features = [
 encoding_rs = "0.8"
 pythonize = "0.21"
 serde_json = "1"
+tokio = { version = "1", features = ["fs", "rt-multi-thread"] }
+rayon = "1"
 
 [profile.release]
 codegen-units = 1

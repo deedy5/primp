@@ -1,24 +1,43 @@
 use std::collections::HashMap;
 use std::str::FromStr;
+use std::sync::{mpsc, Arc, OnceLock};
 use std::time::Duration;
 
 use pyo3::exceptions;
 use pyo3::prelude::*;
-use pyo3::types::PyBytes;
-use pyo3::types::{PyDict, PyString};
-use reqwest_impersonate::blocking::multipart;
+use pyo3::types::{PyBytes, PyDict, PyString};
+use rayon::{ThreadPool, ThreadPoolBuilder};
 use reqwest_impersonate::header::{HeaderMap, HeaderName, HeaderValue};
 use reqwest_impersonate::impersonate::Impersonate;
+use reqwest_impersonate::multipart;
 use reqwest_impersonate::redirect::Policy;
 use reqwest_impersonate::Method;
+use tokio::runtime::{self, Runtime};
 
 mod response;
 use response::Response;
 
+// Rayon global thread pool
+fn cpu_pool() -> &'static ThreadPool {
+    static CPU_POOL: OnceLock<ThreadPool> = OnceLock::new();
+    CPU_POOL.get_or_init(|| ThreadPoolBuilder::new().num_threads(32).build().unwrap())
+}
+
+// Tokio global multi-thread runtime
+fn runtime() -> &'static Runtime {
+    static RUNTIME: OnceLock<Runtime> = OnceLock::new();
+    RUNTIME.get_or_init(|| {
+        runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+    })
+}
+
 #[pyclass]
 /// HTTP client that can impersonate web browsers.
-struct Client {
-    client: reqwest_impersonate::blocking::Client,
+pub struct Client {
+    client: Arc<reqwest_impersonate::Client>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     params: Option<HashMap<String, String>>,
@@ -94,10 +113,10 @@ impl Client {
             ));
         }
 
-        let mut client_builder = reqwest_impersonate::blocking::Client::builder()
+        // Client builder
+        let mut client_builder = reqwest_impersonate::Client::builder()
             .enable_ech_grease(true)
-            .permute_extensions(true)
-            .timeout(timeout.map(Duration::from_secs_f64));
+            .permute_extensions(true);
 
         // Headers
         if let Some(headers) = headers {
@@ -130,6 +149,11 @@ impl Client {
             let proxy = reqwest_impersonate::Proxy::all(proxy_url)
                 .map_err(|_| PyErr::new::<exceptions::PyValueError, _>("Invalid proxy URL"))?;
             client_builder = client_builder.proxy(proxy);
+        }
+
+        // Timeout
+        if let Some(seconds) = timeout {
+            client_builder = client_builder.timeout(Duration::from_secs_f64(seconds));
         }
 
         // Impersonate
@@ -166,9 +190,10 @@ impl Client {
             _ => (),
         }
 
-        let client = client_builder
-            .build()
-            .map_err(|_| PyErr::new::<exceptions::PyValueError, _>("Failed to build client"))?;
+        let client =
+            Arc::new(client_builder.build().map_err(|_| {
+                PyErr::new::<exceptions::PyValueError, _>("Failed to build client")
+            })?);
 
         Ok(Client {
             client,
@@ -215,115 +240,115 @@ impl Client {
         auth_bearer: Option<String>,
         timeout: Option<f64>,
     ) -> PyResult<Response> {
-        // Check if method is POST || PUT || PATCH
-        let is_post_put_patch = method == "POST" || method == "PUT" || method == "PATCH";
+        let client = Arc::clone(&self.client);
+        let method = method.to_owned();
+        let url = url.to_owned();
+        let auth = auth.or(self.auth.clone());
+        let auth_bearer = auth_bearer.or(self.auth_bearer.clone());
+        let params = params.or(self.params.clone());
 
-        // Method
-        let method = match method {
-            "GET" => Ok(Method::GET),
-            "POST" => Ok(Method::POST),
-            "HEAD" => Ok(Method::HEAD),
-            "OPTIONS" => Ok(Method::OPTIONS),
-            "PUT" => Ok(Method::PUT),
-            "PATCH" => Ok(Method::PATCH),
-            "DELETE" => Ok(Method::DELETE),
-            &_ => Err(PyErr::new::<exceptions::PyException, _>(
-                "Unrecognized HTTP method",
-            )),
-        };
-        let method = method?;
+        let future = async move {
+            // Check if method is POST || PUT || PATCH
+            let is_post_put_patch = method == "POST" || method == "PUT" || method == "PATCH";
 
-        // Create request builder
-        let mut request_builder = self.client.request(method, url);
+            // Method
+            let method = match method.as_str() {
+                "GET" => Ok(Method::GET),
+                "POST" => Ok(Method::POST),
+                "HEAD" => Ok(Method::HEAD),
+                "OPTIONS" => Ok(Method::OPTIONS),
+                "PUT" => Ok(Method::PUT),
+                "PATCH" => Ok(Method::PATCH),
+                "DELETE" => Ok(Method::DELETE),
+                &_ => Err(PyErr::new::<exceptions::PyException, _>(
+                    "Unrecognized HTTP method",
+                )),
+            }?;
 
-        // Params (use the provided `params` if available; otherwise, fall back to `self.params`)
-        let params_to_use = params.or(self.params.clone()).unwrap_or_default();
-        if !params_to_use.is_empty() {
-            request_builder = request_builder.query(&params_to_use);
-        }
+            // Create request builder
+            let mut request_builder = client.request(method, url);
 
-        // Headers
-        if let Some(headers) = headers {
-            let mut headers_new = HeaderMap::new();
-            for (key, value) in headers {
-                headers_new.insert(
-                    HeaderName::from_bytes(key.as_bytes()).map_err(|_| {
-                        PyErr::new::<exceptions::PyValueError, _>("Invalid header name")
-                    })?,
-                    HeaderValue::from_str(&value).map_err(|_| {
-                        PyErr::new::<exceptions::PyValueError, _>("Invalid header value")
-                    })?,
-                );
+            // Params
+            if let Some(params) = params {
+                request_builder = request_builder.query(&params);
             }
-            request_builder = request_builder.headers(headers_new);
-        }
 
-        // Only if method POST || PUT || PATCH
-        if is_post_put_patch {
-            // Content
-            if let Some(content) = content {
-                request_builder = request_builder.body(content);
-            }
-            // Data
-            if let Some(data) = data {
-                request_builder = request_builder.form(&data);
-            }
-            // Files
-            if let Some(files) = files {
-                let mut form = multipart::Form::new();
-                for (field, path) in files {
-                    form = form.file(field, path)?;
+            // Headers
+            if let Some(headers) = headers {
+                let mut headers_new = HeaderMap::new();
+                for (key, value) in headers {
+                    headers_new.insert(
+                        HeaderName::from_bytes(key.as_bytes()).map_err(|_| {
+                            PyErr::new::<exceptions::PyValueError, _>("Invalid header name")
+                        })?,
+                        HeaderValue::from_str(&value).map_err(|_| {
+                            PyErr::new::<exceptions::PyValueError, _>("Invalid header value")
+                        })?,
+                    );
                 }
-                request_builder = request_builder.multipart(form);
+                request_builder = request_builder.headers(headers_new);
             }
-        }
 
-        // Auth
-        match (auth, auth_bearer, &self.auth, &self.auth_bearer) {
-            (Some((username, password)), None, _, _) => {
-                request_builder = request_builder.basic_auth(username, password.as_deref());
+            // Only if method POST || PUT || PATCH
+            if is_post_put_patch {
+                // Content
+                if let Some(content) = content {
+                    request_builder = request_builder.body(content);
+                }
+                // Data
+                if let Some(data) = data {
+                    request_builder = request_builder.form(&data);
+                }
+                // Files
+                if let Some(files) = files {
+                    let mut form = multipart::Form::new();
+                    for (field, path) in files {
+                        let file_content = tokio::fs::read(&path).await.map_err(|e| {
+                            PyErr::new::<exceptions::PyException, _>(format!(
+                                "Error reading file {}: {}",
+                                path, e
+                            ))
+                        })?;
+                        let part = multipart::Part::bytes(file_content);
+                        form = form.part(field, part);
+                    }
+                    request_builder = request_builder.multipart(form);
+                }
             }
-            (None, Some(token), _, _) => {
-                request_builder = request_builder.bearer_auth(token);
-            }
-            (None, None, Some((username, password)), None) => {
-                request_builder = request_builder.basic_auth(username, password.as_deref());
-            }
-            (None, None, None, Some(token)) => {
-                request_builder = request_builder.bearer_auth(token);
-            }
-            (Some(_), Some(_), None, None) | (None, None, Some(_), Some(_)) => {
-                return Err(PyErr::new::<exceptions::PyValueError, _>(
-                    "Cannot provide both auth and auth_bearer",
-                ));
-            }
-            _ => {} // No authentication provided
-        }
 
-        // Timeout
-        if let Some(seconds) = timeout {
-            request_builder = request_builder.timeout(Duration::from_secs_f64(seconds));
-        }
+            // Auth
+            match (auth, auth_bearer) {
+                (Some((username, password)), None) => {
+                    request_builder = request_builder.basic_auth(username, password.as_deref());
+                }
+                (None, Some(token)) => {
+                    request_builder = request_builder.bearer_auth(token);
+                }
+                (Some(_), Some(_)) => {
+                    return Err(PyErr::new::<exceptions::PyValueError, _>(
+                        "Cannot provide both auth and auth_bearer",
+                    ));
+                }
+                _ => {} // No authentication provided
+            }
 
-        // Send request | release GIL
-        let resp = py.allow_threads(|| {
-            request_builder.send().map_err(|e| {
+            // Timeout
+            if let Some(seconds) = timeout {
+                request_builder = request_builder.timeout(Duration::from_secs_f64(seconds));
+            }
+
+            // Send the request and await the response
+            let resp = request_builder.send().await.map_err(|e| {
                 PyErr::new::<exceptions::PyException, _>(format!("Error in request: {}", e))
-            })
-        })?;
+            })?;
 
-        // Response items
-        let cookies_dict = PyDict::new_bound(py);
-        for cookie in resp.cookies() {
-            let key = cookie.name().to_string();
-            let value = cookie.value().to_string();
-            cookies_dict.set_item(key, value)?;
-        }
-        let cookies = cookies_dict.unbind();
-
-        // Encoding from "Content-Type" header or "UTF-8"
-        let encoding = {
-            let encoding_str = resp
+            // Response items
+            let cookies: HashMap<String, String> = resp
+                .cookies()
+                .map(|cookie| (cookie.name().to_string(), cookie.value().to_string()))
+                .collect();
+            // Encoding from "Content-Type" header or "UTF-8"
+            let encoding = resp
                 .headers()
                 .get("Content-Type")
                 .and_then(|ct| ct.to_str().ok())
@@ -340,25 +365,54 @@ impl Client {
                     })
                 })
                 .unwrap_or("UTF-8".to_string());
-            PyString::new_bound(py, &encoding_str).unbind()
+            let headers: HashMap<String, String> = resp
+                .headers()
+                .iter()
+                .map(|(k, v)| (k.as_str().to_string(), v.to_str().unwrap_or("").to_string()))
+                .collect();
+            let status_code = resp.status().as_u16();
+            let url = resp.url().to_string();
+            let buf = resp.bytes().await.map_err(|e| {
+                PyErr::new::<exceptions::PyException, _>(format!(
+                    "Error reading response bytes: {}",
+                    e
+                ))
+            })?;
+            Ok((buf, cookies, encoding, headers, status_code, url))
         };
 
+        // Execute an async future in Python, releasing the GIL for concurrency.
+        // Uses Rayon's global thread pool and Tokio global runtime to block on the future.
+        let (tx, rx) = mpsc::sync_channel(1);
+        py.allow_threads(|| {
+            cpu_pool().install(|| {
+                let result = runtime().block_on(future);
+                _ = tx.send(result);
+            });
+        });
+        let result = rx.recv().map_err(|e| {
+            PyErr::new::<exceptions::PyException, _>(format!("Error executing future: {}", e))
+        })?;
+        let (f_buf, f_cookies, f_encoding, f_headers, f_status_code, f_url) = match result {
+            Ok(value) => value,
+            Err(e) => return Err(e),
+        };
+
+        // Response items
+        let cookies_dict = PyDict::new_bound(py);
+        for (key, value) in f_cookies {
+            cookies_dict.set_item(key, value)?;
+        }
+        let cookies = cookies_dict.unbind();
+        let encoding = PyString::new_bound(py, f_encoding.as_str()).unbind();
         let headers_dict = PyDict::new_bound(py);
-        for (key, value) in resp.headers().iter() {
-            let key_str = key.as_str();
-            let value_str = value.to_str().unwrap_or("");
-            headers_dict.set_item(key_str, value_str)?;
+        for (key, value) in f_headers {
+            headers_dict.set_item(key, value)?;
         }
         let headers = headers_dict.unbind();
-
-        let status_code = resp.status().as_u16().into_py(py);
-
-        let url = PyString::new_bound(py, resp.url().as_ref()).into();
-
-        let buf = resp.bytes().map_err(|e| {
-            PyErr::new::<exceptions::PyException, _>(format!("Error reading response bytes: {}", e))
-        })?;
-        let content = PyBytes::new_bound(py, &buf).unbind();
+        let status_code = f_status_code.into_py(py);
+        let url = PyString::new_bound(py, &f_url).unbind();
+        let content = PyBytes::new_bound(py, &f_buf).unbind();
 
         Ok(Response {
             content,
