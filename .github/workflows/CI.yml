@@ -133,14 +133,14 @@ jobs:
         with:
           name: wheels-macos-${{ matrix.platform.target }}
           path: dist
-      #- name: pytest
-      #  if: ${{ !startsWith(matrix.platform.target, 'aarch64') }}
-      #  shell: bash
-      #  run: |
-      #    set -e
-      #    pip install pyreqwest_impersonate --no-index --find-links dist --force-reinstall
-      #    pip install pytest
-      #    pytest
+      - name: pytest
+        if: ${{ !startsWith(matrix.platform.target, 'aarch64') }}
+        shell: bash
+        run: |
+          set -e
+          pip install pyreqwest_impersonate --find-links dist --force-reinstall
+          pip install pytest
+          pytest
 
   sdist:
     runs-on: ubuntu-latest
@@ -176,6 +176,8 @@ jobs:
     permissions:
       contents: write
     runs-on: ubuntu-latest
+    if: "startsWith(github.ref, 'refs/tags/')"
+    needs: [release]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -184,6 +186,7 @@ jobs:
           python-version: '3.10'
       - name: Install dependencies
         run: |
+          sleep 30  # Wait for the package to be available on PyPI
           python -m pip install --upgrade pip
           pip install -r benchmark/requirements.txt
       - name: Start Uvicorn server
@@ -193,7 +196,6 @@ jobs:
       - name: Run benchmark
         run: python benchmark/benchmark.py
       - name: Generate image and commit
-        if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
         run: |
           python benchmark/generate_image.py
           git config --global user.name 'GitHub Actions'
