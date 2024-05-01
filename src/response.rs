@@ -22,7 +22,7 @@ pub struct Response {
     #[pyo3(get)]
     pub status_code: Py<PyAny>,
     #[pyo3(get)]
-    pub url: Py<PyAny>,
+    pub url: Py<PyString>,
 }
 
 #[pymethods]
