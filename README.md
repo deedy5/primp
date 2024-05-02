@@ -5,7 +5,7 @@ The fastest python HTTP client that can impersonate web browsers by mimicking th
 Binding to the Rust [reqwest_impersonate](https://github.com/gngpp/reqwest-impersonate) library.</br>
 
 Provides precompiled wheels:
-- [x] Linux:  `amd64`, `aarch64`, `armv7`; musllinux:  `amd64`, `aarch64`.
+- [x] Linux|musl:  `amd64`, `aarch64`.
 - [x] Windows: `amd64`.
 - [x] MacOS:  `amd64`, `aarch64`.
 
