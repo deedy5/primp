@@ -31,7 +31,7 @@ pip install -U pyreqwest_impersonate
 - Small Size: The compiled library is about 5.8MB in size.
 - High Performance: The library is designed for a large number of threads, uses all processors, and releases the GIL. All operations like accessing headers, decoding text, or parsing JSON are executed in Rust.
 
-![](https://github.com/deedy5/pyreqwest_impersonate/blob/benchmark/benchmark.jpg?raw=true)
+![](https://github.com/deedy5/pyreqwest_impersonate/blob/main/benchmark.jpg?raw=true)
 
 ## Usage
 ### I. Client
