@@ -26,7 +26,7 @@ pip install -U pyreqwest_impersonate
 ## Key Features
 - Impersonate: The Client offers an `impersonate` option, enabling it to mimic web browsers by replicating their headers and TLS/JA3/JA4/HTTP2 fingerprints.
 - Thread-safe: The Client is designed to be thread-safe, allowing it to be safely used in multithreaded environments.
-- Automatic Character Encoding Detection: The encoding is taken from the "Content-Type" header, but if not specified, "UTF-8".
+- Automatic Character Encoding Detection: The encoding is taken from the "Content-Type" header, but if not specified, "UTF-8". If encoding does not match the content, the package automatically detects and uses the correct encoding to decode the text.
 - Small Size: The compiled library is about 5.8MB in size.
 - High Performance: The library is designed for a large number of threads, uses all processors, and releases the GIL. All operations like accessing headers, decoding text, or parsing JSON are executed in Rust.
 
