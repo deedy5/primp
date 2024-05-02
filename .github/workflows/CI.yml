@@ -59,7 +59,7 @@ jobs:
           pytest
       - name: pytest
         if: ${{ !startsWith(matrix.platform.target, 'x86') && matrix.platform.target != 'ppc64' }}
-        uses: uraimo/run-on-arch-action@v2.5.0
+        uses: uraimo/run-on-arch-action@v2.7.2
         with:
           arch: ${{ matrix.platform.target }}
           distro: ubuntu22.04
@@ -70,6 +70,60 @@ jobs:
             pip3 install -U pip pytest
           run: |
             set -e
+            pip3 install pyreqwest_impersonate --no-index --find-links dist --force-reinstall
+            pytest
+
+  musllinux:
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      matrix:
+        platform:
+          - runner: ubuntu-latest
+            target: x86_64
+          - runner: ubuntu-latest
+            target: aarch64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.platform.target }}
+          args: --release --out dist --zig
+          sccache: 'true'
+          manylinux: musllinux_1_2
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-linux-${{ matrix.platform.target }}-musllinux_1_2
+          path: dist
+      - name: pytest
+        if: ${{ startsWith(matrix.platform.target, 'x86_64') }}
+        uses: addnab/docker-run-action@v3
+        with:
+          image: quay.io/pypa/musllinux_1_2_${{ matrix.platform.target }}:latest
+          options: -v ${{ github.workspace }}:/io -w /io
+          run: |
+            python3 -m venv .venv
+            source .venv/bin/activate
+            python3 -m pip install -U pip wheel pytest
+            python3 -m pip install pyreqwest_impersonate --no-index --find-links dist/ --force-reinstall
+            python3 -m pytest
+      - name: pytest
+        if: ${{ !startsWith(matrix.platform.target, 'x86') && matrix.platform.target != 'ppc64' }}
+        uses: uraimo/run-on-arch-action@v2.7.2
+        with:
+          arch: ${{ matrix.platform.target }}
+          distro: alpine_latest
+          githubToken: ${{ github.token }}
+          install: |
+            apk add py3-pip
+            python3 -m venv /opt/venv
+            /opt/venv/bin/pip3 install -U pip pytest
+          run: |
+            source /opt/venv/bin/activate
             pip3 install pyreqwest_impersonate --no-index --find-links dist --force-reinstall
             pytest
 
