@@ -7,3 +7,4 @@ httpx
 tls-client
 pyreqwest_impersonate
 curl_cffi
+typing_extensions  # tls-client py3.12 dependence
