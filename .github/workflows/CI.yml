@@ -41,7 +41,7 @@ jobs:
           target: ${{ matrix.platform.target }}
           args: --release --out dist --zig
           sccache: 'true'
-          manylinux: auto
+          manylinux: 2_28
         env:
           CFLAGS_aarch64_unknown_linux_gnu: "-D__ARM_ARCH=8"
       - name: Upload wheels
