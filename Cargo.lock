@@ -48,6 +48,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34fde25430d87a9388dadbe6e34d7f72a462c8b43ac8d309b42b0a8505d7e2a5"
 
 [[package]]
+name = "any_all_workaround"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "88fea40735f2cc320a5133ce772d39c571bd6c9b0d4c1a326926eecdd5af2e86"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
 name = "async-compression"
 version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -339,6 +348,7 @@ version = "0.8.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b45de904aa0b010bce2ab45264d0631681847fa7b6f2eaa7dab7619943bc4f59"
 dependencies = [
+ "any_all_workaround",
  "cfg-if",
 ]
 
@@ -1019,9 +1029,9 @@ checksum = "adad44e29e4c806119491a7f06f03de4d1af22c3a680dd47f1e6e179439d1f56"
 
 [[package]]
 name = "reqwest-impersonate"
-version = "0.11.75"
+version = "0.11.76"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78ba0d953bf10f7aa5d454bc8d9136efd94c3cfb4d6db4f02323b54957f7310f"
+checksum = "72f5de030049c9f3a4a6ba4abe11c451ec3464eae3fa1e55020514891f3f5953"
 dependencies = [
  "async-compression",
  "base64",

@@ -28,8 +28,6 @@ jobs:
             target: x86_64
           - runner: ubuntu-latest
             target: aarch64
-          - runner: ubuntu-latest
-            target: armv7
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -38,6 +36,7 @@ jobs:
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
+          rust-toolchain: nightly
           target: ${{ matrix.platform.target }}
           args: --release --out dist --zig
           sccache: 'true'
@@ -90,6 +89,7 @@ jobs:
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
+          rust-toolchain: nightly
           target: ${{ matrix.platform.target }}
           args: --release --out dist --zig
           sccache: 'true'
@@ -145,6 +145,7 @@ jobs:
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
+          rust-toolchain: nightly
           target: ${{ matrix.platform.target }}
           args: --release --out dist
           sccache: 'true'
@@ -179,6 +180,7 @@ jobs:
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
+          rust-toolchain: nightly
           target: ${{ matrix.platform.target }}
           args: --release --out dist
           sccache: 'true'

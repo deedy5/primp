@@ -5,7 +5,7 @@ The fastest python HTTP client that can impersonate web browsers by mimicking th
 Binding to the Rust [reqwest_impersonate](https://github.com/gngpp/reqwest-impersonate) library.</br>
 
 Provides precompiled wheels:
-- [x] Linux:  `amd64`, `aarch64`, `armv7`; musllinux:  `amd64`, `aarch64`.
+- [x] Linux|musl:  `amd64`, `aarch64`.
 - [x] Windows: `amd64`.
 - [x] MacOS:  `amd64`, `aarch64`.
 
@@ -26,7 +26,7 @@ pip install -U pyreqwest_impersonate
 ## Key Features
 - Impersonate: The Client offers an `impersonate` option, enabling it to mimic web browsers by replicating their headers and TLS/JA3/JA4/HTTP2 fingerprints.
 - Thread-safe: The Client is designed to be thread-safe, allowing it to be safely used in multithreaded environments.
-- Automatic Character Encoding Detection: The encoding is taken from the "Content-Type" header, but if not specified, "UTF-8".
+- Automatic Character Encoding Detection: The encoding is taken from the "Content-Type" header, but if not specified, "UTF-8". If encoding does not match the content, the package automatically detects and uses the correct encoding to decode the text.
 - Small Size: The compiled library is about 5.8MB in size.
 - High Performance: The library is designed for a large number of threads, uses all processors, and releases the GIL. All operations like accessing headers, decoding text, or parsing JSON are executed in Rust.
 
