@@ -22,6 +22,15 @@ Provides precompiled wheels:
 ```python
 pip install -U pyreqwest_impersonate
 ```
+To improve the performance of the library for your particular processor, you can build the library yourself using Rust. Install Rust: https://www.rust-lang.org/tools/install
+```python
+git clone https://github.com/deedy5/pyreqwest_impersonate.git
+cd pyreqwest_impersonate
+python3 -m venv .venv
+source .venv/bin/activate
+pip install maturin
+RUSTFLAGS="-C target-cpu=native" maturin develop --release  # Compiled library will be here: .venv/lib/python3.1x/site-packages
+```
 
 ## Key Features
 - Impersonate: The Client offers an `impersonate` option, enabling it to mimic web browsers by replicating their headers and TLS/JA3/JA4/HTTP2 fingerprints.
