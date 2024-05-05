@@ -36,7 +36,7 @@ jobs:
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
-          rust-toolchain: nightly
+          rust-toolchain: stable
           target: ${{ matrix.platform.target }}
           args: --release --out dist --zig
           sccache: 'true'
@@ -89,7 +89,7 @@ jobs:
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
-          rust-toolchain: nightly
+          rust-toolchain: stable
           target: ${{ matrix.platform.target }}
           args: --release --out dist --zig
           sccache: 'true'
@@ -145,7 +145,7 @@ jobs:
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
-          rust-toolchain: nightly
+          rust-toolchain: stable
           target: ${{ matrix.platform.target }}
           args: --release --out dist
           sccache: 'true'
@@ -180,7 +180,7 @@ jobs:
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
-          rust-toolchain: nightly
+          rust-toolchain: stable
           target: ${{ matrix.platform.target }}
           args: --release --out dist
           sccache: 'true'
