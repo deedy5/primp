@@ -232,8 +232,8 @@ jobs:
     permissions:
       contents: write
     runs-on: ubuntu-latest
-    if: "startsWith(github.ref, 'refs/tags/')"
-    needs: [release]
+    #if: "startsWith(github.ref, 'refs/tags/')"
+    #needs: [release]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -258,4 +258,10 @@ jobs:
           git config --global user.email 'actions@github.com'
           git add \*.jpg
           git commit -m "Update generated image" || echo "No changes to commit"
+          # Reattach HEAD to the branch that initiated the workflow
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git checkout "${{ github.head_ref }}"
+          elif [[ "${{ github.event_name }}" == "create" && "${{ github.event.action }}" == "tag" ]]; then
+            git checkout "${{ github.ref }}"
+          fi
           git push https://${{ secrets.PUSH_TOKEN }}@github.com/${{ github.repository }}
