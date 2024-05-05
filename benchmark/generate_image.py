@@ -49,13 +49,17 @@ def plot_data(file_name, ax, offset):
     return x, width, names
 
 # Create a figure with two subplots
-fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6), layout='constrained')
+fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 6), layout='constrained')
 
 # Plot data for 1 thread in the first subplot
 x1, width, names = plot_data('1_threads.csv', ax1, 0)
 
+# Plot data for 5 threads in the second subplot
+x2, _, _ = plot_data('5_threads.csv', ax2, 0)
+
 # Plot data for 32 threads in the second subplot
-x2, _, _ = plot_data('32_threads.csv', ax2, 0) # Offset is 0 for the second plot
+x3, _, _ = plot_data('32_threads.csv', ax3, 0)
+
 
 # Adjust the y-axis limits for the first subplot
 y_min, y_max = ax1.get_ylim()
@@ -67,6 +71,11 @@ y_min, y_max = ax2.get_ylim()
 new_y_max = y_max + 1
 ax2.set_ylim(y_min, new_y_max)
 
+# Adjust the y-axis limits for the third subplot
+y_min, y_max = ax3.get_ylim()
+new_y_max = y_max + 1
+ax3.set_ylim(y_min, new_y_max)
+
 # Add some text for labels, title and custom x-axis tick labels, etc.
 ax1.set_ylabel('Time (s)')
 ax1.set_title('Performance comparison. Threads: 1. Requests: 2000. Response: gzip, utf-8, size 5Kb|50Kb|200Kb')
@@ -75,10 +84,16 @@ ax1.set_xticklabels(names)
 ax1.legend(loc='upper left', ncols=6, prop={'size': 8})
 
 ax2.set_ylabel('Time (s)')
-ax2.set_title('Performance comparison. Threads: 32. Requests: 2000. Response: gzip, utf-8, size 5Kb|50Kb|200Kb')
+ax2.set_title('Performance comparison. Threads: 5. Requests: 2000. Response: gzip, utf-8, size 5Kb|50Kb|200Kb')
 ax2.set_xticks(x2 + 3*width - width/2) # Adjust the x-ticks to be after the 3rd bar, moved 0.5 bar width to the left
 ax2.set_xticklabels(names)
 ax2.legend(loc='upper left', ncols=6, prop={'size': 8})
+
+ax3.set_ylabel('Time (s)')
+ax3.set_title('Performance comparison. Threads: 32. Requests: 2000. Response: gzip, utf-8, size 5Kb|50Kb|200Kb')
+ax3.set_xticks(x3 + 3*width - width/2) # Adjust the x-ticks to be after the 3rd bar, moved 0.5 bar width to the left
+ax3.set_xticklabels(names)
+ax3.legend(loc='upper left', ncols=6, prop={'size': 8})
 
 # Save the plot to a file
 plt.savefig('benchmark.jpg', format='jpg')
