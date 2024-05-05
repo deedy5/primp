@@ -27,8 +27,7 @@ reqwest-impersonate = { version = "0.11", default-features = false, features = [
 encoding_rs = { version = "0.8", features = ["simd-accel"] }
 pythonize = "0.21"
 serde_json = "1"
-tokio = { version = "1", features = ["fs", "rt-multi-thread"] }
-rayon = "1"
+tokio = { version = "1", features = ["fs", "rt"] }
 
 [profile.release]
 codegen-units = 1

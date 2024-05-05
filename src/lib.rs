@@ -1,12 +1,11 @@
 use std::collections::HashMap;
 use std::str::FromStr;
-use std::sync::{mpsc, Arc, OnceLock};
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use pyo3::exceptions;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyString};
-use rayon::{ThreadPool, ThreadPoolBuilder};
 use reqwest_impersonate::header::{HeaderMap, HeaderName, HeaderValue};
 use reqwest_impersonate::impersonate::Impersonate;
 use reqwest_impersonate::multipart;
@@ -17,17 +16,11 @@ use tokio::runtime::{self, Runtime};
 mod response;
 use response::Response;
 
-// Rayon global thread pool
-fn cpu_pool() -> &'static ThreadPool {
-    static CPU_POOL: OnceLock<ThreadPool> = OnceLock::new();
-    CPU_POOL.get_or_init(|| ThreadPoolBuilder::new().num_threads(32).build().unwrap())
-}
-
-// Tokio global multi-thread runtime
+// Tokio global one-thread runtime
 fn runtime() -> &'static Runtime {
     static RUNTIME: OnceLock<Runtime> = OnceLock::new();
     RUNTIME.get_or_init(|| {
-        runtime::Builder::new_multi_thread()
+        runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap()
@@ -241,8 +234,6 @@ impl Client {
         timeout: Option<f64>,
     ) -> PyResult<Response> {
         let client = Arc::clone(&self.client);
-        let method = method.to_owned();
-        let url = url.to_owned();
         let auth = auth.or(self.auth.clone());
         let auth_bearer = auth_bearer.or(self.auth_bearer.clone());
         let params = params.or(self.params.clone());
@@ -252,7 +243,7 @@ impl Client {
             let is_post_put_patch = method == "POST" || method == "PUT" || method == "PATCH";
 
             // Method
-            let method = match method.as_str() {
+            let method = match method {
                 "GET" => Ok(Method::GET),
                 "POST" => Ok(Method::POST),
                 "HEAD" => Ok(Method::HEAD),
@@ -381,18 +372,9 @@ impl Client {
             Ok((buf, cookies, encoding, headers, status_code, url))
         };
 
-        // Execute an async future in Python, releasing the GIL for concurrency.
-        // Uses Rayon's global thread pool and Tokio global runtime to block on the future.
-        let (tx, rx) = mpsc::sync_channel(1);
-        py.allow_threads(|| {
-            cpu_pool().install(|| {
-                let result = runtime().block_on(future);
-                _ = tx.send(result);
-            });
-        });
-        let result = rx.recv().map_err(|e| {
-            PyErr::new::<exceptions::PyException, _>(format!("Error executing future: {}", e))
-        })?;
+        // Execute an async future, releasing the Python GIL for concurrency.
+        // Use Tokio global runtime to block on the future.
+        let result = py.allow_threads(|| runtime().block_on(future));
         let (f_buf, f_cookies, f_encoding, f_headers, f_status_code, f_url) = match result {
             Ok(value) => value,
             Err(e) => return Err(e),
@@ -617,7 +599,20 @@ fn get(
     impersonate: Option<&str>,
 ) -> PyResult<Response> {
     let client = Client::new(
-        None, None, None, None, None, None, None, None, impersonate, None, None, None, None, None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        impersonate,
+        None,
+        None,
+        None,
+        None,
+        None,
     )?;
     client.get(py, url, params, headers, auth, auth_bearer, timeout)
 }
@@ -634,7 +629,20 @@ fn head(
     impersonate: Option<&str>,
 ) -> PyResult<Response> {
     let client = Client::new(
-        None, None, None, None, None, None, None, None, impersonate, None, None, None, None, None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        impersonate,
+        None,
+        None,
+        None,
+        None,
+        None,
     )?;
     client.head(py, url, params, headers, auth, auth_bearer, timeout)
 }
@@ -651,7 +659,20 @@ fn options(
     impersonate: Option<&str>,
 ) -> PyResult<Response> {
     let client = Client::new(
-        None, None, None, None, None, None, None, None, impersonate, None, None, None, None, None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        impersonate,
+        None,
+        None,
+        None,
+        None,
+        None,
     )?;
     client.options(py, url, params, headers, auth, auth_bearer, timeout)
 }
@@ -668,7 +689,20 @@ fn delete(
     impersonate: Option<&str>,
 ) -> PyResult<Response> {
     let client = Client::new(
-        None, None, None, None, None, None, None, None, impersonate, None, None, None, None, None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        impersonate,
+        None,
+        None,
+        None,
+        None,
+        None,
     )?;
     client.delete(py, url, params, headers, auth, auth_bearer, timeout)
 }
@@ -688,7 +722,20 @@ fn post(
     impersonate: Option<&str>,
 ) -> PyResult<Response> {
     let client = Client::new(
-        None, None, None, None, None, None, None, None, impersonate, None, None, None, None, None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        impersonate,
+        None,
+        None,
+        None,
+        None,
+        None,
     )?;
     client.post(
         py,
@@ -719,7 +766,20 @@ fn put(
     impersonate: Option<&str>,
 ) -> PyResult<Response> {
     let client = Client::new(
-        None, None, None, None, None, None, None, None, impersonate, None, None, None, None, None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        impersonate,
+        None,
+        None,
+        None,
+        None,
+        None,
     )?;
     client.put(
         py,
@@ -750,7 +810,20 @@ fn patch(
     impersonate: Option<&str>,
 ) -> PyResult<Response> {
     let client = Client::new(
-        None, None, None, None, None, None, None, None, impersonate, None, None, None, None, None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        impersonate,
+        None,
+        None,
+        None,
+        None,
+        None,
     )?;
     client.patch(
         py,
