@@ -121,6 +121,27 @@ def test_post_data():
     assert json_data["form"] == {"key1": "value1", "key2": "value2"}
     
 
+@retry()
+def test_post_json():
+    auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
+    headers = {"X-Test": "test"}
+    params = {"x": "aaa", "y": "bbb"}
+    data = {"key1": "value1", "key2": "value2"}
+    response = pri.post(
+        "https://httpbin.org/anything",
+        auth_bearer=auth_bearer,
+        headers=headers,
+        params=params,
+        json=data,
+    )
+    assert response.status_code == 200
+    json_data = response.json()
+    assert json_data["method"] == "POST"
+    assert json_data["headers"]["X-Test"] == "test"
+    assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
+    assert json_data["args"] == {"x": "aaa", "y": "bbb"}
+    assert json_data["data"] == "{\'key1\': \'value1\', \'key2\': \'value2\'}"
+
 
 @retry()
 def test_patch():

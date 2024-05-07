@@ -103,6 +103,29 @@ def test_client_post_data():
 
 
 @retry()
+def test_client_post_json():
+    client = Client(verify=False)
+    auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
+    headers = {"X-Test": "test"}
+    params = {"x": "aaa", "y": "bbb"}
+    data = {"key1": "value1", "key2": "value2"}
+    response = client.post(
+        "https://httpbin.org/anything",
+        auth_bearer=auth_bearer,
+        headers=headers,
+        params=params,
+        json=data,
+    )
+    assert response.status_code == 200
+    json_data = response.json()
+    assert json_data["method"] == "POST"
+    assert json_data["headers"]["X-Test"] == "test"
+    assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
+    assert json_data["args"] == {"x": "aaa", "y": "bbb"}
+    assert json_data["data"] == "{\'key1\': \'value1\', \'key2\': \'value2\'}"
+
+
+@retry()
 def test_client_impersonate():
     client = Client(impersonate="chrome_123", verify=False)
     response = client.get("https://tls.peet.ws/api/all")

@@ -207,6 +207,7 @@ impl Client {
     /// * `headers` - A map of HTTP headers to send with the request. Default is None.
     /// * `content` - The content to send in the request body as bytes. Default is None.
     /// * `data` - The form data to send in the request body. Default is None.
+    /// * `json` -  A JSON serializable object to send in the request body. Default is None.
     /// * `files` - A map of file fields to file paths to be sent as multipart/form-data. Default is None.
     /// * `auth` - A tuple containing the username and an optional password for basic authentication. Default is None.
     /// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
@@ -228,6 +229,7 @@ impl Client {
         headers: Option<HashMap<String, String>>,
         content: Option<Vec<u8>>,
         data: Option<HashMap<String, String>>,
+        json: Option<&Bound<'_, PyAny>>,
         files: Option<HashMap<String, String>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
@@ -237,6 +239,7 @@ impl Client {
         let auth = auth.or(self.auth.clone());
         let auth_bearer = auth_bearer.or(self.auth_bearer.clone());
         let params = params.or(self.params.clone());
+        let json_str: Option<String> = json.map(|json_data| json_data.to_string());
 
         let future = async move {
             // Check if method is POST || PUT || PATCH
@@ -289,6 +292,12 @@ impl Client {
                 // Data
                 if let Some(data) = data {
                     request_builder = request_builder.form(&data);
+                }
+                // Json
+                if let Some(json_str) = json_str {
+                    request_builder = request_builder
+                        .header("Content-Type", "application/json")
+                        .body(json_str);
                 }
                 // Files
                 if let Some(files) = files {
@@ -425,6 +434,7 @@ impl Client {
             None,
             None,
             None,
+            None,
             auth,
             auth_bearer,
             timeout,
@@ -446,6 +456,7 @@ impl Client {
             url,
             params,
             headers,
+            None,
             None,
             None,
             None,
@@ -473,6 +484,7 @@ impl Client {
             None,
             None,
             None,
+            None,
             auth,
             auth_bearer,
             timeout,
@@ -497,6 +509,7 @@ impl Client {
             None,
             None,
             None,
+            None,
             auth,
             auth_bearer,
             timeout,
@@ -511,6 +524,7 @@ impl Client {
         headers: Option<HashMap<String, String>>,
         content: Option<Vec<u8>>,
         data: Option<HashMap<String, String>>,
+        json: Option<&Bound<'_, PyAny>>,
         files: Option<HashMap<String, String>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
@@ -524,6 +538,7 @@ impl Client {
             headers,
             content,
             data,
+            json,
             files,
             auth,
             auth_bearer,
@@ -538,6 +553,7 @@ impl Client {
         headers: Option<HashMap<String, String>>,
         content: Option<Vec<u8>>,
         data: Option<HashMap<String, String>>,
+        json: Option<&Bound<'_, PyAny>>,
         files: Option<HashMap<String, String>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
@@ -551,6 +567,7 @@ impl Client {
             headers,
             content,
             data,
+            json,
             files,
             auth,
             auth_bearer,
@@ -565,6 +582,7 @@ impl Client {
         headers: Option<HashMap<String, String>>,
         content: Option<Vec<u8>>,
         data: Option<HashMap<String, String>>,
+        json: Option<&Bound<'_, PyAny>>,
         files: Option<HashMap<String, String>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
@@ -578,6 +596,7 @@ impl Client {
             headers,
             content,
             data,
+            json,
             files,
             auth,
             auth_bearer,
@@ -715,6 +734,7 @@ fn post(
     headers: Option<HashMap<String, String>>,
     content: Option<Vec<u8>>,
     data: Option<HashMap<String, String>>,
+    json: Option<&Bound<'_, PyAny>>,
     files: Option<HashMap<String, String>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
@@ -744,6 +764,7 @@ fn post(
         headers,
         content,
         data,
+        json,
         files,
         auth,
         auth_bearer,
@@ -759,6 +780,7 @@ fn put(
     headers: Option<HashMap<String, String>>,
     content: Option<Vec<u8>>,
     data: Option<HashMap<String, String>>,
+    json: Option<&Bound<'_, PyAny>>,
     files: Option<HashMap<String, String>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
@@ -788,6 +810,7 @@ fn put(
         headers,
         content,
         data,
+        json,
         files,
         auth,
         auth_bearer,
@@ -803,6 +826,7 @@ fn patch(
     headers: Option<HashMap<String, String>>,
     content: Option<Vec<u8>>,
     data: Option<HashMap<String, String>>,
+    json: Option<&Bound<'_, PyAny>>,
     files: Option<HashMap<String, String>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
@@ -832,6 +856,7 @@ fn patch(
         headers,
         content,
         data,
+        json,
         files,
         auth,
         auth_bearer,

@@ -80,7 +80,14 @@ class Client:
 
 The `Client` class provides a set of methods for making HTTP requests: `get`, `head`, `options`, `delete`, `post`, `put`, `patch`, each of which internally utilizes the `request()` method for execution. The parameters for these methods closely resemble those in `httpx`.
 ```python
-def get(url, params=None, headers=None, auth=None, auth_bearer=None, timeout=None):
+def get(
+    url: str, 
+    params: Optional[Dict[str, str]] = None, 
+    headers: Optional[Dict[str, str]] = None, 
+    auth: Optional[Tuple[str, Optional[str]]] = None, 
+    auth_bearer: Optional[str] = None, 
+    timeout: Optional[float] = 30,
+):
     """Performs a GET request to the specified URL.
 
     Args:
@@ -95,7 +102,18 @@ def get(url, params=None, headers=None, auth=None, auth_bearer=None, timeout=Non
     """
 ```
 ```python
-def post(url, params=None, headers=None, content=None, data=None, files=None, auth=None, auth_bearer=None, timeout=None):
+def post(
+    url: str, 
+    params: Optional[Dict[str, str]] = None, 
+    headers: Optional[Dict[str, str]] = None, 
+    content: Optional[bytes] = None, 
+    data: Optional[Dict[str, str]] = None, 
+    json: Any = None, 
+    files: Optional[Dict[str, str]] = None, 
+    auth: Optional[Tuple[str, Optional[str]]] = None, 
+    auth_bearer: Optional[str] = None, 
+    timeout: Optional[float] = 30,
+):
     """Performs a POST request to the specified URL.
 
     Args:
@@ -104,6 +122,7 @@ def post(url, params=None, headers=None, content=None, data=None, files=None, au
         headers (Optional[Dict[str, str]]): A map of HTTP headers to send with the request. Default is None.
         content (Optional[bytes]): The content to send in the request body as bytes. Default is None.
         data (Optional[Dict[str, str]]): The form data to send in the request body. Default is None.
+        json (Any): A JSON serializable object to send in the request body. Default is None.
         files (Optional[Dict[str, str]]): A map of file fields to file paths to be sent as multipart/form-data. Default is None.
         auth (Optional[Tuple[str, Optional[str]]]): A tuple containing the username and an optional password 
             for basic authentication. Default is None.
