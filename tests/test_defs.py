@@ -32,6 +32,7 @@ def test_request_get():
         auth_bearer=auth_bearer,
         headers=headers,
         params=params,
+        verify=False,
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -53,6 +54,7 @@ def test_get():
         auth_bearer=auth_bearer,
         headers=headers,
         params=params,
+        verify=False,
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -66,14 +68,14 @@ def test_get():
 
 @retry()
 def test_head():
-    response = pri.head("https://httpbin.org/anything")
+    response = pri.head("https://httpbin.org/anything", verify=False)
     assert response.status_code == 200
     assert "content-length" in response.headers
 
 
 @retry()
 def test_options():
-    response = pri.options("https://httpbin.org/anything")
+    response = pri.options("https://httpbin.org/anything", verify=False)
     assert response.status_code == 200
     assert sorted(response.headers["allow"].split(", ")) == ['DELETE', 'GET', 'HEAD', 'OPTIONS', 'PATCH', 'POST', 'PUT', 'TRACE']
 
@@ -88,6 +90,7 @@ def test_delete():
         auth_bearer=auth_bearer,
         headers=headers,
         params=params,
+        verify=False,
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -111,6 +114,7 @@ def test_post_content():
         headers=headers,
         params=params,
         content=content,
+        verify=False,
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -133,6 +137,7 @@ def test_post_data():
         headers=headers,
         params=params,
         data=data,
+        verify=False,
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -155,6 +160,7 @@ def test_post_data2():
         headers=headers,
         params=params,
         data=data,
+        verify=False,
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -177,6 +183,7 @@ def test_post_json():
         headers=headers,
         params=params,
         json=data,
+        verify=False,
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -199,6 +206,7 @@ def test_patch():
         headers=headers,
         params=params,
         data=data,
+        verify=False,
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -221,6 +229,7 @@ def test_put():
         headers=headers,
         params=params,
         data=data,
+        verify=False,
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -229,3 +238,16 @@ def test_put():
     assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
     assert json_data["form"] == {"key1": "value1", "key2": "value2"}
+
+
+@retry()
+def test_get_impersonate_chrome124():
+    response = pri.get("https://tls.peet.ws/api/all", impersonate="chrome_124", verify=False)
+    assert response.status_code == 200
+    json_data = response.json()
+    assert json_data["http_version"] == "h2"
+    assert json_data["tls"]["ja4"].startswith("t13d")
+    assert (
+        json_data["http2"]["akamai_fingerprint_hash"]
+        == "90224459f8bf70b7d0a8797eb916dbc9"
+    )

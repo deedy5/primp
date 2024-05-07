@@ -172,8 +172,8 @@ def test_client_post_json():
 
 
 @retry()
-def test_client_impersonate():
-    client = Client(impersonate="chrome_123", verify=False)
+def test_client_impersonate_chrome124():
+    client = Client(impersonate="chrome_124", verify=False)
     response = client.get("https://tls.peet.ws/api/all")
     assert response.status_code == 200
     json_data = response.json()

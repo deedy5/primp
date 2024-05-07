@@ -59,14 +59,14 @@ class Client:
             in additional requests. Default is True.
         referer (bool, optional): Enable or disable automatic setting of the `Referer` header. Default is True.
         proxy (str, optional): Proxy URL for HTTP requests. Example: "socks5://127.0.0.1:9150". Default is None.
-        impersonate (str, optional): Entity to impersonate. Example: "chrome_123". Default is None.
+        impersonate (str, optional): Entity to impersonate. Example: "chrome_124". Default is None.
             Chrome: "chrome_99","chrome_100","chrome_101","chrome_104","chrome_105","chrome_106","chrome_108", 
                 "chrome_107","chrome_109","chrome_114","chrome_116","chrome_117","chrome_118","chrome_119", 
-                "chrome_120","chrome_123"
-            Safari: "safari_ios_17_2","safari_12","safari_15_3","safari_15_5","safari_15_6_1","safari_16","safari_16_5",
-                "safari_17_2_1","safari17_4_1"
+                "chrome_120","chrome_123","chrome_124"
+            Safari: "safari_12","safari_15_3","safari_15_5","safari_15_6_1","safari_16","safari_16_5",
+                "safari_17_2_1"
             OkHttp: "okhttp_3_9","okhttp_3_11","okhttp_3_13","okhttp_3_14","okhttp_4_9","okhttp_4_10","okhttp_5"
-            Edge: "edge_99","edge_101","edge_122"
+            Edge: "edge_99","edge_101","edge_120"
         follow_redirects (bool, optional): Whether to follow redirects. Default is True.
         max_redirects (int, optional): Maximum redirects to follow. Default 20. Applies if `follow_redirects` is True.
         verify (bool, optional): Verify SSL certificates. Default is False.
@@ -137,7 +137,7 @@ def post(
 ```python
 import pyreqwest_impersonate as pri
 
-client = pri.Client(impersonate="chrome_123")
+client = pri.Client(impersonate="chrome_124")
 
 # get request
 resp = client.get("https://tls.peet.ws/api/all")
@@ -158,7 +158,7 @@ print(resp.url)
 # You can also use convenience functions that use a default Client instance under the hood:
 # pri.get() | pri.head() | pri.options() | pri.delete() | pri.post | pri.patch | pri.put
 # These functions can accept the `impersonate` parameter:
-resp = pri.get("https://httpbin.org/anything", impersonate="chrome_123")  
+resp = pri.get("https://httpbin.org/anything", impersonate="chrome_124")  
 ```
 ### II. AsyncClient
 
