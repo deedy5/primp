@@ -655,6 +655,7 @@ fn request(
     auth_bearer: Option<String>,
     timeout: Option<f64>,
     impersonate: Option<&str>,
+    verify: Option<bool>,
 ) -> PyResult<Response> {
     let client = Client::new(
         None,
@@ -668,7 +669,7 @@ fn request(
         impersonate,
         None,
         None,
-        None,
+        verify,
         None,
         None,
     )?;
@@ -698,6 +699,7 @@ fn get(
     auth_bearer: Option<String>,
     timeout: Option<f64>,
     impersonate: Option<&str>,
+    verify: Option<bool>,
 ) -> PyResult<Response> {
     let client = Client::new(
         None,
@@ -711,7 +713,7 @@ fn get(
         impersonate,
         None,
         None,
-        None,
+        verify,
         None,
         None,
     )?;
@@ -728,6 +730,7 @@ fn head(
     auth_bearer: Option<String>,
     timeout: Option<f64>,
     impersonate: Option<&str>,
+    verify: Option<bool>,
 ) -> PyResult<Response> {
     let client = Client::new(
         None,
@@ -741,7 +744,7 @@ fn head(
         impersonate,
         None,
         None,
-        None,
+        verify,
         None,
         None,
     )?;
@@ -758,6 +761,7 @@ fn options(
     auth_bearer: Option<String>,
     timeout: Option<f64>,
     impersonate: Option<&str>,
+    verify: Option<bool>,
 ) -> PyResult<Response> {
     let client = Client::new(
         None,
@@ -771,7 +775,7 @@ fn options(
         impersonate,
         None,
         None,
-        None,
+        verify,
         None,
         None,
     )?;
@@ -788,6 +792,7 @@ fn delete(
     auth_bearer: Option<String>,
     timeout: Option<f64>,
     impersonate: Option<&str>,
+    verify: Option<bool>,
 ) -> PyResult<Response> {
     let client = Client::new(
         None,
@@ -801,7 +806,7 @@ fn delete(
         impersonate,
         None,
         None,
-        None,
+        verify,
         None,
         None,
     )?;
@@ -822,6 +827,7 @@ fn post(
     auth_bearer: Option<String>,
     timeout: Option<f64>,
     impersonate: Option<&str>,
+    verify: Option<bool>,
 ) -> PyResult<Response> {
     let client = Client::new(
         None,
@@ -835,7 +841,7 @@ fn post(
         impersonate,
         None,
         None,
-        None,
+        verify,
         None,
         None,
     )?;
@@ -868,6 +874,7 @@ fn put(
     auth_bearer: Option<String>,
     timeout: Option<f64>,
     impersonate: Option<&str>,
+    verify: Option<bool>,
 ) -> PyResult<Response> {
     let client = Client::new(
         None,
@@ -881,7 +888,7 @@ fn put(
         impersonate,
         None,
         None,
-        None,
+        verify,
         None,
         None,
     )?;
@@ -914,6 +921,7 @@ fn patch(
     auth_bearer: Option<String>,
     timeout: Option<f64>,
     impersonate: Option<&str>,
+    verify: Option<bool>,
 ) -> PyResult<Response> {
     let client = Client::new(
         None,
@@ -927,7 +935,7 @@ fn patch(
         impersonate,
         None,
         None,
-        None,
+        verify,
         None,
         None,
     )?;
