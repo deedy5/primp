@@ -80,7 +80,7 @@ impl Client {
     /// * `impersonate` - An optional entity to impersonate. Supported browsers and versions include Chrome, Safari, OkHttp, and Edge.
     /// * `follow_redirects` - A boolean to enable or disable following redirects. Default is `true`.
     /// * `max_redirects` - The maximum number of redirects to follow. Default is 20. Applies if `follow_redirects` is `true`.
-    /// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is `false`.
+    /// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is `true`.
     /// * `http1` - An optional boolean indicating whether to use only HTTP/1.1. Default is `false`.
     /// * `http2` - An optional boolean indicating whether to use only HTTP/2. Default is `false`.
     ///
@@ -187,7 +187,7 @@ impl Client {
         }
 
         // Verify
-        let verify = verify.unwrap_or(false);
+        let verify = verify.unwrap_or(true);
         if !verify {
             client_builder = client_builder.danger_accept_invalid_certs(true);
         }
