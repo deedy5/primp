@@ -3,9 +3,10 @@ use std::str::FromStr;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
+use form_urlencoded::Serializer;
 use pyo3::exceptions;
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyDict, PyString};
+use pyo3::types::{PyBytes, PyDict, PyList, PyString};
 use reqwest_impersonate::header::{HeaderMap, HeaderName, HeaderValue};
 use reqwest_impersonate::impersonate::Impersonate;
 use reqwest_impersonate::multipart;
@@ -25,6 +26,26 @@ fn runtime() -> &'static Runtime {
             .build()
             .unwrap()
     })
+}
+
+/// Converts a Python dictionary to a Rust HashMap.
+fn py_dict_to_hashmap(_py: Python, py_dict: &PyDict) -> PyResult<HashMap<String, Vec<String>>> {
+    let mut map = HashMap::new();
+    for (key, value) in py_dict.iter() {
+        let key: String = key.extract()?;
+        let values: Vec<String> = if let Ok(py_list) = value.downcast::<PyList>() {
+            // If the value is a list, extract each item as a String
+            py_list
+                .iter()
+                .map(|item| item.extract::<String>())
+                .collect::<PyResult<_>>()?
+        } else {
+            // If the value is not a list, treat it as a single-item list
+            vec![value.extract::<String>()?]
+        };
+        map.insert(key, values);
+    }
+    Ok(map)
 }
 
 #[pyclass]
@@ -228,8 +249,8 @@ impl Client {
         params: Option<HashMap<String, String>>,
         headers: Option<HashMap<String, String>>,
         content: Option<Vec<u8>>,
-        data: Option<HashMap<String, String>>,
-        json: Option<&Bound<'_, PyAny>>,
+        data: Option<&Bound<'_, PyDict>>,
+        json: Option<&Bound<'_, PyDict>>,
         files: Option<HashMap<String, String>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
@@ -239,6 +260,17 @@ impl Client {
         let auth = auth.or(self.auth.clone());
         let auth_bearer = auth_bearer.or(self.auth_bearer.clone());
         let params = params.or(self.params.clone());
+        // Converts 'data' (if any) into a URL-encoded string for sending the data as `application/x-www-form-urlencoded` content type.
+        let data_str: Option<String> = data.map(|data_pydict| {
+            let data_map = py_dict_to_hashmap(py, data_pydict.as_gil_ref()).unwrap();
+            let mut serializer = Serializer::new(String::new());
+            let flattened_pairs = data_map.into_iter().flat_map(|(key, values)| {
+                values.into_iter().map(move |value| (key.to_owned(), value))
+            });
+            serializer.extend_pairs(flattened_pairs);
+            serializer.finish()
+        });
+        // Converts 'json' (if any) into a string for sending the data as `application/json` content type.
         let json_str: Option<String> = json.map(|json_data| json_data.to_string());
 
         let future = async move {
@@ -290,8 +322,10 @@ impl Client {
                     request_builder = request_builder.body(content);
                 }
                 // Data
-                if let Some(data) = data {
-                    request_builder = request_builder.form(&data);
+                if let Some(url_encoded_data) = data_str {
+                    request_builder = request_builder
+                        .header("Content-Type", "application/x-www-form-urlencoded")
+                        .body(url_encoded_data);
                 }
                 // Json
                 if let Some(json_str) = json_str {
@@ -523,8 +557,8 @@ impl Client {
         params: Option<HashMap<String, String>>,
         headers: Option<HashMap<String, String>>,
         content: Option<Vec<u8>>,
-        data: Option<HashMap<String, String>>,
-        json: Option<&Bound<'_, PyAny>>,
+        data: Option<&Bound<'_, PyDict>>,
+        json: Option<&Bound<'_, PyDict>>,
         files: Option<HashMap<String, String>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
@@ -552,8 +586,8 @@ impl Client {
         params: Option<HashMap<String, String>>,
         headers: Option<HashMap<String, String>>,
         content: Option<Vec<u8>>,
-        data: Option<HashMap<String, String>>,
-        json: Option<&Bound<'_, PyAny>>,
+        data: Option<&Bound<'_, PyDict>>,
+        json: Option<&Bound<'_, PyDict>>,
         files: Option<HashMap<String, String>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
@@ -581,8 +615,8 @@ impl Client {
         params: Option<HashMap<String, String>>,
         headers: Option<HashMap<String, String>>,
         content: Option<Vec<u8>>,
-        data: Option<HashMap<String, String>>,
-        json: Option<&Bound<'_, PyAny>>,
+        data: Option<&Bound<'_, PyDict>>,
+        json: Option<&Bound<'_, PyDict>>,
         files: Option<HashMap<String, String>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
@@ -733,8 +767,8 @@ fn post(
     params: Option<HashMap<String, String>>,
     headers: Option<HashMap<String, String>>,
     content: Option<Vec<u8>>,
-    data: Option<HashMap<String, String>>,
-    json: Option<&Bound<'_, PyAny>>,
+    data: Option<&Bound<'_, PyDict>>,
+    json: Option<&Bound<'_, PyDict>>,
     files: Option<HashMap<String, String>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
@@ -779,8 +813,8 @@ fn put(
     params: Option<HashMap<String, String>>,
     headers: Option<HashMap<String, String>>,
     content: Option<Vec<u8>>,
-    data: Option<HashMap<String, String>>,
-    json: Option<&Bound<'_, PyAny>>,
+    data: Option<&Bound<'_, PyDict>>,
+    json: Option<&Bound<'_, PyDict>>,
     files: Option<HashMap<String, String>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
@@ -825,8 +859,8 @@ fn patch(
     params: Option<HashMap<String, String>>,
     headers: Option<HashMap<String, String>>,
     content: Option<Vec<u8>>,
-    data: Option<HashMap<String, String>>,
-    json: Option<&Bound<'_, PyAny>>,
+    data: Option<&Bound<'_, PyDict>>,
+    json: Option<&Bound<'_, PyDict>>,
     files: Option<HashMap<String, String>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
