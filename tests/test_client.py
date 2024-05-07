@@ -35,6 +35,29 @@ def test_client_init_params():
 
 
 @retry()
+def test_client_request_get():
+    client = Client(verify=False)
+    auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
+    headers = {"X-Test": "test"}
+    params = {"x": "aaa", "y": "bbb"}
+    response = client.request(
+        "GET",
+        "https://httpbin.org/anything",
+        auth_bearer=auth_bearer,
+        headers=headers,
+        params=params,
+    )
+    assert response.status_code == 200
+    json_data = response.json()
+    assert json_data["method"] == "GET"
+    assert json_data["headers"]["X-Test"] == "test"
+    assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
+    assert json_data["args"] == {"x": "aaa", "y": "bbb"}
+    assert "Bearer bearerXXXXXXXXXXXXXXXXXXXX" in response.text
+    assert b"Bearer bearerXXXXXXXXXXXXXXXXXXXX" in response.content
+
+
+@retry()
 def test_client_get():
     client = Client(verify=False)
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"

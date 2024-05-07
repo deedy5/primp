@@ -22,6 +22,28 @@ def retry(max_retries=3, delay=1):
 
 
 @retry()
+def test_request_get():
+    auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
+    headers = {"X-Test": "test"}
+    params = {"x": "aaa", "y": "bbb"}
+    response = pri.request(
+        "GET",
+        "https://httpbin.org/anything",
+        auth_bearer=auth_bearer,
+        headers=headers,
+        params=params,
+    )
+    assert response.status_code == 200
+    json_data = response.json()
+    assert json_data["method"] == "GET"
+    assert json_data["headers"]["X-Test"] == "test"
+    assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
+    assert json_data["args"] == {"x": "aaa", "y": "bbb"}
+    assert "Bearer bearerXXXXXXXXXXXXXXXXXXXX" in response.text
+    assert b"Bearer bearerXXXXXXXXXXXXXXXXXXXX" in response.content
+
+
+@retry()
 def test_get():
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
     headers = {"X-Test": "test"}

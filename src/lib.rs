@@ -641,6 +641,54 @@ impl Client {
 
 /// Convenience functions that use a default Client instance under the hood
 #[pyfunction]
+fn request(
+    py: Python,
+    method: &str,
+    url: &str,
+    params: Option<HashMap<String, String>>,
+    headers: Option<HashMap<String, String>>,
+    content: Option<Vec<u8>>,
+    data: Option<&Bound<'_, PyDict>>,
+    json: Option<&Bound<'_, PyDict>>,
+    files: Option<HashMap<String, String>>,
+    auth: Option<(String, Option<String>)>,
+    auth_bearer: Option<String>,
+    timeout: Option<f64>,
+    impersonate: Option<&str>,
+) -> PyResult<Response> {
+    let client = Client::new(
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        impersonate,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )?;
+    client.request(
+        py,
+        method,
+        url,
+        params,
+        headers,
+        content,
+        data,
+        json,
+        files,
+        auth,
+        auth_bearer,
+        timeout,
+    )
+}
+
+#[pyfunction]
 fn get(
     py: Python,
     url: &str,
@@ -901,6 +949,7 @@ fn patch(
 #[pymodule]
 fn pyreqwest_impersonate(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Client>()?;
+    m.add_function(wrap_pyfunction!(request, m)?)?;
     m.add_function(wrap_pyfunction!(get, m)?)?;
     m.add_function(wrap_pyfunction!(head, m)?)?;
     m.add_function(wrap_pyfunction!(options, m)?)?;
