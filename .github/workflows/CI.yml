@@ -189,14 +189,14 @@ jobs:
         with:
           name: wheels-macos-${{ matrix.platform.target }}
           path: dist
-      #- name: pytest
-      #  if: ${{ !startsWith(matrix.platform.target, 'aarch64') }}
-      #  shell: bash
-      #  run: |
-      #    set -e
-      #    pip install pyreqwest_impersonate --find-links dist --force-reinstall
-      #    pip install pytest
-      #    pytest
+      - name: pytest
+        if: ${{ !startsWith(matrix.platform.target, 'aarch64') }}
+        shell: bash
+        run: |
+          set -e
+          pip install pyreqwest_impersonate --find-links dist --force-reinstall
+          pip install pytest
+          pytest
 
   sdist:
     runs-on: ubuntu-latest
@@ -232,8 +232,8 @@ jobs:
     permissions:
       contents: write
     runs-on: ubuntu-latest
-    if: "startsWith(github.ref, 'refs/tags/')"
-    needs: [release]
+    #if: "startsWith(github.ref, 'refs/tags/')"
+    #needs: [release]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -257,11 +257,6 @@ jobs:
           git config --global user.name 'GitHub Actions'
           git config --global user.email 'actions@github.com'
           git add \*.jpg
-          git commit -m "Update generated image" || echo "No changes to commit"
-          # Reattach HEAD to the branch that initiated the workflow
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            git checkout "${{ github.head_ref }}"
-          elif [[ "${{ github.event_name }}" == "create" && "${{ github.event.action }}" == "tag" ]]; then
-            git checkout "${{ github.ref }}"
-          fi
-          git push https://${{ secrets.PUSH_TOKEN }}@github.com/${{ github.repository }}
+          git diff --quiet && git diff --staged --quiet || git commit -m "Update generated image"
+          # Attempt to push changes only if there are changes to commit
+          git push https://${{ secrets.PUSH_TOKEN }}@github.com/${{ github.repository }} || echo "No changes to push"
