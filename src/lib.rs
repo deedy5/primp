@@ -129,8 +129,8 @@ impl Client {
 
         // Client builder
         let mut client_builder = reqwest_impersonate::Client::builder()
-            .enable_ech_grease(true)
-            .permute_extensions(true);
+            .enable_ech_grease()
+            .permute_extensions();
 
         // Headers
         if let Some(headers) = headers {
