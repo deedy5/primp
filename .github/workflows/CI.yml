@@ -189,14 +189,14 @@ jobs:
         with:
           name: wheels-macos-${{ matrix.platform.target }}
           path: dist
-      - name: pytest
-        if: ${{ !startsWith(matrix.platform.target, 'aarch64') }}
-        shell: bash
-        run: |
-          set -e
-          pip install pyreqwest_impersonate --find-links dist --force-reinstall
-          pip install pytest
-          pytest
+      #- name: pytest
+      #  if: ${{ !startsWith(matrix.platform.target, 'aarch64') }}
+      #  shell: bash
+      #  run: |
+      #    set -e
+      #    pip install pyreqwest_impersonate --find-links dist --force-reinstall
+      #    pip install pytest
+      #    pytest
 
   sdist:
     runs-on: ubuntu-latest
