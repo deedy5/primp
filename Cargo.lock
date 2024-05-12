@@ -891,7 +891,6 @@ name = "pyreqwest_impersonate"
 version = "0.4.3"
 dependencies = [
  "encoding_rs",
- "form_urlencoded",
  "pyo3",
  "pythonize",
  "reqwest-impersonate",

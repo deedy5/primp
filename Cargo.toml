@@ -25,7 +25,6 @@ reqwest-impersonate = { version = "0.11", default-features = false, features = [
     "deflate",
 ] }
 encoding_rs = { version = "0.8" }
-form_urlencoded = "1"  # to serialize `data` parameter
 pythonize = "0.21"
 serde_json = "1"
 tokio = { version = "1", features = ["fs", "rt"] }

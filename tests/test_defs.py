@@ -191,7 +191,7 @@ def test_post_json():
     assert json_data["headers"]["X-Test"] == "test"
     assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
-    assert json_data["data"] == "{\'key1\': \'value1\', \'key2\': \'value2\'}"
+    assert json_data["json"] == data
 
 
 @retry()

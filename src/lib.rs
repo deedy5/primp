@@ -3,10 +3,9 @@ use std::str::FromStr;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use form_urlencoded::Serializer;
 use pyo3::exceptions;
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyDict, PyList, PyString};
+use pyo3::types::{PyBool, PyBytes, PyDict, PyString};
 use reqwest_impersonate::header::{HeaderMap, HeaderName, HeaderValue};
 use reqwest_impersonate::impersonate::Impersonate;
 use reqwest_impersonate::multipart;
@@ -28,24 +27,26 @@ fn runtime() -> &'static Runtime {
     })
 }
 
-/// Converts a Python dictionary to a Rust HashMap.
-fn py_dict_to_hashmap(_py: Python, py_dict: &PyDict) -> PyResult<HashMap<String, Vec<String>>> {
-    let mut map = HashMap::new();
-    for (key, value) in py_dict.iter() {
-        let key: String = key.extract()?;
-        let values: Vec<String> = if let Ok(py_list) = value.downcast::<PyList>() {
-            // If the value is a list, extract each item as a String
-            py_list
-                .iter()
-                .map(|item| item.extract::<String>())
-                .collect::<PyResult<_>>()?
-        } else {
-            // If the value is not a list, treat it as a single-item list
-            vec![value.extract::<String>()?]
-        };
-        map.insert(key, values);
+/// python json.dumps
+fn json_dumps(py: Python, pydict: Option<&Bound<'_, PyDict>>) -> PyResult<String> {
+    let json_module = PyModule::import_bound(py, "json")?;
+    let dumps = json_module.getattr("dumps")?;
+    match pydict {
+        Some(dict) => dumps.call1((dict,))?.extract::<String>(),
+        None => Ok("".to_string()),
     }
-    Ok(map)
+}
+
+/// python urllib.parse.urlencode
+fn url_encode(py: Python, pydict: Option<&Bound<'_, PyDict>>) -> PyResult<String> {
+    let urllib_parse = PyModule::import_bound(py, "urllib.parse")?;
+    let urlencode = urllib_parse.getattr("urlencode")?;
+    match pydict {
+        Some(dict) => urlencode
+            .call1((dict, ("doseq", py.get_type_bound::<PyBool>().call1(())?)))?
+            .extract::<String>(),
+        None => Ok("".to_string()),
+    }
 }
 
 #[pyclass]
@@ -261,17 +262,13 @@ impl Client {
         let auth_bearer = auth_bearer.or(self.auth_bearer.clone());
         let params = params.or(self.params.clone());
         // Converts 'data' (if any) into a URL-encoded string for sending the data as `application/x-www-form-urlencoded` content type.
-        let data_str: Option<String> = data.map(|data_pydict| {
-            let data_map = py_dict_to_hashmap(py, data_pydict.as_gil_ref()).unwrap();
-            let mut serializer = Serializer::new(String::new());
-            let flattened_pairs = data_map.into_iter().flat_map(|(key, values)| {
-                values.into_iter().map(move |value| (key.to_owned(), value))
-            });
-            serializer.extend_pairs(flattened_pairs);
-            serializer.finish()
-        });
-        // Converts 'json' (if any) into a string for sending the data as `application/json` content type.
-        let json_str: Option<String> = json.map(|json_data| json_data.to_string());
+        let data_str = data
+            .map(|data_pydict| url_encode(py, Some(data_pydict)).ok())
+            .unwrap_or_else(|| None);
+        // Converts 'json' (if any) into a JSON string for sending the data as `application/json` content type.
+        let json_str = json
+            .map(|json_pydict| json_dumps(py, Some(json_pydict)).ok())
+            .unwrap_or_else(|| None);
 
         let future = async move {
             // Check if method is POST || PUT || PATCH
