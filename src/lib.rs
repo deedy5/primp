@@ -1,8 +1,8 @@
-use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
+use indexmap::IndexMap;
 use pyo3::exceptions;
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyBytes, PyDict, PyString};
@@ -55,7 +55,7 @@ pub struct Client {
     client: Arc<reqwest_impersonate::Client>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
-    params: Option<HashMap<String, String>>,
+    params: Option<IndexMap<String, String>>,
 }
 
 #[pymethods]
@@ -109,8 +109,8 @@ impl Client {
     fn new(
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
-        params: Option<HashMap<String, String>>,
-        headers: Option<HashMap<String, String>>,
+        params: Option<IndexMap<String, String>>,
+        headers: Option<IndexMap<String, String>>,
         cookie_store: Option<bool>,
         referer: Option<bool>,
         proxy: Option<&str>,
@@ -247,12 +247,12 @@ impl Client {
         py: Python,
         method: &str,
         url: &str,
-        params: Option<HashMap<String, String>>,
-        headers: Option<HashMap<String, String>>,
+        params: Option<IndexMap<String, String>>,
+        headers: Option<IndexMap<String, String>>,
         content: Option<Vec<u8>>,
         data: Option<&Bound<'_, PyDict>>,
         json: Option<&Bound<'_, PyDict>>,
-        files: Option<HashMap<String, String>>,
+        files: Option<IndexMap<String, String>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -374,7 +374,7 @@ impl Client {
             })?;
 
             // Response items
-            let cookies: HashMap<String, String> = resp
+            let cookies: IndexMap<String, String> = resp
                 .cookies()
                 .map(|cookie| (cookie.name().to_string(), cookie.value().to_string()))
                 .collect();
@@ -396,7 +396,7 @@ impl Client {
                     })
                 })
                 .unwrap_or("UTF-8".to_string());
-            let headers: HashMap<String, String> = resp
+            let headers: IndexMap<String, String> = resp
                 .headers()
                 .iter()
                 .map(|(k, v)| (k.as_str().to_string(), v.to_str().unwrap_or("").to_string()))
@@ -450,8 +450,8 @@ impl Client {
         &self,
         py: Python,
         url: &str,
-        params: Option<HashMap<String, String>>,
-        headers: Option<HashMap<String, String>>,
+        params: Option<IndexMap<String, String>>,
+        headers: Option<IndexMap<String, String>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -475,8 +475,8 @@ impl Client {
         &self,
         py: Python,
         url: &str,
-        params: Option<HashMap<String, String>>,
-        headers: Option<HashMap<String, String>>,
+        params: Option<IndexMap<String, String>>,
+        headers: Option<IndexMap<String, String>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -500,8 +500,8 @@ impl Client {
         &self,
         py: Python,
         url: &str,
-        params: Option<HashMap<String, String>>,
-        headers: Option<HashMap<String, String>>,
+        params: Option<IndexMap<String, String>>,
+        headers: Option<IndexMap<String, String>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -525,8 +525,8 @@ impl Client {
         &self,
         py: Python,
         url: &str,
-        params: Option<HashMap<String, String>>,
-        headers: Option<HashMap<String, String>>,
+        params: Option<IndexMap<String, String>>,
+        headers: Option<IndexMap<String, String>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -551,12 +551,12 @@ impl Client {
         &self,
         py: Python,
         url: &str,
-        params: Option<HashMap<String, String>>,
-        headers: Option<HashMap<String, String>>,
+        params: Option<IndexMap<String, String>>,
+        headers: Option<IndexMap<String, String>>,
         content: Option<Vec<u8>>,
         data: Option<&Bound<'_, PyDict>>,
         json: Option<&Bound<'_, PyDict>>,
-        files: Option<HashMap<String, String>>,
+        files: Option<IndexMap<String, String>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -580,12 +580,12 @@ impl Client {
         &self,
         py: Python,
         url: &str,
-        params: Option<HashMap<String, String>>,
-        headers: Option<HashMap<String, String>>,
+        params: Option<IndexMap<String, String>>,
+        headers: Option<IndexMap<String, String>>,
         content: Option<Vec<u8>>,
         data: Option<&Bound<'_, PyDict>>,
         json: Option<&Bound<'_, PyDict>>,
-        files: Option<HashMap<String, String>>,
+        files: Option<IndexMap<String, String>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -609,12 +609,12 @@ impl Client {
         &self,
         py: Python,
         url: &str,
-        params: Option<HashMap<String, String>>,
-        headers: Option<HashMap<String, String>>,
+        params: Option<IndexMap<String, String>>,
+        headers: Option<IndexMap<String, String>>,
         content: Option<Vec<u8>>,
         data: Option<&Bound<'_, PyDict>>,
         json: Option<&Bound<'_, PyDict>>,
-        files: Option<HashMap<String, String>>,
+        files: Option<IndexMap<String, String>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -642,12 +642,12 @@ fn request(
     py: Python,
     method: &str,
     url: &str,
-    params: Option<HashMap<String, String>>,
-    headers: Option<HashMap<String, String>>,
+    params: Option<IndexMap<String, String>>,
+    headers: Option<IndexMap<String, String>>,
     content: Option<Vec<u8>>,
     data: Option<&Bound<'_, PyDict>>,
     json: Option<&Bound<'_, PyDict>>,
-    files: Option<HashMap<String, String>>,
+    files: Option<IndexMap<String, String>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
@@ -690,8 +690,8 @@ fn request(
 fn get(
     py: Python,
     url: &str,
-    params: Option<HashMap<String, String>>,
-    headers: Option<HashMap<String, String>>,
+    params: Option<IndexMap<String, String>>,
+    headers: Option<IndexMap<String, String>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
@@ -721,8 +721,8 @@ fn get(
 fn head(
     py: Python,
     url: &str,
-    params: Option<HashMap<String, String>>,
-    headers: Option<HashMap<String, String>>,
+    params: Option<IndexMap<String, String>>,
+    headers: Option<IndexMap<String, String>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
@@ -752,8 +752,8 @@ fn head(
 fn options(
     py: Python,
     url: &str,
-    params: Option<HashMap<String, String>>,
-    headers: Option<HashMap<String, String>>,
+    params: Option<IndexMap<String, String>>,
+    headers: Option<IndexMap<String, String>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
@@ -783,8 +783,8 @@ fn options(
 fn delete(
     py: Python,
     url: &str,
-    params: Option<HashMap<String, String>>,
-    headers: Option<HashMap<String, String>>,
+    params: Option<IndexMap<String, String>>,
+    headers: Option<IndexMap<String, String>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
@@ -814,12 +814,12 @@ fn delete(
 fn post(
     py: Python,
     url: &str,
-    params: Option<HashMap<String, String>>,
-    headers: Option<HashMap<String, String>>,
+    params: Option<IndexMap<String, String>>,
+    headers: Option<IndexMap<String, String>>,
     content: Option<Vec<u8>>,
     data: Option<&Bound<'_, PyDict>>,
     json: Option<&Bound<'_, PyDict>>,
-    files: Option<HashMap<String, String>>,
+    files: Option<IndexMap<String, String>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
@@ -861,12 +861,12 @@ fn post(
 fn put(
     py: Python,
     url: &str,
-    params: Option<HashMap<String, String>>,
-    headers: Option<HashMap<String, String>>,
+    params: Option<IndexMap<String, String>>,
+    headers: Option<IndexMap<String, String>>,
     content: Option<Vec<u8>>,
     data: Option<&Bound<'_, PyDict>>,
     json: Option<&Bound<'_, PyDict>>,
-    files: Option<HashMap<String, String>>,
+    files: Option<IndexMap<String, String>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
@@ -908,12 +908,12 @@ fn put(
 fn patch(
     py: Python,
     url: &str,
-    params: Option<HashMap<String, String>>,
-    headers: Option<HashMap<String, String>>,
+    params: Option<IndexMap<String, String>>,
+    headers: Option<IndexMap<String, String>>,
     content: Option<Vec<u8>>,
     data: Option<&Bound<'_, PyDict>>,
     json: Option<&Bound<'_, PyDict>>,
-    files: Option<HashMap<String, String>>,
+    files: Option<IndexMap<String, String>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,

@@ -560,6 +560,7 @@ checksum = "168fb715dda47215e360912c096649d23d58bf392ac62f73919e831745e40f26"
 dependencies = [
  "equivalent",
  "hashbrown",
+ "serde",
 ]
 
 [[package]]
@@ -830,6 +831,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a5e00b96a521718e08e03b1a622f01c8a8deb50719335de3f60b3b3950f069d8"
 dependencies = [
  "cfg-if",
+ "indexmap",
  "indoc",
  "libc",
  "memoffset",
@@ -891,6 +893,7 @@ name = "pyreqwest_impersonate"
 version = "0.4.4"
 dependencies = [
  "encoding_rs",
+ "indexmap",
  "pyo3",
  "pythonize",
  "reqwest-impersonate",
