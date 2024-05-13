@@ -133,9 +133,17 @@ impl Client {
             .enable_ech_grease()
             .permute_extensions();
 
+        // Impersonate
+        if let Some(impersonation_type) = impersonate {
+            let impersonation = Impersonate::from_str(impersonation_type).map_err(|_| {
+                PyErr::new::<exceptions::PyValueError, _>("Invalid impersonate param")
+            })?;
+            client_builder = client_builder.impersonate(impersonation);
+        }
+
         // Headers
         if let Some(headers) = headers {
-            let mut headers_new = HeaderMap::new();
+            let mut headers_new = HeaderMap::with_capacity(headers.len());
             for (key, value) in headers {
                 headers_new.insert(
                     HeaderName::from_bytes(key.as_bytes()).map_err(|_| {
@@ -169,14 +177,6 @@ impl Client {
         // Timeout
         if let Some(seconds) = timeout {
             client_builder = client_builder.timeout(Duration::from_secs_f64(seconds));
-        }
-
-        // Impersonate
-        if let Some(impersonation_type) = impersonate {
-            let impersonation = Impersonate::from_str(impersonation_type).map_err(|_| {
-                PyErr::new::<exceptions::PyValueError, _>("Invalid impersonate param")
-            })?;
-            client_builder = client_builder.impersonate(impersonation);
         }
 
         // Redirects
@@ -298,7 +298,7 @@ impl Client {
 
             // Headers
             if let Some(headers) = headers {
-                let mut headers_new = HeaderMap::new();
+                let mut headers_new = HeaderMap::with_capacity(headers.len());
                 for (key, value) in headers {
                     headers_new.insert(
                         HeaderName::from_bytes(key.as_bytes()).map_err(|_| {
