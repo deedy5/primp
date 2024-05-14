@@ -960,9 +960,9 @@ checksum = "adad44e29e4c806119491a7f06f03de4d1af22c3a680dd47f1e6e179439d1f56"
 
 [[package]]
 name = "reqwest-impersonate"
-version = "0.11.79"
+version = "0.11.84"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b3ef1d8a08ef2150db45aae7e85dce08b96747357857fe4537cddd59624dc74"
+checksum = "281893b5f8d18e013d5998df9ac657d2a82402add22253048660516f35ed40d5"
 dependencies = [
  "async-compression",
  "base64",
