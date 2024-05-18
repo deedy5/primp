@@ -96,4 +96,4 @@ ax3.set_xticklabels(names)
 ax3.legend(loc='upper left', ncols=6, prop={'size': 8})
 
 # Save the plot to a file
-plt.savefig('benchmark.jpg', format='jpg')
+plt.savefig('benchmark.jpg', format='jpg', dpi=80, bbox_inches='tight')
