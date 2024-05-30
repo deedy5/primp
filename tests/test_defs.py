@@ -3,7 +3,7 @@ from time import sleep
 import pyreqwest_impersonate as pri
 
 
-def retry(max_retries=3, delay=1):
+def retry(max_retries=5, delay=1):
     def decorator(func):
         def wrapper(*args, **kwargs):
             for attempt in range(max_retries):
