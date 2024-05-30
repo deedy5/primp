@@ -896,7 +896,7 @@ dependencies = [
 
 [[package]]
 name = "pyreqwest_impersonate"
-version = "0.4.6"
+version = "0.4.7"
 dependencies = [
  "encoding_rs",
  "indexmap",
