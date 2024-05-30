@@ -22,31 +22,33 @@ jobs:
   linux:
     runs-on: ${{ matrix.platform.runner }}
     strategy:
+      fail-fast: false
       matrix:
         platform:
           - runner: ubuntu-latest
             target: x86_64
           - runner: ubuntu-latest
             target: aarch64
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12', 'pypy3.8', 'pypy3.9', 'pypy3.10']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.8'
+          python-version: ${{ matrix.python-version }}
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           rust-toolchain: stable
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --zig
+          args: --release --out dist --zig -i ${{ matrix.python-version }}
           sccache: 'true'
-          manylinux: 2_28
+          manylinux: auto
         env:
           CFLAGS_aarch64_unknown_linux_gnu: "-D__ARM_ARCH=8"
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
-          name: wheels-linux-${{ matrix.platform.target }}
+          name: wheels-linux-${{ matrix.platform.target }}-${{ matrix.python-version }}
           path: dist
       - name: pytest
         if: ${{ startsWith(matrix.platform.target, 'x86_64') }}
@@ -57,88 +59,82 @@ jobs:
           pip install pytest
           pytest
       - name: pytest
-        if: ${{ !startsWith(matrix.platform.target, 'x86') && matrix.platform.target != 'ppc64' }}
-        uses: uraimo/run-on-arch-action@v2.7.2
+        if: ${{ !startsWith(matrix.platform.target, 'x86') && matrix.platform.target != 'ppc64' && !startsWith(matrix.python-version, 'pypy')}}
+        uses: uraimo/run-on-arch-action@v2
         with:
           arch: ${{ matrix.platform.target }}
           distro: ubuntu22.04
           githubToken: ${{ github.token }}
           install: |
             apt-get update
-            apt-get install -y --no-install-recommends python3 python3-pip
-            pip3 install -U pip pytest
+            apt-get install -y --no-install-recommends software-properties-common gpg gpg-agent curl
+            add-apt-repository ppa:deadsnakes/ppa
+            apt-get update
+            apt-get install -y python${{ matrix.python-version }}-dev python${{ matrix.python-version }}-venv
           run: |
-            set -e
-            pip3 install pyreqwest_impersonate --no-index --find-links dist --force-reinstall
-            pytest
+            python${{ matrix.python-version }} -m venv venv
+            venv/bin/pip install -U pip wheel pytest
+            venv/bin/pip install pyreqwest_impersonate --no-index --find-links dist --force-reinstall
+            venv/bin/python -m pytest
 
   musllinux:
     runs-on: ${{ matrix.platform.runner }}
     strategy:
+      fail-fast: false
       matrix:
         platform:
           - runner: ubuntu-latest
             target: x86_64
           - runner: ubuntu-latest
             target: aarch64
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12', 'pypy3.8', 'pypy3.9', 'pypy3.10']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.8'
+          python-version: ${{ matrix.python-version }}
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           rust-toolchain: stable
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --zig
+          args: --release --out dist --zig -i ${{ matrix.python-version }}
           sccache: 'true'
           manylinux: musllinux_1_2
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
-          name: wheels-linux-${{ matrix.platform.target }}-musllinux_1_2
+          name: wheels-musllinux-${{ matrix.platform.target }}-${{ matrix.python-version }}
           path: dist
+      - name: QEMU
+        if: matrix.platform.target != 'x86_64'
+        uses: docker/setup-qemu-action@v3
       - name: pytest
-        if: ${{ startsWith(matrix.platform.target, 'x86_64') }}
+        if: ${{ !startsWith(matrix.python-version, 'pypy')}}
         uses: addnab/docker-run-action@v3
         with:
           image: quay.io/pypa/musllinux_1_2_${{ matrix.platform.target }}:latest
           options: -v ${{ github.workspace }}:/io -w /io
           run: |
-            python3 -m venv .venv
-            source .venv/bin/activate
-            python3 -m pip install -U pip wheel pytest
-            python3 -m pip install pyreqwest_impersonate --no-index --find-links dist/ --force-reinstall
-            python3 -m pytest
-      - name: pytest
-        if: ${{ !startsWith(matrix.platform.target, 'x86') && matrix.platform.target != 'ppc64' }}
-        uses: uraimo/run-on-arch-action@v2.7.2
-        with:
-          arch: ${{ matrix.platform.target }}
-          distro: alpine_latest
-          githubToken: ${{ github.token }}
-          install: |
-            apk add py3-pip
-            python3 -m venv /opt/venv
-            /opt/venv/bin/pip3 install -U pip pytest
-          run: |
-            source /opt/venv/bin/activate
-            pip3 install pyreqwest_impersonate --no-index --find-links dist --force-reinstall
-            pytest
+            python${{ matrix.python-version }} -m venv venv
+            venv/bin/pip install -U pip wheel pytest
+            venv/bin/pip install pyreqwest_impersonate --no-index --find-links dist --force-reinstall
+            venv/bin/python -m pytest
 
   windows:
     runs-on: ${{ matrix.platform.runner }}
     strategy:
+      fail-fast: false
       matrix:
         platform:
           - runner: windows-latest
             target: x64
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.8'
+          python-version: ${{ matrix.python-version }}
           architecture: ${{ matrix.platform.target }}
       - name: Install nasm
         run: choco install nasm
@@ -147,12 +143,12 @@ jobs:
         with:
           rust-toolchain: stable
           target: ${{ matrix.platform.target }}
-          args: --release --out dist
+          args: --release --out dist -i ${{ matrix.python-version }}
           sccache: 'true'
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
-          name: wheels-windows-${{ matrix.platform.target }}
+          name: wheels-windows-${{ matrix.platform.target }}-${{ matrix.python-version }}
           path: dist
       - name: pytest
         if: ${{ !startsWith(matrix.platform.target, 'aarch64') }}
@@ -166,28 +162,30 @@ jobs:
   macos:
     runs-on: ${{ matrix.platform.runner }}
     strategy:
+      fail-fast: false
       matrix:
         platform:
           - runner: macos-12
             target: x86_64
           - runner: macos-14
             target: aarch64
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.8'
+          python-version: ${{ matrix.python-version }}
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           rust-toolchain: stable
           target: ${{ matrix.platform.target }}
-          args: --release --out dist
+          args: --release --out dist -i ${{ matrix.python-version }}
           sccache: 'true'
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
-          name: wheels-macos-${{ matrix.platform.target }}
+          name: wheels-macos-${{ matrix.platform.target }}-${{ matrix.python-version }}
           path: dist
       - name: pytest
         shell: bash
@@ -238,7 +236,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.8'
+          python-version: '3.12'
       - name: Install dependencies
         run: |
           sleep 30  # Wait for the package to be available on PyPI
