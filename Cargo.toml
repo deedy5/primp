@@ -13,7 +13,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyo3 = { version = "0.21", features = ["extension-module", "indexmap"] }
-reqwest-impersonate = { version = "0.11", default-features = false, features = [
+#reqwest-impersonate = { version = "0.11", default-features = false, features = [ 
+reqwest-impersonate = { git = "https://github.com/0x676e67/reqwest-impersonate.git", branch = "main", default-features = false, features = [
     "cookies",
     "boring-tls",
     "impersonate",
