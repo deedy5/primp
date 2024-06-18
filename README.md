@@ -155,6 +155,10 @@ print(resp.status_code)
 print(resp.text)
 print(resp.url)
 
+# using proxy
+resp = pri.Client(proxy="http://127.0.0.1:8080").get("https://tls.peet.ws/api/all")
+print(resp.json())
+
 # You can also use convenience functions that use a default Client instance under the hood:
 # pri.get() | pri.head() | pri.options() | pri.delete() | pri.post | pri.patch | pri.put
 # These functions can accept the `impersonate` parameter:
