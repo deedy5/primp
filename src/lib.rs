@@ -230,7 +230,7 @@ impl Client {
     /// * `content` - The content to send in the request body as bytes. Default is None.
     /// * `data` - The form data to send in the request body. Default is None.
     /// * `json` -  A JSON serializable object to send in the request body. Default is None.
-    /// * `files` - A map of file fields to file paths to be sent as multipart/form-data. Default is None.
+    /// * `files` - A map of file fields to file contents as bytes to be sent as multipart/form-data. Default is None.
     /// * `auth` - A tuple containing the username and an optional password for basic authentication. Default is None.
     /// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
     /// * `timeout` - The timeout for the request in seconds. Default is 30.
@@ -252,7 +252,7 @@ impl Client {
         content: Option<Vec<u8>>,
         data: Option<&Bound<'_, PyDict>>,
         json: Option<&Bound<'_, PyDict>>,
-        files: Option<IndexMap<String, String>>,
+        files: Option<IndexMap<String, Vec<u8>>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -333,15 +333,10 @@ impl Client {
                 // Files
                 if let Some(files) = files {
                     let mut form = multipart::Form::new();
-                    for (field, path) in files {
-                        let file_content = tokio::fs::read(&path).await.map_err(|e| {
-                            PyErr::new::<exceptions::PyException, _>(format!(
-                                "Error reading file {}: {}",
-                                path, e
-                            ))
-                        })?;
-                        let part = multipart::Part::bytes(file_content);
-                        form = form.part(field, part);
+                    for (file_name, file_content) in files {
+                        let part =
+                            multipart::Part::bytes(file_content).file_name(file_name.clone());
+                        form = form.part(file_name, part);
                     }
                     request_builder = request_builder.multipart(form);
                 }
@@ -556,7 +551,7 @@ impl Client {
         content: Option<Vec<u8>>,
         data: Option<&Bound<'_, PyDict>>,
         json: Option<&Bound<'_, PyDict>>,
-        files: Option<IndexMap<String, String>>,
+        files: Option<IndexMap<String, Vec<u8>>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -585,7 +580,7 @@ impl Client {
         content: Option<Vec<u8>>,
         data: Option<&Bound<'_, PyDict>>,
         json: Option<&Bound<'_, PyDict>>,
-        files: Option<IndexMap<String, String>>,
+        files: Option<IndexMap<String, Vec<u8>>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -614,7 +609,7 @@ impl Client {
         content: Option<Vec<u8>>,
         data: Option<&Bound<'_, PyDict>>,
         json: Option<&Bound<'_, PyDict>>,
-        files: Option<IndexMap<String, String>>,
+        files: Option<IndexMap<String, Vec<u8>>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -647,7 +642,7 @@ fn request(
     content: Option<Vec<u8>>,
     data: Option<&Bound<'_, PyDict>>,
     json: Option<&Bound<'_, PyDict>>,
-    files: Option<IndexMap<String, String>>,
+    files: Option<IndexMap<String, Vec<u8>>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
@@ -819,7 +814,7 @@ fn post(
     content: Option<Vec<u8>>,
     data: Option<&Bound<'_, PyDict>>,
     json: Option<&Bound<'_, PyDict>>,
-    files: Option<IndexMap<String, String>>,
+    files: Option<IndexMap<String, Vec<u8>>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
@@ -866,7 +861,7 @@ fn put(
     content: Option<Vec<u8>>,
     data: Option<&Bound<'_, PyDict>>,
     json: Option<&Bound<'_, PyDict>>,
-    files: Option<IndexMap<String, String>>,
+    files: Option<IndexMap<String, Vec<u8>>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
@@ -913,7 +908,7 @@ fn patch(
     content: Option<Vec<u8>>,
     data: Option<&Bound<'_, PyDict>>,
     json: Option<&Bound<'_, PyDict>>,
-    files: Option<IndexMap<String, String>>,
+    files: Option<IndexMap<String, Vec<u8>>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,

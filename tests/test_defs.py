@@ -195,6 +195,29 @@ def test_post_json():
 
 
 @retry()
+def test_client_post_files():
+    auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
+    headers = {"X-Test": "test"}
+    params = {"x": "aaa", "y": "bbb"}
+    files = {"file1": b"aaa111", "file2": b"bbb222"}
+    response = pri.post(
+        "https://httpbin.org/anything",
+        auth_bearer=auth_bearer,
+        headers=headers,
+        params=params,
+        files=files,
+        verify=False,
+    )
+    assert response.status_code == 200
+    json_data = response.json()
+    assert json_data["method"] == "POST"
+    assert json_data["headers"]["X-Test"] == "test"
+    assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
+    assert json_data["args"] == {"x": "aaa", "y": "bbb"}
+    assert json_data["files"] == {"file1": "aaa111", "file2": "bbb222"}
+
+
+@retry()
 def test_patch():
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
     headers = {"X-Test": "test"}
@@ -241,8 +264,8 @@ def test_put():
 
 
 @retry()
-def test_get_impersonate_chrome124():
-    response = pri.get("https://tls.peet.ws/api/all", impersonate="chrome_124", verify=False)
+def test_get_impersonate_chrome126():
+    response = pri.get("https://tls.peet.ws/api/all", impersonate="chrome_126", verify=False)
     assert response.status_code == 200
     json_data = response.json()
     assert json_data["http_version"] == "h2"

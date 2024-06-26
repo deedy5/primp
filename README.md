@@ -123,7 +123,7 @@ def post(
         content (Optional[bytes]): The content to send in the request body as bytes. Default is None.
         data (Optional[Dict[str, str]]): The form data to send in the request body. Default is None.
         json (Any): A JSON serializable object to send in the request body. Default is None.
-        files (Optional[Dict[str, str]]): A map of file fields to file paths to be sent as multipart/form-data. Default is None.
+        files (Optional[Dict[str, bytes]]): A map of file fields to file contents to be sent as multipart/form-data. Default is None.
         auth (Optional[Tuple[str, Optional[str]]]): A tuple containing the username and an optional password 
             for basic authentication. Default is None.
         auth_bearer (Optional[str]): A string representing the bearer token for bearer token authentication. Default is None.
@@ -139,11 +139,11 @@ import pyreqwest_impersonate as pri
 
 client = pri.Client(impersonate="chrome_124")
 
-# get request
+# GET request
 resp = client.get("https://tls.peet.ws/api/all")
 print(resp.json())
 
-# post request
+# POST request
 data = {"key1": "value1", "key2": "value2"}
 auth = ("user", "password")
 resp = client.post(url="https://httpbin.org/anything", data=data, auth=auth)
@@ -154,6 +154,11 @@ print(resp.json())
 print(resp.status_code)
 print(resp.text)
 print(resp.url)
+
+# POST Multiple Multipart-Encoded Files
+files = {'file1': open('file1.txt', 'rb').read(), 'file2': open('file2.txt', 'rb').read()}
+r = client.post("https://httpbin.org/post", files=files)
+print(r.text)
 
 # using proxy
 resp = pri.Client(proxy="http://127.0.0.1:8080").get("https://tls.peet.ws/api/all")

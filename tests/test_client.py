@@ -172,8 +172,31 @@ def test_client_post_json():
 
 
 @retry()
-def test_client_impersonate_chrome124():
-    client = Client(impersonate="chrome_124", verify=False)
+def test_client_post_files():
+    client = Client(verify=False)
+    auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
+    headers = {"X-Test": "test"}
+    params = {"x": "aaa", "y": "bbb"}
+    files = {"file1": b"aaa111", "file2": b"bbb222"}
+    response = client.post(
+        "https://httpbin.org/anything",
+        auth_bearer=auth_bearer,
+        headers=headers,
+        params=params,
+        files=files,
+    )
+    assert response.status_code == 200
+    json_data = response.json()
+    assert json_data["method"] == "POST"
+    assert json_data["headers"]["X-Test"] == "test"
+    assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
+    assert json_data["args"] == {"x": "aaa", "y": "bbb"}
+    assert json_data["files"] == {"file1": "aaa111", "file2": "bbb222"}
+
+
+@retry()
+def test_client_impersonate_chrome126():
+    client = Client(impersonate="chrome_126", verify=False)
     response = client.get("https://tls.peet.ws/api/all")
     assert response.status_code == 200
     json_data = response.json()
