@@ -109,7 +109,7 @@ def post(
     content: Optional[bytes] = None, 
     data: Optional[Dict[str, str]] = None, 
     json: Any = None, 
-    files: Optional[Dict[str, str]] = None, 
+    files: Optional[Dict[str, bytes]] = None, 
     auth: Optional[Tuple[str, Optional[str]]] = None, 
     auth_bearer: Optional[str] = None, 
     timeout: Optional[float] = 30,
@@ -132,21 +132,23 @@ def post(
     """
 ```
 
-#### Example
+#### Examples
 
 ```python
 import pyreqwest_impersonate as pri
 
-client = pri.Client(impersonate="chrome_124")
+client = pri.Client(impersonate="chrome_126")
 
 # GET request
 resp = client.get("https://tls.peet.ws/api/all")
 print(resp.json())
 
-# POST request
-data = {"key1": "value1", "key2": "value2"}
-auth = ("user", "password")
-resp = client.post(url="https://httpbin.org/anything", data=data, auth=auth)
+# GET request with passing params and setting timeout
+params = {"param1": "value1", "param2": "value2"}
+resp = client.post(url="https://httpbin.org/anything", params=params, timeout=10)
+print(r.text)
+
+# Response object
 print(resp.content)
 print(resp.cookies)
 print(resp.headers)
@@ -155,20 +157,47 @@ print(resp.status_code)
 print(resp.text)
 print(resp.url)
 
-# POST Multiple Multipart-Encoded Files
+# POST Binary Request Data
+content = b"some_data"
+resp = client.post(url="https://httpbin.org/anything", content=content)
+print(r.text)
+
+# POST Form Encoded Data
+data = {"key1": "value1", "key2": "value2"}
+resp = client.post(url="https://httpbin.org/anything", data=data)
+print(r.text)
+
+# POST JSON Encoded Data
+json = {"key1": "value1", "key2": "value2"}
+resp = client.post(url="https://httpbin.org/anything", json=json)
+print(r.text)
+
+# POST Multipart-Encoded Files
 files = {'file1': open('file1.txt', 'rb').read(), 'file2': open('file2.txt', 'rb').read()}
 r = client.post("https://httpbin.org/post", files=files)
 print(r.text)
 
-# using proxy
+# Authentication using user/password
+auth = ("user", "password")
+resp = client.post(url="https://httpbin.org/anything", auth=auth)
+print(r.text)
+
+# Authentication using auth bearer
+auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
+resp = client.post(url="https://httpbin.org/anything", auth_bearer=auth_bearer)
+print(r.text)
+
+# Using proxy
 resp = pri.Client(proxy="http://127.0.0.1:8080").get("https://tls.peet.ws/api/all")
 print(resp.json())
 
 # You can also use convenience functions that use a default Client instance under the hood:
-# pri.get() | pri.head() | pri.options() | pri.delete() | pri.post | pri.patch | pri.put
+# pri.get() | pri.head() | pri.options() | pri.delete() | pri.post() | pri.patch() | pri.put()
 # These functions can accept the `impersonate` parameter:
-resp = pri.get("https://httpbin.org/anything", impersonate="chrome_124")  
+resp = pri.get("https://httpbin.org/anything", impersonate="chrome_126")
+print(r.text)
 ```
+
 ### II. AsyncClient
 
 TODO
