@@ -2,7 +2,6 @@
 # Pyreqwest_impersonate
 
 The fastest python HTTP client that can impersonate web browsers by mimicking their headers and `TLS/JA3/JA4/HTTP2` fingerprints.</br>
-Binding to the Rust [reqwest_impersonate](https://github.com/gngpp/reqwest-impersonate) library.</br>
 
 Provides precompiled wheels:
 - [x] Linux|musl:  `amd64`, `aarch64`.
@@ -29,7 +28,8 @@ cd pyreqwest_impersonate
 python3 -m venv .venv
 source .venv/bin/activate
 pip install maturin
-RUSTFLAGS="-C target-cpu=native" maturin develop --release  # Compiled library will be here: .venv/lib/python3.1x/site-packages
+RUSTFLAGS="-C target-cpu=native" maturin develop --release  
+# Compiled library will be here: .venv/lib/python3.1x/site-packages
 ```
 
 ## Key Features
