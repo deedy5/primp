@@ -24,12 +24,14 @@ def retry(max_retries=5, delay=1):
 def test_client_init_params():
     auth = ("user", "password")
     headers = {"X-Test": "test"}
+    cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
-    client = Client(auth=auth, params=params, headers=headers, verify=False)
+    client = Client(auth=auth, params=params, headers=headers, cookies=cookies, verify=False)
     response = client.get("https://httpbin.org/anything")
     assert response.status_code == 200
     json_data = response.json()
     assert json_data["headers"]["X-Test"] == "test"
+    assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
     assert json_data["headers"]["Authorization"] == "Basic dXNlcjpwYXNzd29yZA=="
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
 
@@ -39,18 +41,21 @@ def test_client_request_get():
     client = Client(verify=False)
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
     headers = {"X-Test": "test"}
+    cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     response = client.request(
         "GET",
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
+        cookies=cookies,
         params=params,
     )
     assert response.status_code == 200
     json_data = response.json()
     assert json_data["method"] == "GET"
     assert json_data["headers"]["X-Test"] == "test"
+    assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
     assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
     assert "Bearer bearerXXXXXXXXXXXXXXXXXXXX" in response.text
@@ -62,17 +67,20 @@ def test_client_get():
     client = Client(verify=False)
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
     headers = {"X-Test": "test"}
+    cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     response = client.get(
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
+        cookies=cookies,
         params=params,
     )
     assert response.status_code == 200
     json_data = response.json()
     assert json_data["method"] == "GET"
     assert json_data["headers"]["X-Test"] == "test"
+    assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
     assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
     assert "Bearer bearerXXXXXXXXXXXXXXXXXXXX" in response.text
@@ -84,12 +92,14 @@ def test_client_post_content():
     client = Client(verify=False)
     auth = ("user", "password")
     headers = {"X-Test": "test"}
+    cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     content = b"test content"
     response = client.post(
         "https://httpbin.org/anything",
         auth=auth,
         headers=headers,
+        cookies=cookies,
         params=params,
         content=content,
     )
@@ -97,6 +107,7 @@ def test_client_post_content():
     json_data = response.json()
     assert json_data["method"] == "POST"
     assert json_data["headers"]["X-Test"] == "test"
+    assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
     assert json_data["headers"]["Authorization"] == "Basic dXNlcjpwYXNzd29yZA=="
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
     assert json_data["data"] == "test content"
@@ -107,12 +118,14 @@ def test_client_post_data():
     client = Client(verify=False)
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
     headers = {"X-Test": "test"}
+    cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     data = {"key1": "value1", "key2": "value2"}
     response = client.post(
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
+        cookies=cookies,
         params=params,
         data=data,
     )
@@ -120,6 +133,7 @@ def test_client_post_data():
     json_data = response.json()
     assert json_data["method"] == "POST"
     assert json_data["headers"]["X-Test"] == "test"
+    assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
     assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
     assert json_data["form"] == {"key1": "value1", "key2": "value2"}
@@ -130,12 +144,14 @@ def test_client_post_data2():
     client = Client(verify=False)
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
     headers = {"X-Test": "test"}
+    cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     data = {"key1": "value1", "key2": ["value2_1", "value2_2"]}
     response = client.post(
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
+        cookies=cookies,
         params=params,
         data=data,
     )
@@ -143,6 +159,7 @@ def test_client_post_data2():
     json_data = response.json()
     assert json_data["method"] == "POST"
     assert json_data["headers"]["X-Test"] == "test"
+    assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
     assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
     assert json_data["form"] == {"key1": "value1", "key2": ["value2_1", "value2_2"]}
@@ -153,12 +170,14 @@ def test_client_post_json():
     client = Client(verify=False)
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
     headers = {"X-Test": "test"}
+    cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     data = {"key1": "value1", "key2": "value2"}
     response = client.post(
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
+        cookies=cookies,
         params=params,
         json=data,
     )
@@ -166,6 +185,7 @@ def test_client_post_json():
     json_data = response.json()
     assert json_data["method"] == "POST"
     assert json_data["headers"]["X-Test"] == "test"
+    assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
     assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
     assert json_data["json"] == data
@@ -176,12 +196,14 @@ def test_client_post_files():
     client = Client(verify=False)
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
     headers = {"X-Test": "test"}
+    cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     files = {"file1": b"aaa111", "file2": b"bbb222"}
     response = client.post(
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
+        cookies=cookies,
         params=params,
         files=files,
     )
@@ -189,6 +211,7 @@ def test_client_post_files():
     json_data = response.json()
     assert json_data["method"] == "POST"
     assert json_data["headers"]["X-Test"] == "test"
+    assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
     assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
     assert json_data["files"] == {"file1": "aaa111", "file2": "bbb222"}
