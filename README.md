@@ -54,6 +54,7 @@ class Client:
         auth_bearer (str, optional): Bearer token for authentication. Default is None.
         params (dict, optional): Default query parameters to include in all requests. Default is None.
         headers (dict, optional): Default headers to send with requests. If `impersonate` is set, this will be ignored.
+        cookies (dict, optional): - An optional map of cookies to send with requests as the `Cookie` header.
         timeout (float, optional): HTTP request timeout in seconds. Default is 30.
         cookie_store (bool, optional): Enable a persistent cookie store. Received cookies will be preserved and included 
             in additional requests. Default is True.
@@ -84,6 +85,7 @@ def get(
     url: str, 
     params: Optional[Dict[str, str]] = None, 
     headers: Optional[Dict[str, str]] = None, 
+    cookies: Optional[Dict[str, str]] = None, 
     auth: Optional[Tuple[str, Optional[str]]] = None, 
     auth_bearer: Optional[str] = None, 
     timeout: Optional[float] = 30,
@@ -94,6 +96,7 @@ def get(
         url (str): The URL to which the request will be made.
         params (Optional[Dict[str, str]]): A map of query parameters to append to the URL. Default is None.
         headers (Optional[Dict[str, str]]): A map of HTTP headers to send with the request. Default is None.
+        cookies (Optional[Dict[str, str]]): - An optional map of cookies to send with requests as the `Cookie` header.
         auth (Optional[Tuple[str, Optional[str]]]): A tuple containing the username and an optional password 
             for basic authentication. Default is None.
         auth_bearer (Optional[str]): A string representing the bearer token for bearer token authentication. Default is None.
@@ -106,6 +109,7 @@ def post(
     url: str, 
     params: Optional[Dict[str, str]] = None, 
     headers: Optional[Dict[str, str]] = None, 
+    cookies: Optional[Dict[str, str]] = None, 
     content: Optional[bytes] = None, 
     data: Optional[Dict[str, str]] = None, 
     json: Any = None, 
@@ -120,6 +124,7 @@ def post(
         url (str): The URL to which the request will be made.
         params (Optional[Dict[str, str]]): A map of query parameters to append to the URL. Default is None.
         headers (Optional[Dict[str, str]]): A map of HTTP headers to send with the request. Default is None.
+        cookies (Optional[Dict[str, str]]): - An optional map of cookies to send with requests as the `Cookie` header.
         content (Optional[bytes]): The content to send in the request body as bytes. Default is None.
         data (Optional[Dict[str, str]]): The form data to send in the request body. Default is None.
         json (Any): A JSON serializable object to send in the request body. Default is None.
