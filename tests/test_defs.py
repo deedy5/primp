@@ -25,12 +25,14 @@ def retry(max_retries=5, delay=1):
 def test_request_get():
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
     headers = {"X-Test": "test"}
+    cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     response = pri.request(
         "GET",
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
+        cookies=cookies,
         params=params,
         verify=False,
     )
@@ -38,6 +40,7 @@ def test_request_get():
     json_data = response.json()
     assert json_data["method"] == "GET"
     assert json_data["headers"]["X-Test"] == "test"
+    assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
     assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
     assert "Bearer bearerXXXXXXXXXXXXXXXXXXXX" in response.text
@@ -48,11 +51,13 @@ def test_request_get():
 def test_get():
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
     headers = {"X-Test": "test"}
+    cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     response = pri.get(
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
+        cookies=cookies,
         params=params,
         verify=False,
     )
@@ -60,6 +65,7 @@ def test_get():
     json_data = response.json()
     assert json_data["method"] == "GET"
     assert json_data["headers"]["X-Test"] == "test"
+    assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
     assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
     assert "Bearer bearerXXXXXXXXXXXXXXXXXXXX" in response.text
@@ -84,11 +90,13 @@ def test_options():
 def test_delete():
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
     headers = {"X-Test": "test"}
+    cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     response = pri.delete(
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
+        cookies=cookies,
         params=params,
         verify=False,
     )
@@ -96,6 +104,7 @@ def test_delete():
     json_data = response.json()
     assert json_data["method"] == "DELETE"
     assert json_data["headers"]["X-Test"] == "test"
+    assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
     assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
     assert "Bearer bearerXXXXXXXXXXXXXXXXXXXX" in response.text
@@ -106,12 +115,14 @@ def test_delete():
 def test_post_content():
     auth = ("user", "password")
     headers = {"X-Test": "test"}
+    cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     content = b"test content"
     response = pri.post(
         "https://httpbin.org/anything",
         auth=auth,
         headers=headers,
+        cookies=cookies,
         params=params,
         content=content,
         verify=False,
@@ -120,6 +131,7 @@ def test_post_content():
     json_data = response.json()
     assert json_data["method"] == "POST"
     assert json_data["headers"]["X-Test"] == "test"
+    assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
     assert json_data["headers"]["Authorization"] == "Basic dXNlcjpwYXNzd29yZA=="
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
     assert json_data["data"] == "test content"
@@ -129,12 +141,14 @@ def test_post_content():
 def test_post_data():
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
     headers = {"X-Test": "test"}
+    cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     data = {"key1": "value1", "key2": "value2"}
     response = pri.post(
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
+        cookies=cookies,
         params=params,
         data=data,
         verify=False,
@@ -143,6 +157,7 @@ def test_post_data():
     json_data = response.json()
     assert json_data["method"] == "POST"
     assert json_data["headers"]["X-Test"] == "test"
+    assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
     assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
     assert json_data["form"] == {"key1": "value1", "key2": "value2"}
@@ -152,12 +167,14 @@ def test_post_data():
 def test_post_data2():
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
     headers = {"X-Test": "test"}
+    cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     data = {"key1": "value1", "key2": ["value2_1", "value2_2"]}
     response = pri.post(
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
+        cookies=cookies,
         params=params,
         data=data,
         verify=False,
@@ -166,6 +183,7 @@ def test_post_data2():
     json_data = response.json()
     assert json_data["method"] == "POST"
     assert json_data["headers"]["X-Test"] == "test"
+    assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
     assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
     assert json_data["form"] == {"key1": "value1", "key2": ["value2_1", "value2_2"]}
@@ -175,12 +193,14 @@ def test_post_data2():
 def test_post_json():
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
     headers = {"X-Test": "test"}
+    cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     data = {"key1": "value1", "key2": "value2"}
     response = pri.post(
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
+        cookies=cookies,
         params=params,
         json=data,
         verify=False,
@@ -189,6 +209,7 @@ def test_post_json():
     json_data = response.json()
     assert json_data["method"] == "POST"
     assert json_data["headers"]["X-Test"] == "test"
+    assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
     assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
     assert json_data["json"] == data
@@ -198,12 +219,14 @@ def test_post_json():
 def test_client_post_files():
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
     headers = {"X-Test": "test"}
+    cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     files = {"file1": b"aaa111", "file2": b"bbb222"}
     response = pri.post(
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
+        cookies=cookies,
         params=params,
         files=files,
         verify=False,
@@ -212,6 +235,7 @@ def test_client_post_files():
     json_data = response.json()
     assert json_data["method"] == "POST"
     assert json_data["headers"]["X-Test"] == "test"
+    assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
     assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
     assert json_data["files"] == {"file1": "aaa111", "file2": "bbb222"}
@@ -221,12 +245,14 @@ def test_client_post_files():
 def test_patch():
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
     headers = {"X-Test": "test"}
+    cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     data = {"key1": "value1", "key2": "value2"}
     response = pri.patch(
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
+        cookies=cookies,
         params=params,
         data=data,
         verify=False,
@@ -235,6 +261,7 @@ def test_patch():
     json_data = response.json()
     assert json_data["method"] == "PATCH"
     assert json_data["headers"]["X-Test"] == "test"
+    assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
     assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
     assert json_data["form"] == {"key1": "value1", "key2": "value2"}
@@ -244,12 +271,14 @@ def test_patch():
 def test_put():
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
     headers = {"X-Test": "test"}
+    cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     data = {"key1": "value1", "key2": "value2"}
     response = pri.put(
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
+        cookies=cookies,
         params=params,
         data=data,
         verify=False,
@@ -258,6 +287,7 @@ def test_put():
     json_data = response.json()
     assert json_data["method"] == "PUT"
     assert json_data["headers"]["X-Test"] == "test"
+    assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
     assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
     assert json_data["form"] == {"key1": "value1", "key2": "value2"}
