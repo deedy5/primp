@@ -6,7 +6,7 @@ use indexmap::IndexMap;
 use pyo3::exceptions;
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyBytes, PyDict, PyString};
-use reqwest_impersonate::header::{HeaderMap, HeaderName, HeaderValue};
+use reqwest_impersonate::header::{HeaderMap, HeaderName, HeaderValue, COOKIE};
 use reqwest_impersonate::impersonate::Impersonate;
 use reqwest_impersonate::multipart;
 use reqwest_impersonate::redirect::Policy;
@@ -56,6 +56,7 @@ pub struct Client {
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     params: Option<IndexMap<String, String>>,
+    cookies: Option<IndexMap<String, String>>,
 }
 
 #[pymethods]
@@ -73,6 +74,7 @@ impl Client {
     /// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
     /// * `params` - A map of query parameters to append to the URL. Default is None.
     /// * `headers` - An optional map of HTTP headers to send with requests. If `impersonate` is set, this will be ignored.
+    /// * `cookies` - An optional map of cookies to send with requests as the `Cookie` header.
     /// * `cookie_store` - Enable a persistent cookie store. Received cookies will be preserved and included
     ///         in additional requests. Default is `true`.
     /// * `referer` - Enable or disable automatic setting of the `Referer` header. Default is `true`.
@@ -94,6 +96,7 @@ impl Client {
     ///     auth=("name", "password"),
     ///     params={"p1k": "p1v", "p2k": "p2v"},
     ///     headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.150 Safari/537.36"},
+    ///     cookies={"ck1": "cv1", "ck2": "cv2"},
     ///     cookie_store=False,
     ///     referer=False,
     ///     proxy="http://127.0.0.1:8080",
@@ -111,6 +114,7 @@ impl Client {
         auth_bearer: Option<String>,
         params: Option<IndexMap<String, String>>,
         headers: Option<IndexMap<String, String>>,
+        cookies: Option<IndexMap<String, String>>,
         cookie_store: Option<bool>,
         referer: Option<bool>,
         proxy: Option<&str>,
@@ -215,6 +219,7 @@ impl Client {
             auth,
             auth_bearer,
             params,
+            cookies,
         })
     }
 
@@ -227,6 +232,7 @@ impl Client {
     /// * `url` - The URL to which the request will be made.
     /// * `params` - A map of query parameters to append to the URL. Default is None.
     /// * `headers` - A map of HTTP headers to send with the request. Default is None.
+    /// * `cookies` - An optional map of cookies to send with requests as the `Cookie` header.
     /// * `content` - The content to send in the request body as bytes. Default is None.
     /// * `data` - The form data to send in the request body. Default is None.
     /// * `json` -  A JSON serializable object to send in the request body. Default is None.
@@ -249,6 +255,7 @@ impl Client {
         url: &str,
         params: Option<IndexMap<String, String>>,
         headers: Option<IndexMap<String, String>>,
+        cookies: Option<IndexMap<String, String>>,
         content: Option<Vec<u8>>,
         data: Option<&Bound<'_, PyDict>>,
         json: Option<&Bound<'_, PyDict>>,
@@ -261,6 +268,7 @@ impl Client {
         let auth = auth.or(self.auth.clone());
         let auth_bearer = auth_bearer.or(self.auth_bearer.clone());
         let params = params.or(self.params.clone());
+        let cookies = cookies.or(self.cookies.clone());
         // Converts 'data' (if any) into a URL-encoded string for sending the data as `application/x-www-form-urlencoded` content type.
         let data_str = data
             .map(|data_pydict| url_encode(py, Some(data_pydict)).ok())
@@ -310,6 +318,17 @@ impl Client {
                     );
                 }
                 request_builder = request_builder.headers(headers_new);
+            }
+
+            // Cookies
+            if let Some(cookies) = cookies {
+                let cookies_str = cookies
+                    .iter()
+                    .map(|(k, v)| format!("{}={}", k, v))
+                    .collect::<Vec<String>>()
+                    .join("; ");
+                request_builder =
+                    request_builder.header(COOKIE, HeaderValue::from_str(&cookies_str).unwrap());
             }
 
             // Only if method POST || PUT || PATCH
@@ -447,6 +466,7 @@ impl Client {
         url: &str,
         params: Option<IndexMap<String, String>>,
         headers: Option<IndexMap<String, String>>,
+        cookies: Option<IndexMap<String, String>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -457,6 +477,7 @@ impl Client {
             url,
             params,
             headers,
+            cookies,
             None,
             None,
             None,
@@ -472,6 +493,7 @@ impl Client {
         url: &str,
         params: Option<IndexMap<String, String>>,
         headers: Option<IndexMap<String, String>>,
+        cookies: Option<IndexMap<String, String>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -482,6 +504,7 @@ impl Client {
             url,
             params,
             headers,
+            cookies,
             None,
             None,
             None,
@@ -497,6 +520,7 @@ impl Client {
         url: &str,
         params: Option<IndexMap<String, String>>,
         headers: Option<IndexMap<String, String>>,
+        cookies: Option<IndexMap<String, String>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -507,6 +531,7 @@ impl Client {
             url,
             params,
             headers,
+            cookies,
             None,
             None,
             None,
@@ -522,6 +547,7 @@ impl Client {
         url: &str,
         params: Option<IndexMap<String, String>>,
         headers: Option<IndexMap<String, String>>,
+        cookies: Option<IndexMap<String, String>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -532,6 +558,7 @@ impl Client {
             url,
             params,
             headers,
+            cookies,
             None,
             None,
             None,
@@ -548,6 +575,7 @@ impl Client {
         url: &str,
         params: Option<IndexMap<String, String>>,
         headers: Option<IndexMap<String, String>>,
+        cookies: Option<IndexMap<String, String>>,
         content: Option<Vec<u8>>,
         data: Option<&Bound<'_, PyDict>>,
         json: Option<&Bound<'_, PyDict>>,
@@ -562,6 +590,7 @@ impl Client {
             url,
             params,
             headers,
+            cookies,
             content,
             data,
             json,
@@ -577,6 +606,7 @@ impl Client {
         url: &str,
         params: Option<IndexMap<String, String>>,
         headers: Option<IndexMap<String, String>>,
+        cookies: Option<IndexMap<String, String>>,
         content: Option<Vec<u8>>,
         data: Option<&Bound<'_, PyDict>>,
         json: Option<&Bound<'_, PyDict>>,
@@ -591,6 +621,7 @@ impl Client {
             url,
             params,
             headers,
+            cookies,
             content,
             data,
             json,
@@ -606,6 +637,7 @@ impl Client {
         url: &str,
         params: Option<IndexMap<String, String>>,
         headers: Option<IndexMap<String, String>>,
+        cookies: Option<IndexMap<String, String>>,
         content: Option<Vec<u8>>,
         data: Option<&Bound<'_, PyDict>>,
         json: Option<&Bound<'_, PyDict>>,
@@ -620,6 +652,7 @@ impl Client {
             url,
             params,
             headers,
+            cookies,
             content,
             data,
             json,
@@ -639,6 +672,7 @@ fn request(
     url: &str,
     params: Option<IndexMap<String, String>>,
     headers: Option<IndexMap<String, String>>,
+    cookies: Option<IndexMap<String, String>>,
     content: Option<Vec<u8>>,
     data: Option<&Bound<'_, PyDict>>,
     json: Option<&Bound<'_, PyDict>>,
@@ -650,6 +684,7 @@ fn request(
     verify: Option<bool>,
 ) -> PyResult<Response> {
     let client = Client::new(
+        None,
         None,
         None,
         None,
@@ -671,6 +706,7 @@ fn request(
         url,
         params,
         headers,
+        cookies,
         content,
         data,
         json,
@@ -687,6 +723,7 @@ fn get(
     url: &str,
     params: Option<IndexMap<String, String>>,
     headers: Option<IndexMap<String, String>>,
+    cookies: Option<IndexMap<String, String>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
@@ -702,6 +739,7 @@ fn get(
         None,
         None,
         None,
+        None,
         impersonate,
         None,
         None,
@@ -709,7 +747,16 @@ fn get(
         None,
         None,
     )?;
-    client.get(py, url, params, headers, auth, auth_bearer, timeout)
+    client.get(
+        py,
+        url,
+        params,
+        headers,
+        cookies,
+        auth,
+        auth_bearer,
+        timeout,
+    )
 }
 
 #[pyfunction]
@@ -718,6 +765,7 @@ fn head(
     url: &str,
     params: Option<IndexMap<String, String>>,
     headers: Option<IndexMap<String, String>>,
+    cookies: Option<IndexMap<String, String>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
@@ -733,6 +781,7 @@ fn head(
         None,
         None,
         None,
+        None,
         impersonate,
         None,
         None,
@@ -740,7 +789,16 @@ fn head(
         None,
         None,
     )?;
-    client.head(py, url, params, headers, auth, auth_bearer, timeout)
+    client.head(
+        py,
+        url,
+        params,
+        headers,
+        cookies,
+        auth,
+        auth_bearer,
+        timeout,
+    )
 }
 
 #[pyfunction]
@@ -749,6 +807,7 @@ fn options(
     url: &str,
     params: Option<IndexMap<String, String>>,
     headers: Option<IndexMap<String, String>>,
+    cookies: Option<IndexMap<String, String>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
@@ -764,6 +823,7 @@ fn options(
         None,
         None,
         None,
+        None,
         impersonate,
         None,
         None,
@@ -771,7 +831,16 @@ fn options(
         None,
         None,
     )?;
-    client.options(py, url, params, headers, auth, auth_bearer, timeout)
+    client.options(
+        py,
+        url,
+        params,
+        headers,
+        cookies,
+        auth,
+        auth_bearer,
+        timeout,
+    )
 }
 
 #[pyfunction]
@@ -780,6 +849,7 @@ fn delete(
     url: &str,
     params: Option<IndexMap<String, String>>,
     headers: Option<IndexMap<String, String>>,
+    cookies: Option<IndexMap<String, String>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
@@ -795,6 +865,7 @@ fn delete(
         None,
         None,
         None,
+        None,
         impersonate,
         None,
         None,
@@ -802,7 +873,16 @@ fn delete(
         None,
         None,
     )?;
-    client.delete(py, url, params, headers, auth, auth_bearer, timeout)
+    client.delete(
+        py,
+        url,
+        params,
+        headers,
+        cookies,
+        auth,
+        auth_bearer,
+        timeout,
+    )
 }
 
 #[pyfunction]
@@ -811,6 +891,7 @@ fn post(
     url: &str,
     params: Option<IndexMap<String, String>>,
     headers: Option<IndexMap<String, String>>,
+    cookies: Option<IndexMap<String, String>>,
     content: Option<Vec<u8>>,
     data: Option<&Bound<'_, PyDict>>,
     json: Option<&Bound<'_, PyDict>>,
@@ -822,6 +903,7 @@ fn post(
     verify: Option<bool>,
 ) -> PyResult<Response> {
     let client = Client::new(
+        None,
         None,
         None,
         None,
@@ -842,6 +924,7 @@ fn post(
         url,
         params,
         headers,
+        cookies,
         content,
         data,
         json,
@@ -858,6 +941,7 @@ fn put(
     url: &str,
     params: Option<IndexMap<String, String>>,
     headers: Option<IndexMap<String, String>>,
+    cookies: Option<IndexMap<String, String>>,
     content: Option<Vec<u8>>,
     data: Option<&Bound<'_, PyDict>>,
     json: Option<&Bound<'_, PyDict>>,
@@ -869,6 +953,7 @@ fn put(
     verify: Option<bool>,
 ) -> PyResult<Response> {
     let client = Client::new(
+        None,
         None,
         None,
         None,
@@ -889,6 +974,7 @@ fn put(
         url,
         params,
         headers,
+        cookies,
         content,
         data,
         json,
@@ -905,6 +991,7 @@ fn patch(
     url: &str,
     params: Option<IndexMap<String, String>>,
     headers: Option<IndexMap<String, String>>,
+    cookies: Option<IndexMap<String, String>>,
     content: Option<Vec<u8>>,
     data: Option<&Bound<'_, PyDict>>,
     json: Option<&Bound<'_, PyDict>>,
@@ -916,6 +1003,7 @@ fn patch(
     verify: Option<bool>,
 ) -> PyResult<Response> {
     let client = Client::new(
+        None,
         None,
         None,
         None,
@@ -936,6 +1024,7 @@ fn patch(
         url,
         params,
         headers,
+        cookies,
         content,
         data,
         json,
