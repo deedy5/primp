@@ -23,6 +23,7 @@ reqwest-impersonate = { version = "0.11", default-features = false, features = [
     "gzip",
     "brotli",
     "deflate",
+    "zstd",
 ] }
 encoding_rs = { version = "0.8" }
 indexmap = { version = "2", features = ["serde"] }
