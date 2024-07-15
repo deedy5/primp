@@ -1,4 +1,4 @@
-use encoding_rs::*;
+use encoding_rs::Encoding;
 use pyo3::exceptions;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyString};
@@ -29,18 +29,18 @@ pub struct Response {
 impl Response {
     #[getter]
     fn text(&mut self, py: Python) -> PyResult<String> {
-        // Access the string data as bytes
-        let encoding_bytes = &self.encoding.bind(py).to_string().as_bytes().to_vec();
+        let encoding_name = &self.encoding.bind(py).to_string();
 
         // Convert Py<PyBytes> to &[u8]
         let raw_bytes = &self.content.bind(py).as_bytes();
 
         // Release the GIL here because decoding can be CPU-intensive
         let (decoded_str, detected_encoding_name) = py.allow_threads(move || {
-            let encoding = Encoding::for_label(encoding_bytes).ok_or_else(|| {
+            let encoding_name_bytes = &encoding_name.as_bytes().to_vec();
+            let encoding = Encoding::for_label(encoding_name_bytes).ok_or_else(|| {
                 PyErr::new::<exceptions::PyValueError, _>(format!(
                     "Unsupported charset: {}",
-                    String::from_utf8_lossy(encoding_bytes)
+                    String::from_utf8_lossy(encoding_name_bytes)
                 ))
             })?;
             let (decoded_str, detected_encoding, _) = encoding.decode(raw_bytes);
@@ -52,7 +52,7 @@ impl Response {
         })?;
 
         // Update self.encoding based on the detected encoding
-        if self.encoding.bind(py).to_string() != detected_encoding_name {
+        if encoding_name != &detected_encoding_name {
             self.encoding = PyString::new_bound(py, &detected_encoding_name).into();
         }
 

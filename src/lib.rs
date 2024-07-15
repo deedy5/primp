@@ -5,7 +5,7 @@ use std::time::Duration;
 use indexmap::IndexMap;
 use pyo3::exceptions;
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyBytes, PyDict, PyString};
+use pyo3::types::{PyBytes, PyDict, PyString};
 use reqwest_impersonate::header::{HeaderMap, HeaderName, HeaderValue, COOKIE};
 use reqwest_impersonate::impersonate::Impersonate;
 use reqwest_impersonate::multipart;
@@ -16,6 +16,9 @@ use tokio::runtime::{self, Runtime};
 mod response;
 use response::Response;
 
+mod utils;
+use utils::{get_encoding_from_content, get_encoding_from_headers, json_dumps, url_encode};
+
 // Tokio global one-thread runtime
 fn runtime() -> &'static Runtime {
     static RUNTIME: OnceLock<Runtime> = OnceLock::new();
@@ -25,28 +28,6 @@ fn runtime() -> &'static Runtime {
             .build()
             .unwrap()
     })
-}
-
-/// python json.dumps
-fn json_dumps(py: Python, pydict: Option<&Bound<'_, PyDict>>) -> PyResult<String> {
-    let json_module = PyModule::import_bound(py, "json")?;
-    let dumps = json_module.getattr("dumps")?;
-    match pydict {
-        Some(dict) => dumps.call1((dict,))?.extract::<String>(),
-        None => Ok("".to_string()),
-    }
-}
-
-/// python urllib.parse.urlencode
-fn url_encode(py: Python, pydict: Option<&Bound<'_, PyDict>>) -> PyResult<String> {
-    let urllib_parse = PyModule::import_bound(py, "urllib.parse")?;
-    let urlencode = urllib_parse.getattr("urlencode")?;
-    match pydict {
-        Some(dict) => urlencode
-            .call1((dict, ("doseq", py.get_type_bound::<PyBool>().call1(())?)))?
-            .extract::<String>(),
-        None => Ok("".to_string()),
-    }
 }
 
 #[pyclass]
@@ -392,24 +373,6 @@ impl Client {
                 .cookies()
                 .map(|cookie| (cookie.name().to_string(), cookie.value().to_string()))
                 .collect();
-            // Encoding from "Content-Type" header or "UTF-8"
-            let encoding = resp
-                .headers()
-                .get("Content-Type")
-                .and_then(|ct| ct.to_str().ok())
-                .and_then(|ct| {
-                    ct.split(';').find_map(|param| {
-                        let mut kv = param.splitn(2, '=');
-                        let key = kv.next()?.trim();
-                        let value = kv.next()?.trim();
-                        if key.eq_ignore_ascii_case("charset") {
-                            Some(value.to_string())
-                        } else {
-                            None
-                        }
-                    })
-                })
-                .unwrap_or("UTF-8".to_string());
             let headers: IndexMap<String, String> = resp
                 .headers()
                 .iter()
@@ -423,6 +386,9 @@ impl Client {
                     e
                 ))
             })?;
+            let encoding = get_encoding_from_headers(&headers)
+                .or_else(|| get_encoding_from_content(&buf))
+                .unwrap_or_else(|| "UTF-8".to_string());
             Ok((buf, cookies, encoding, headers, status_code, url))
         };
 
