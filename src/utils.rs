@@ -66,3 +66,52 @@ pub fn url_encode(py: Python, pydict: Option<&Bound<'_, PyDict>>) -> PyResult<St
         None => Ok("".to_string()),
     }
 }
+
+#[cfg(test)]
+mod utils_tests {
+    use super::*;
+    use indexmap::IndexMap;
+
+    #[test]
+    fn test_get_encoding_from_headers() {
+        // Test case: Content-Type header with charset specified
+        let mut headers = IndexMap::new();
+        headers.insert(
+            String::from("Content-Type"),
+            String::from("text/html;charset=UTF-8"),
+        );
+        assert_eq!(get_encoding_from_headers(&headers), Some("utf-8".into()));
+
+        // Test case: Content-Type header without charset specified
+        headers.clear();
+        headers.insert(String::from("Content-Type"), String::from("text/plain"));
+        assert_eq!(get_encoding_from_headers(&headers), None);
+
+        // Test case: Missing Content-Type header
+        headers.clear();
+        assert_eq!(get_encoding_from_headers(&headers), None);
+
+        // Test case: Content-Type header with application/json
+        headers.clear();
+        headers.insert(
+            String::from("Content-Type"),
+            String::from("application/json"),
+        );
+        assert_eq!(get_encoding_from_headers(&headers), Some("UTF-8".into()));
+    }
+
+    #[test]
+    fn test_get_encoding_from_content_present_charset() {
+        let raw_html = b"<html><head><meta charset=windows1252\"></head></html>";
+        assert_eq!(
+            get_encoding_from_content(raw_html),
+            Some("windows1252".into())
+        );
+    }
+
+    #[test]
+    fn test_get_encoding_from_content_missing_charset() {
+        let raw_html = b"<html><head></head></html>";
+        assert_eq!(get_encoding_from_content(raw_html), None);
+    }
+}
