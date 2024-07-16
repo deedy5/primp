@@ -33,16 +33,26 @@ pub fn get_encoding_from_headers(headers: &IndexMap<String, String>) -> Option<S
     }
 }
 
-/// Get encoding from the `<meta charset="...">` tag within the first 1000 bytes of HTML content.
+/// Get encoding from the `<meta charset="...">` tag within the first 2048 bytes of HTML content.
 pub fn get_encoding_from_content(raw_bytes: &[u8]) -> Option<String> {
-    let html_str = String::from_utf8_lossy(&raw_bytes[..min(1000, raw_bytes.len())]);
+    let start_sequence = b"charset=";
+    let end_sequence = b'"';
+    let max_index = min(2048, raw_bytes.len());
 
-    let charset_index_start = &html_str.find("charset=")? + 8;
-    let charset_index_end = html_str[charset_index_start..].find('"')? + charset_index_start;
+    let start_index = raw_bytes[..max_index]
+        .windows(start_sequence.len())
+        .position(|window| window == start_sequence);
 
-    let charset_str = &html_str[charset_index_start..charset_index_end];
-    let charset = charset_str.to_string();
-    Some(charset)
+    if let Some(start_index) = start_index {
+        let end_index = raw_bytes[start_index..max_index]
+            .iter()
+            .position(|&byte| byte == end_sequence)?;
+
+        let charset_slice = &raw_bytes[start_index + start_sequence.len()..start_index + end_index];
+        Some(String::from_utf8_lossy(charset_slice).into_owned())
+    } else {
+        None
+    }
 }
 
 /// python json.dumps
