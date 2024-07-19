@@ -17,8 +17,7 @@ reqwest-impersonate = { version = "0.11", default-features = false, features = [
     "cookies",
     "boring-tls",
     "impersonate",
-    "json",
-    "multipart",  # to send a multipart/form-data body
+    "multipart",
     "socks",
     "gzip",
     "brotli",
@@ -27,8 +26,6 @@ reqwest-impersonate = { version = "0.11", default-features = false, features = [
 ] }
 encoding_rs = { version = "0.8" }
 indexmap = { version = "2", features = ["serde"] }
-pythonize = "0.21"
-serde_json = "1"
 tokio = { version = "1", features = ["rt"] }
 
 [profile.release]
