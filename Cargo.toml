@@ -12,7 +12,7 @@ name = "pyreqwest_impersonate"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = { version = "0.21", features = ["extension-module", "indexmap"] }
+pyo3 = { version = "0.22", features = ["extension-module", "indexmap"] }
 reqwest-impersonate = { version = "0.11", default-features = false, features = [ 
     "cookies",
     "boring-tls",

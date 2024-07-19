@@ -42,7 +42,6 @@ pub struct Client {
 
 #[pymethods]
 impl Client {
-    #[new]
     /// Initializes an HTTP client that can impersonate web browsers.
     ///
     /// This function creates a new HTTP client instance that can impersonate various web browsers.
@@ -90,6 +89,9 @@ impl Client {
     ///     http2=False,
     /// )
     /// ```
+    #[new]
+    #[pyo3(signature = (auth=None, auth_bearer=None, params=None, headers=None, cookies=None, cookie_store=None, referer=None, 
+        proxy=None, timeout=None, impersonate=None, follow_redirects=None, max_redirects=None, verify=None, http1=None, http2=None))]
     fn new(
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
@@ -229,6 +231,8 @@ impl Client {
     /// # Errors
     ///
     /// * `PyException` - If there is an error making the request.
+    #[pyo3(signature = (method, url, params=None, headers=None, cookies=None, content=None, 
+        data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None))]
     fn request(
         &self,
         py: Python,
@@ -426,6 +430,7 @@ impl Client {
         })
     }
 
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, timeout=None))]
     fn get(
         &self,
         py: Python,
@@ -453,6 +458,8 @@ impl Client {
             timeout,
         )
     }
+
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, timeout=None))]
     fn head(
         &self,
         py: Python,
@@ -480,6 +487,8 @@ impl Client {
             timeout,
         )
     }
+
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, timeout=None))]
     fn options(
         &self,
         py: Python,
@@ -507,6 +516,8 @@ impl Client {
             timeout,
         )
     }
+
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, timeout=None))]
     fn delete(
         &self,
         py: Python,
@@ -535,6 +546,8 @@ impl Client {
         )
     }
 
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, 
+        json=None, files=None, auth=None, auth_bearer=None, timeout=None))]
     fn post(
         &self,
         py: Python,
@@ -566,6 +579,9 @@ impl Client {
             timeout,
         )
     }
+
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, 
+        json=None, files=None, auth=None, auth_bearer=None, timeout=None))]
     fn put(
         &self,
         py: Python,
@@ -597,6 +613,9 @@ impl Client {
             timeout,
         )
     }
+
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, 
+        json=None, files=None, auth=None, auth_bearer=None, timeout=None))]
     fn patch(
         &self,
         py: Python,
@@ -632,6 +651,8 @@ impl Client {
 
 /// Convenience functions that use a default Client instance under the hood
 #[pyfunction]
+#[pyo3(signature = (method, url, params=None, headers=None, cookies=None, content=None, data=None, 
+    json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, verify=None))]
 fn request(
     py: Python,
     method: &str,
@@ -684,6 +705,8 @@ fn request(
 }
 
 #[pyfunction]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, 
+    timeout=None, impersonate=None, verify=None))]
 fn get(
     py: Python,
     url: &str,
@@ -726,6 +749,8 @@ fn get(
 }
 
 #[pyfunction]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, 
+    timeout=None, impersonate=None, verify=None))]
 fn head(
     py: Python,
     url: &str,
@@ -768,6 +793,8 @@ fn head(
 }
 
 #[pyfunction]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, 
+    timeout=None, impersonate=None, verify=None))]
 fn options(
     py: Python,
     url: &str,
@@ -810,6 +837,8 @@ fn options(
 }
 
 #[pyfunction]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, 
+    timeout=None, impersonate=None, verify=None))]
 fn delete(
     py: Python,
     url: &str,
@@ -852,6 +881,8 @@ fn delete(
 }
 
 #[pyfunction]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, 
+    json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, verify=None))]
 fn post(
     py: Python,
     url: &str,
@@ -902,6 +933,8 @@ fn post(
 }
 
 #[pyfunction]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, 
+    json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, verify=None))]
 fn put(
     py: Python,
     url: &str,
@@ -952,6 +985,8 @@ fn put(
 }
 
 #[pyfunction]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, 
+    json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, verify=None))]
 fn patch(
     py: Python,
     url: &str,
