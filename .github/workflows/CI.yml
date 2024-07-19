@@ -239,44 +239,40 @@ jobs:
     permissions:
       contents: write
     runs-on: ubuntu-latest
-    if: "startsWith(github.ref, 'refs/tags/')"
-    needs: [release]
+    needs: [linux]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: 3.x
+      - name: Download wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: wheels-linux-x86_64 
       - name: Install dependencies
         run: |
-          sleep 30  # Wait for the package to be available on PyPI
           python -m pip install --upgrade pip
           pip install -r benchmark/requirements.txt
+          pip install pyreqwest_impersonate --no-index --find-links ./ --force-reinstall
       - name: Start Uvicorn server
         run: |
           uvicorn benchmark.server:app --host 0.0.0.0 --port 8000 &
           sleep 10
       - name: Run benchmark
         run: python benchmark/benchmark.py
-      - name: Generate image and commit to the new branch
+      - name: Generate image, commit to the temp branch, merge changes into main, delete temp branch
+        if: "startsWith(github.ref, 'refs/tags/')"
         run: |
           python benchmark/generate_image.py
           git config --global user.name 'GitHub Actions'
           git config --global user.email 'actions@github.com'
           git add \*.jpg
           git diff --quiet && git diff --staged --quiet || git commit -m "Update generated image"
-          # Create a new branch and switch to it
           git checkout -b update-generated-image
-          # Attempt to push changes to the new branch
           git push https://${{ secrets.PUSH_TOKEN }}@github.com/deedy5/pyreqwest_impersonate.git update-generated-image || echo "No changes to push"
-      - name: Merge changes into main and delete temporary branch
-        run: |
-          # Fetch the latest changes from the remote repository
           git fetch origin
-          # Merge the temporary branch into main
           git checkout main
           git merge update-generated-image
-          # Push the changes to the main branch
           git push https://${{ secrets.PUSH_TOKEN }}@github.com/deedy5/pyreqwest_impersonate.git main
-          # Delete the temporary branch
           git push origin --delete update-generated-image
