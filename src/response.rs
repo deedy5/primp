@@ -2,8 +2,6 @@ use encoding_rs::Encoding;
 use pyo3::exceptions;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyString};
-use pythonize::pythonize;
-use serde_json::{Error as SerdeError, Value};
 
 /// A struct representing an HTTP response.
 ///
@@ -60,24 +58,9 @@ impl Response {
     }
 
     fn json(&mut self, py: Python) -> PyResult<PyObject> {
-        // Convert Py<PyBytes> to &[u8]
-        let raw_bytes = &self.content.bind(py).as_bytes();
-
-        // Release the GIL here because JSON parsing can be CPU-intensive
-        let value: Result<Value, SerdeError> =
-            py.allow_threads(|| serde_json::from_slice(raw_bytes));
-
-        // Manually convert the serde_json::Error into a pyo3::PyErr
-        let json_value = value.map_err(|e| {
-            PyErr::new::<exceptions::PyValueError, _>(format!("Failed to parse JSON: {}", e))
-        })?;
-
-        // Convert the parsed JSON into a Python object using pythonize
-        pythonize(py, &json_value).map_err(|e| {
-            PyErr::new::<exceptions::PyValueError, _>(format!(
-                "Failed to convert JSON to Python object: {}",
-                e
-            ))
-        })
+        let json_module = PyModule::import_bound(py, "json")?;
+        let loads = json_module.getattr("loads")?;
+        let result = loads.call1((&self.content,))?.extract::<PyObject>()?;
+        Ok(result)
     }
 }
