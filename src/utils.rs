@@ -1,11 +1,14 @@
 use std::cmp::min;
 
+use ahash::RandomState;
 use indexmap::IndexMap;
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict};
 
 // Get encoding from the "Content-Type" header
-pub fn get_encoding_from_headers(headers: &IndexMap<String, String>) -> Option<String> {
+pub fn get_encoding_from_headers(
+    headers: &IndexMap<String, String, RandomState>,
+) -> Option<String> {
     // Extract and decode the Content-Type header
     let content_type = headers
         .iter()
@@ -85,7 +88,7 @@ mod utils_tests {
     #[test]
     fn test_get_encoding_from_headers() {
         // Test case: Content-Type header with charset specified
-        let mut headers = IndexMap::new();
+        let mut headers = IndexMap::default();
         headers.insert(
             String::from("Content-Type"),
             String::from("text/html;charset=UTF-8"),

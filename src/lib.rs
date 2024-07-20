@@ -2,6 +2,7 @@ use std::str::FromStr;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
+use ahash::RandomState;
 use indexmap::IndexMap;
 use pyo3::exceptions;
 use pyo3::prelude::*;
@@ -36,8 +37,8 @@ pub struct Client {
     client: Arc<reqwest_impersonate::Client>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
-    params: Option<IndexMap<String, String>>,
-    cookies: Option<IndexMap<String, String>>,
+    params: Option<IndexMap<String, String, RandomState>>,
+    cookies: Option<IndexMap<String, String, RandomState>>,
 }
 
 #[pymethods]
@@ -95,9 +96,9 @@ impl Client {
     fn new(
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
-        params: Option<IndexMap<String, String>>,
-        headers: Option<IndexMap<String, String>>,
-        cookies: Option<IndexMap<String, String>>,
+        params: Option<IndexMap<String, String, RandomState>>,
+        headers: Option<IndexMap<String, String, RandomState>>,
+        cookies: Option<IndexMap<String, String, RandomState>>,
         cookie_store: Option<bool>,
         referer: Option<bool>,
         proxy: Option<&str>,
@@ -238,9 +239,9 @@ impl Client {
         py: Python,
         method: &str,
         url: &str,
-        params: Option<IndexMap<String, String>>,
-        headers: Option<IndexMap<String, String>>,
-        cookies: Option<IndexMap<String, String>>,
+        params: Option<IndexMap<String, String, RandomState>>,
+        headers: Option<IndexMap<String, String, RandomState>>,
+        cookies: Option<IndexMap<String, String, RandomState>>,
         content: Option<Vec<u8>>,
         data: Option<&Bound<'_, PyDict>>,
         json: Option<&Bound<'_, PyDict>>,
@@ -373,11 +374,11 @@ impl Client {
             })?;
 
             // Response items
-            let cookies: IndexMap<String, String> = resp
+            let cookies: IndexMap<String, String, RandomState> = resp
                 .cookies()
                 .map(|cookie| (cookie.name().to_string(), cookie.value().to_string()))
                 .collect();
-            let headers: IndexMap<String, String> = resp
+            let headers: IndexMap<String, String, RandomState> = resp
                 .headers()
                 .iter()
                 .map(|(k, v)| (k.as_str().to_string(), v.to_str().unwrap_or("").to_string()))
@@ -435,9 +436,9 @@ impl Client {
         &self,
         py: Python,
         url: &str,
-        params: Option<IndexMap<String, String>>,
-        headers: Option<IndexMap<String, String>>,
-        cookies: Option<IndexMap<String, String>>,
+        params: Option<IndexMap<String, String, RandomState>>,
+        headers: Option<IndexMap<String, String, RandomState>>,
+        cookies: Option<IndexMap<String, String, RandomState>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -464,9 +465,9 @@ impl Client {
         &self,
         py: Python,
         url: &str,
-        params: Option<IndexMap<String, String>>,
-        headers: Option<IndexMap<String, String>>,
-        cookies: Option<IndexMap<String, String>>,
+        params: Option<IndexMap<String, String, RandomState>>,
+        headers: Option<IndexMap<String, String, RandomState>>,
+        cookies: Option<IndexMap<String, String, RandomState>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -493,9 +494,9 @@ impl Client {
         &self,
         py: Python,
         url: &str,
-        params: Option<IndexMap<String, String>>,
-        headers: Option<IndexMap<String, String>>,
-        cookies: Option<IndexMap<String, String>>,
+        params: Option<IndexMap<String, String, RandomState>>,
+        headers: Option<IndexMap<String, String, RandomState>>,
+        cookies: Option<IndexMap<String, String, RandomState>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -522,9 +523,9 @@ impl Client {
         &self,
         py: Python,
         url: &str,
-        params: Option<IndexMap<String, String>>,
-        headers: Option<IndexMap<String, String>>,
-        cookies: Option<IndexMap<String, String>>,
+        params: Option<IndexMap<String, String, RandomState>>,
+        headers: Option<IndexMap<String, String, RandomState>>,
+        cookies: Option<IndexMap<String, String, RandomState>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -552,9 +553,9 @@ impl Client {
         &self,
         py: Python,
         url: &str,
-        params: Option<IndexMap<String, String>>,
-        headers: Option<IndexMap<String, String>>,
-        cookies: Option<IndexMap<String, String>>,
+        params: Option<IndexMap<String, String, RandomState>>,
+        headers: Option<IndexMap<String, String, RandomState>>,
+        cookies: Option<IndexMap<String, String, RandomState>>,
         content: Option<Vec<u8>>,
         data: Option<&Bound<'_, PyDict>>,
         json: Option<&Bound<'_, PyDict>>,
@@ -586,9 +587,9 @@ impl Client {
         &self,
         py: Python,
         url: &str,
-        params: Option<IndexMap<String, String>>,
-        headers: Option<IndexMap<String, String>>,
-        cookies: Option<IndexMap<String, String>>,
+        params: Option<IndexMap<String, String, RandomState>>,
+        headers: Option<IndexMap<String, String, RandomState>>,
+        cookies: Option<IndexMap<String, String, RandomState>>,
         content: Option<Vec<u8>>,
         data: Option<&Bound<'_, PyDict>>,
         json: Option<&Bound<'_, PyDict>>,
@@ -620,9 +621,9 @@ impl Client {
         &self,
         py: Python,
         url: &str,
-        params: Option<IndexMap<String, String>>,
-        headers: Option<IndexMap<String, String>>,
-        cookies: Option<IndexMap<String, String>>,
+        params: Option<IndexMap<String, String, RandomState>>,
+        headers: Option<IndexMap<String, String, RandomState>>,
+        cookies: Option<IndexMap<String, String, RandomState>>,
         content: Option<Vec<u8>>,
         data: Option<&Bound<'_, PyDict>>,
         json: Option<&Bound<'_, PyDict>>,
@@ -657,9 +658,9 @@ fn request(
     py: Python,
     method: &str,
     url: &str,
-    params: Option<IndexMap<String, String>>,
-    headers: Option<IndexMap<String, String>>,
-    cookies: Option<IndexMap<String, String>>,
+    params: Option<IndexMap<String, String, RandomState>>,
+    headers: Option<IndexMap<String, String, RandomState>>,
+    cookies: Option<IndexMap<String, String, RandomState>>,
     content: Option<Vec<u8>>,
     data: Option<&Bound<'_, PyDict>>,
     json: Option<&Bound<'_, PyDict>>,
@@ -710,9 +711,9 @@ fn request(
 fn get(
     py: Python,
     url: &str,
-    params: Option<IndexMap<String, String>>,
-    headers: Option<IndexMap<String, String>>,
-    cookies: Option<IndexMap<String, String>>,
+    params: Option<IndexMap<String, String, RandomState>>,
+    headers: Option<IndexMap<String, String, RandomState>>,
+    cookies: Option<IndexMap<String, String, RandomState>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
@@ -754,9 +755,9 @@ fn get(
 fn head(
     py: Python,
     url: &str,
-    params: Option<IndexMap<String, String>>,
-    headers: Option<IndexMap<String, String>>,
-    cookies: Option<IndexMap<String, String>>,
+    params: Option<IndexMap<String, String, RandomState>>,
+    headers: Option<IndexMap<String, String, RandomState>>,
+    cookies: Option<IndexMap<String, String, RandomState>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
@@ -798,9 +799,9 @@ fn head(
 fn options(
     py: Python,
     url: &str,
-    params: Option<IndexMap<String, String>>,
-    headers: Option<IndexMap<String, String>>,
-    cookies: Option<IndexMap<String, String>>,
+    params: Option<IndexMap<String, String, RandomState>>,
+    headers: Option<IndexMap<String, String, RandomState>>,
+    cookies: Option<IndexMap<String, String, RandomState>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
@@ -842,9 +843,9 @@ fn options(
 fn delete(
     py: Python,
     url: &str,
-    params: Option<IndexMap<String, String>>,
-    headers: Option<IndexMap<String, String>>,
-    cookies: Option<IndexMap<String, String>>,
+    params: Option<IndexMap<String, String, RandomState>>,
+    headers: Option<IndexMap<String, String, RandomState>>,
+    cookies: Option<IndexMap<String, String, RandomState>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
@@ -886,9 +887,9 @@ fn delete(
 fn post(
     py: Python,
     url: &str,
-    params: Option<IndexMap<String, String>>,
-    headers: Option<IndexMap<String, String>>,
-    cookies: Option<IndexMap<String, String>>,
+    params: Option<IndexMap<String, String, RandomState>>,
+    headers: Option<IndexMap<String, String, RandomState>>,
+    cookies: Option<IndexMap<String, String, RandomState>>,
     content: Option<Vec<u8>>,
     data: Option<&Bound<'_, PyDict>>,
     json: Option<&Bound<'_, PyDict>>,
@@ -938,9 +939,9 @@ fn post(
 fn put(
     py: Python,
     url: &str,
-    params: Option<IndexMap<String, String>>,
-    headers: Option<IndexMap<String, String>>,
-    cookies: Option<IndexMap<String, String>>,
+    params: Option<IndexMap<String, String, RandomState>>,
+    headers: Option<IndexMap<String, String, RandomState>>,
+    cookies: Option<IndexMap<String, String, RandomState>>,
     content: Option<Vec<u8>>,
     data: Option<&Bound<'_, PyDict>>,
     json: Option<&Bound<'_, PyDict>>,
@@ -990,9 +991,9 @@ fn put(
 fn patch(
     py: Python,
     url: &str,
-    params: Option<IndexMap<String, String>>,
-    headers: Option<IndexMap<String, String>>,
-    cookies: Option<IndexMap<String, String>>,
+    params: Option<IndexMap<String, String, RandomState>>,
+    headers: Option<IndexMap<String, String, RandomState>>,
+    cookies: Option<IndexMap<String, String, RandomState>>,
     content: Option<Vec<u8>>,
     data: Option<&Bound<'_, PyDict>>,
     json: Option<&Bound<'_, PyDict>>,
