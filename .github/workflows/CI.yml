@@ -53,11 +53,14 @@ jobs:
         shell: bash
         run: |
           set -e
-          python3 -m venv .venv
-          source .venv/bin/activate
-          pip install pyreqwest_impersonate --no-index --find-links dist --force-reinstall
-          pip install pytest
-          pytest
+          pip install uv
+          for version in 3.8 3.9 3.10 3.11 3.12; do
+            uv venv --preview --python $version
+            source .venv/bin/activate
+            uv pip install pyreqwest_impersonate --no-index --find-links dist --force-reinstall
+            uv pip install pytest
+            pytest
+          done
       - name: pytest
         if: ${{ !startsWith(matrix.platform.target, 'x86') && matrix.platform.target != 'ppc64' }}
         uses: uraimo/run-on-arch-action@v2
@@ -68,11 +71,16 @@ jobs:
           install: |
             apt-get update
             apt-get install -y --no-install-recommends python3 python3-pip
-            pip3 install -U pip pytest
           run: |
             set -e
-            pip3 install pyreqwest_impersonate --no-index --find-links dist --force-reinstall
-            pytest
+            pip install uv
+            for version in 3.8 3.9 3.10 3.11 3.12; do
+              uv venv --preview --python $version
+              source .venv/bin/activate
+              uv pip install pyreqwest_impersonate --no-index --find-links dist --force-reinstall
+              uv pip install pytest
+              pytest
+            done
 
   musllinux:
     runs-on: ${{ matrix.platform.runner }}
@@ -101,36 +109,22 @@ jobs:
         with:
           name: wheels-musllinux-${{ matrix.platform.target }}
           path: dist
+      - name: QEMU
+        if: matrix.platform.target != 'x86_64'
+        uses: docker/setup-qemu-action@v3
       - name: pytest
-        if: ${{ startsWith(matrix.platform.target, 'x86_64') }}
         uses: addnab/docker-run-action@v3
         with:
-          image: alpine:latest
+          image: quay.io/pypa/musllinux_1_2_${{ matrix.platform.target }}:latest
           options: -v ${{ github.workspace }}:/io -w /io
           run: |
-            set -e
-            apk add py3-pip py3-virtualenv
-            python3 -m virtualenv .venv
-            source .venv/bin/activate
-            pip install pyreqwest_impersonate --no-index --find-links dist --force-reinstall
-            pip install pytest
-            pytest
-      - name: pytest
-        if: ${{ !startsWith(matrix.platform.target, 'x86') }}
-        uses: uraimo/run-on-arch-action@v2
-        with:
-          arch: ${{ matrix.platform.target }}
-          distro: alpine_latest
-          githubToken: ${{ github.token }}
-          install: |
-            apk add py3-virtualenv
-          run: |
-            set -e
-            python3 -m virtualenv .venv
-            source .venv/bin/activate
-            pip install pytest
-            pip install pyreqwest_impersonate --no-index --find-links dist --force-reinstall
-            pytest
+            for version in 3.8 3.9 3.10 3.11 3.12; do
+              python$version -m venv .venv
+              source .venv/bin/activate
+              pip install pyreqwest_impersonate --no-index --find-links dist --force-reinstall
+              pip install pytest
+              pytest
+            done
 
   windows:
     runs-on: ${{ matrix.platform.runner }}
@@ -164,11 +158,14 @@ jobs:
         shell: bash
         run: |
           set -e
-          python3 -m venv .venv
-          source .venv/Scripts/activate
-          pip install pyreqwest_impersonate --no-index --find-links dist --force-reinstall
-          pip install pytest
-          pytest
+          pip install uv
+          for version in 3.8 3.9 3.10 3.11 3.12; do
+            uv venv --preview --python $version
+            source .venv/Scripts/activate
+            uv pip install pyreqwest_impersonate --no-index --find-links dist --force-reinstall
+            uv pip install pytest
+            pytest
+          done
 
   macos:
     runs-on: ${{ matrix.platform.runner }}
@@ -199,11 +196,14 @@ jobs:
       - name: pytest
         run: |
           set -e
-          python3 -m venv .venv
-          source .venv/bin/activate
-          pip install pyreqwest_impersonate --no-index --find-links dist --force-reinstall
-          pip install pytest
-          pytest
+          pip install uv
+          for version in 3.8 3.9 3.10 3.11 3.12; do
+            uv venv --preview --python $version
+            source .venv/bin/activate
+            uv pip install pyreqwest_impersonate --no-index --find-links dist --force-reinstall
+            uv pip install pytest
+            pytest
+          done
 
   sdist:
     runs-on: ubuntu-latest
@@ -252,7 +252,6 @@ jobs:
           name: wheels-linux-x86_64 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
           pip install -r benchmark/requirements.txt
           pip install pyreqwest_impersonate --no-index --find-links ./ --force-reinstall
       - name: Start Uvicorn server
