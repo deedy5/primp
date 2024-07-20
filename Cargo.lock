@@ -546,9 +546,9 @@ dependencies = [
 
 [[package]]
 name = "hyper_imp"
-version = "0.14.37"
+version = "0.14.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eadb9048f93b3612ea7a1421f22a2422e3793ba1e9ec83372db0babc44d05a24"
+checksum = "41a50411c8590cb78e8a373b93eb7cef3ec92de1a34a2b83b8ad45d815ac9cf3"
 dependencies = [
  "bytes",
  "futures-channel",
@@ -908,7 +908,7 @@ dependencies = [
 
 [[package]]
 name = "pyreqwest_impersonate"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "ahash",
  "encoding_rs",
