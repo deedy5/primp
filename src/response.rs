@@ -1,4 +1,5 @@
 use encoding_rs::Encoding;
+use html2text::from_read;
 use pyo3::exceptions;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyString};
@@ -62,5 +63,12 @@ impl Response {
         let loads = json_module.getattr("loads")?;
         let result = loads.call1((&self.content,))?.extract::<PyObject>()?;
         Ok(result)
+    }
+
+    #[getter]
+    fn plaintext(&mut self, py: Python) -> PyResult<String> {
+        let raw_bytes = self.content.bind(py).as_bytes();
+        let text = from_read(raw_bytes, 1080);
+        Ok(text)
     }
 }
