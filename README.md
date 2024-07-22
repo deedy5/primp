@@ -124,6 +124,7 @@ def post(
 ```python
 resp.content
 resp.cookies
+resp.encoding
 resp.headers
 resp.json()
 resp.plaintext  # html is converted to markdown text
