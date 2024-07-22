@@ -20,31 +20,31 @@ def plot_data(file_name, ax, offset):
 
     # Prepare the data for plotting
     x = np.arange(len(names)) + offset # the label locations with offset
-    width = 0.15 # the width of the bars
+    width = 0.125 # the width of the bars
 
     # Plot Time for 5k requests
     rects = ax.bar(x, time_5k, width, label='Time 5k')
-    ax.bar_label(rects, padding=3, fontsize=7) 
+    ax.bar_label(rects, padding=3, fontsize=7, rotation=90) 
 
     # Plot Time for 50k requests
     rects = ax.bar(x + width, time_50k, width, label='Time 50k')
-    ax.bar_label(rects, padding=3, fontsize=7) 
+    ax.bar_label(rects, padding=3, fontsize=7, rotation=90) 
 
     # Plot Time for 200k requests
     rects = ax.bar(x + 2*width, time_200k, width, label='Time 200k')
-    ax.bar_label(rects, padding=3, fontsize=7) 
+    ax.bar_label(rects, padding=3, fontsize=7, rotation=90) 
 
     # Plot CPU time for 5k requests
     rects = ax.bar(x + 3*width, cpu_time_5k, width, label='CPU Time 5k')
-    ax.bar_label(rects, padding=3, fontsize=7) 
+    ax.bar_label(rects, padding=3, fontsize=7, rotation=90) 
 
     # Plot CPU time for 50k requests
     rects = ax.bar(x + 4*width, cpu_time_50k, width, label='CPU Time 50k')
-    ax.bar_label(rects, padding=3, fontsize=7) 
+    ax.bar_label(rects, padding=3, fontsize=7, rotation=90) 
 
     # Plot CPU time for 200k requests
     rects = ax.bar(x + 5*width, cpu_time_200k, width, label='CPU Time 200k')
-    ax.bar_label(rects, padding=3, fontsize=7) 
+    ax.bar_label(rects, padding=3, fontsize=7, rotation=90) 
 
     return x, width, names
 
@@ -59,12 +59,12 @@ x2, _, _ = plot_data('session=True.csv', ax2, 0)
 
 # Adjust the y-axis limits for the first subplot
 y_min, y_max = ax1.get_ylim()
-new_y_max = y_max + 1
+new_y_max = y_max + 7
 ax1.set_ylim(y_min, new_y_max)
 
 # Adjust the y-axis limits for the second subplot
 y_min, y_max = ax2.get_ylim()
-new_y_max = y_max + 1
+new_y_max = y_max + 2
 ax2.set_ylim(y_min, new_y_max)
 
 # Add some text for labels, title and custom x-axis tick labels, etc.
