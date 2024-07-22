@@ -1,12 +1,36 @@
+import gzip
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from io import BytesIO
+
 from importlib.metadata import version
 import pandas as pd
 import requests
 import httpx
 import tls_client
+import pycurl
 import pyreqwest_impersonate
 import curl_cffi.requests
+
+class PycurlSession:
+    def __init__(self):
+        self.c = pycurl.Curl()
+        self.content = None
+
+    def get(self, url):
+        buffer = BytesIO()
+        self.c.setopt(pycurl.URL, url)
+        self.c.setopt(pycurl.WRITEDATA, buffer)
+        self.c.setopt(pycurl.ENCODING, 'gzip')  # Automatically handle gzip encoding
+        self.c.perform()
+        self.content = buffer.getvalue()
+        return self
+
+    @property
+    def text(self):
+        return self.content.decode('utf-8')
+
+    def __del__(self):
+        self.c.close()
 
 results = []
 PACKAGES = [
@@ -14,12 +38,19 @@ PACKAGES = [
     ("httpx", httpx.Client),
     ("tls_client", tls_client.Session),
     ("curl_cffi", curl_cffi.requests.Session),
+    ("pycurl", PycurlSession),
     ("pyreqwest_impersonate", pyreqwest_impersonate.Client),
 ]
 
 
 def add_package_version(packages):
     return [(f"{name} {version(name)}", classname) for name, classname in packages]
+
+
+def get_test(session_class, requests_number):
+    for _ in range(requests_number):
+        s = session_class()
+        s.get(url).text
 
 
 def session_get_test(session_class, requests_number):
@@ -30,52 +61,24 @@ def session_get_test(session_class, requests_number):
 
 PACKAGES = add_package_version(PACKAGES)
 
-# one thread
 requests_number = 2000
-for response_size in ["5k", "50k", "200k"]:
-    url = f"http://127.0.0.1:8000/{response_size}"
-    print(f"\nOne worker, {response_size=}, {requests_number=}")
-    for name, session_class in PACKAGES:
-        start = time.perf_counter()
-        cpu_start = time.process_time()
-        session_get_test(session_class, requests_number)
-        dur = round(time.perf_counter() - start, 2)
-        cpu_dur = round(time.process_time() - cpu_start, 2)
-        results.append(
-            {
-                "name": name,
-                "threads": 1,
-                "size": response_size,
-                "time": dur,
-                "cpu_time": cpu_dur,
-            }
-        )
-        print(f"    name: {name:<30} time: {dur} cpu_time: {cpu_dur}")
-
-
-# multiple threads
-requests_number = 2000
-threads_numbers = [5, 32]
-for threads_number in threads_numbers:
+for session in [False, True]:
     for response_size in ["5k", "50k", "200k"]:
         url = f"http://127.0.0.1:8000/{response_size}"
-        print(f"\n{threads_number} workers, {response_size=}, {requests_number=}")
+        print(f"\n{session=}, {response_size=}, {requests_number=}")
         for name, session_class in PACKAGES:
             start = time.perf_counter()
             cpu_start = time.process_time()
-            with ThreadPoolExecutor(threads_number) as executor:
-                futures = [
-                    executor.submit(session_get_test, session_class, int(requests_number / threads_number))
-                    for _ in range(threads_number)
-                ]
-                for f in as_completed(futures):
-                    f.result()
+            if session:
+                session_get_test(session_class, requests_number)
+            else:
+                get_test(session_class, requests_number)
             dur = round(time.perf_counter() - start, 2)
             cpu_dur = round(time.process_time() - cpu_start, 2)
             results.append(
                 {
                     "name": name,
-                    "threads": threads_number,
+                    "session": session,
                     "size": response_size,
                     "time": dur,
                     "cpu_time": cpu_dur,
@@ -83,10 +86,9 @@ for threads_number in threads_numbers:
             )
             print(f"    name: {name:<30} time: {dur} cpu_time: {cpu_dur}")
 
-
 df = pd.DataFrame(results)
 pivot_df = df.pivot_table(
-    index=["name", "threads"],
+    index=["name", "session"],
     columns="size",
     values=["time", "cpu_time"],
     aggfunc="mean",
@@ -94,12 +96,13 @@ pivot_df = df.pivot_table(
 pivot_df.reset_index(inplace=True)
 pivot_df.columns = [" ".join(col).strip() for col in pivot_df.columns.values]
 pivot_df = pivot_df[
-    ["name", "threads"]
-    + [col for col in pivot_df.columns if col not in ["name", "threads"]]
+    ["name", "session"]
+    + [col for col in pivot_df.columns if col not in ["name", "session"]]
 ]
-unique_threads = pivot_df["threads"].unique()
-for thread in unique_threads:
-    thread_df = pivot_df[pivot_df["threads"] == thread]
-    print(f"\nTable for {thread} threads:")
-    print(thread_df.to_string(index=False))
-    thread_df.to_csv(f"{thread}_threads.csv", index=False)
+print(pivot_df)
+
+for session in [False, True]:
+    session_df = pivot_df[pivot_df["session"] == session]
+    print(f"\nTable for {session=}:")
+    print(session_df.to_string(index=False))
+    session_df.to_csv(f"{session=}.csv", index=False)

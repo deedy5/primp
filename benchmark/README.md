@@ -4,6 +4,7 @@ Benchmark between `pyreqwests_impersonate` and other python http clients:
 
 - curl_cffi
 - httpx
+- pycurl
 - pyreqwests_impersonate
 - python-tls-client
 - requests
