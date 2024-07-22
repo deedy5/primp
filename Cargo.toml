@@ -28,6 +28,7 @@ encoding_rs = { version = "0.8" }
 ahash = "0.8"
 indexmap = { version = "2", features = ["serde"] }
 tokio = { version = "1", features = ["rt"] }
+html2text = "0.12"
 
 [profile.release]
 codegen-units = 1
