@@ -1,43 +1,27 @@
 ![Python >= 3.8](https://img.shields.io/badge/python->=3.8-red.svg) [![](https://badgen.net/github/release/deedy5/pyreqwest-impersonate)](https://github.com/deedy5/pyreqwest-impersonate/releases) [![](https://badge.fury.io/py/pyreqwest_impersonate.svg)](https://pypi.org/project/pyreqwest_impersonate) [![Downloads](https://static.pepy.tech/badge/pyreqwest_impersonate/week)](https://pepy.tech/project/pyreqwest_impersonate) [![CI](https://github.com/deedy5/pyreqwest-impersonate/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/deedy5/pyreqwest-impersonate/actions/workflows/CI.yml)
 # Pyreqwest_impersonate
 
-The fastest python HTTP client that can impersonate web browsers by mimicking their headers and `TLS/JA3/JA4/HTTP2` fingerprints.</br>
-
-Provides precompiled wheels:
-- [x] Linux|musl:  `amd64`, `aarch64`.
-- [x] Windows: `amd64`.
-- [x] MacOS:  `amd64`, `aarch64`.
+The fastest python HTTP client that can impersonate web browsers.</br>
+Provides precompiled wheels: `linux` (amd64, aarch64), `windows` (amd64); `macos` (amd64, aarch64).
 
 ## Table of Contents
 
 - [Installation](#installation)
-- [Key Features](#key-features)
+- [Benchmark](#benchmark)
 - [Usage](#usage)
- - [I. Client](#i-client)
- - [II. AsyncClient](#ii-asyncclient)
+  - [I. Client](#i-client)
+    - [Client methods](#client-methods)
+    - [Response object](#response-object)
+    - [Examples](#examples)
+  - [II. AsyncClient](#ii-asyncclient)
 
 ## Installation
 
 ```python
 pip install -U pyreqwest_impersonate
 ```
-To improve the performance of the library for your particular processor, you can build the library yourself using Rust. Install Rust: https://www.rust-lang.org/tools/install
-```python
-git clone https://github.com/deedy5/pyreqwest_impersonate.git
-cd pyreqwest_impersonate
-python3 -m venv .venv
-source .venv/bin/activate
-pip install maturin
-RUSTFLAGS="-C target-cpu=native" maturin develop --release  
-# Compiled library will be here: .venv/lib/python3.1x/site-packages
-```
 
-## Key Features
-- Impersonate: The Client offers an `impersonate` option, enabling it to mimic web browsers by replicating their headers and TLS/JA3/JA4/HTTP2 fingerprints.
-- Thread-safe: The Client is designed to be thread-safe, allowing it to be safely used in multithreaded environments.
-- Automatic Character Encoding Detection: The encoding is taken from the "Content-Type" header, but if not specified, "UTF-8". If encoding does not match the content, the package automatically detects and uses the correct encoding to decode the text.
-- Small Size: The compiled library is about 5.8MB in size.
-- High Performance: The library is designed for a large number of threads, uses all processors, and releases the GIL. All operations like accessing headers, decoding text, or parsing JSON are executed in Rust.
+## Benchmark
 
 ![](https://github.com/deedy5/pyreqwest_impersonate/blob/main/benchmark.jpg?raw=true)
 
@@ -77,7 +61,7 @@ class Client:
     """
 ```
 
-#### Client Methods
+#### Client methods
 
 The `Client` class provides a set of methods for making HTTP requests: `get`, `head`, `options`, `delete`, `post`, `put`, `patch`, each of which internally utilizes the `request()` method for execution. The parameters for these methods closely resemble those in `httpx`.
 ```python
@@ -136,6 +120,17 @@ def post(
 
     """
 ```
+#### Response object
+```python
+resp.content
+resp.cookies
+resp.headers
+resp.json()
+resp.plaintext  # html is converted to markdown text
+resp.status_code
+resp.text
+resp.url
+```
 
 #### Examples
 
@@ -152,15 +147,6 @@ print(resp.json())
 params = {"param1": "value1", "param2": "value2"}
 resp = client.post(url="https://httpbin.org/anything", params=params, timeout=10)
 print(r.text)
-
-# Response object
-print(resp.content)
-print(resp.cookies)
-print(resp.headers)
-print(resp.json())
-print(resp.status_code)
-print(resp.text)
-print(resp.url)
 
 # POST Binary Request Data
 content = b"some_data"
