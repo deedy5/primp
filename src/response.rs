@@ -1,5 +1,5 @@
 use encoding_rs::Encoding;
-use html2text::from_read;
+use html2text::{from_read, from_read_with_decorator, render::text_renderer::TrivialDecorator};
 use pyo3::exceptions;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyString};
@@ -66,9 +66,16 @@ impl Response {
     }
 
     #[getter]
-    fn plaintext(&mut self, py: Python) -> PyResult<String> {
+    fn text_markdown(&mut self, py: Python) -> PyResult<String> {
         let raw_bytes = self.content.bind(py).as_bytes();
-        let text = from_read(raw_bytes, 1080);
+        let text = from_read(raw_bytes, usize::MAX);
+        Ok(text)
+    }
+
+    #[getter]
+    fn text_plain(&mut self, py: Python) -> PyResult<String> {
+        let raw_bytes = self.content.bind(py).as_bytes();
+        let text = from_read_with_decorator(raw_bytes, usize::MAX, TrivialDecorator::new());
         Ok(text)
     }
 }
