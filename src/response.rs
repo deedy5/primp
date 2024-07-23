@@ -66,7 +66,7 @@ impl Response {
     }
 
     #[getter]
-    fn plaintext(&mut self, py: Python) -> PyResult<String> {
+    fn text_markdown(&mut self, py: Python) -> PyResult<String> {
         let raw_bytes = self.content.bind(py).as_bytes();
         let text = from_read(raw_bytes, 1080);
         Ok(text)
