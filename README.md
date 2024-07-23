@@ -127,9 +127,10 @@ resp.cookies
 resp.encoding
 resp.headers
 resp.json()
-resp.plaintext  # html is converted to markdown text
 resp.status_code
 resp.text
+resp.text_markdown  # html is converted to markdown text
+resp.text_plain  # html is converted to plain text
 resp.url
 ```
 
