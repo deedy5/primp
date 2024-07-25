@@ -5,35 +5,29 @@ use indexmap::IndexMap;
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict};
 
-// Get encoding from the "Content-Type" header
+/// Get encoding from the "Content-Type" header
 pub fn get_encoding_from_headers(
     headers: &IndexMap<String, String, RandomState>,
 ) -> Option<String> {
-    // Extract and decode the Content-Type header
-    let content_type = headers
+    headers
         .iter()
-        .find_map(|(key, value)| {
-            if key.to_lowercase() == "content-type" {
-                Some(value.clone())
+        .find(|(key, _)| key.to_ascii_lowercase() == "content-type")
+        .map(|(_, value)| value.as_str())
+        .and_then(|content_type| {
+            // Parse the Content-Type header to separate the media type and parameters
+            let mut parts = content_type.split(';');
+            let media_type = parts.next().unwrap_or("").trim();
+            let params = parts.next().unwrap_or("").trim();
+
+            // Check for specific conditions and return the appropriate encoding
+            if let Some(param) = params.to_ascii_lowercase().strip_prefix("charset=") {
+                Some(param.trim_matches('"').to_string())
+            } else if media_type == "application/json" {
+                Some("UTF-8".into())
             } else {
                 None
             }
         })
-        .unwrap_or_default();
-
-    // Parse the Content-Type header to separate the media type and parameters
-    let mut parts = content_type.split(';');
-    let media_type = parts.next().unwrap_or("").trim();
-    let params = parts.next().unwrap_or("").trim();
-
-    // Check for specific conditions and return the appropriate encoding
-    if let Some(param) = params.to_lowercase().strip_prefix("charset=") {
-        Some(param.trim_matches('"').to_string())
-    } else if media_type == "application/json" {
-        Some("UTF-8".into())
-    } else {
-        None
-    }
 }
 
 /// Get encoding from the `<meta charset="...">` tag within the first 2048 bytes of HTML content.
