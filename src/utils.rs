@@ -39,20 +39,24 @@ pub fn get_encoding_from_headers(
 /// Get encoding from the `<meta charset="...">` tag within the first 2048 bytes of HTML content.
 pub fn get_encoding_from_content(raw_bytes: &[u8]) -> Option<String> {
     let start_sequence = b"charset=";
-    let end_sequence = b'"';
+    let start_sequence_len = start_sequence.len();
+    let end_sequence = b'>';
     let max_index = min(2048, raw_bytes.len());
 
     let start_index = raw_bytes[..max_index]
-        .windows(start_sequence.len())
+        .windows(start_sequence_len)
         .position(|window| window == start_sequence);
 
     if let Some(start_index) = start_index {
-        let end_index = raw_bytes[start_index..max_index]
+        let end_index = &raw_bytes[start_index..max_index]
             .iter()
             .position(|&byte| byte == end_sequence)?;
 
-        let charset_slice = &raw_bytes[start_index + start_sequence.len()..start_index + end_index];
-        Some(String::from_utf8_lossy(charset_slice).into_owned())
+        let charset_slice = &raw_bytes[start_index + start_sequence_len..start_index + end_index];
+        let charset = String::from_utf8_lossy(charset_slice)
+            .trim_matches('"')
+            .to_string();
+        Some(charset)
     } else {
         None
     }
@@ -119,6 +123,15 @@ mod utils_tests {
         assert_eq!(
             get_encoding_from_content(raw_html),
             Some("windows1252".into())
+        );
+    }
+
+    #[test]
+    fn test_get_encoding_from_content_present_charset2() {
+        let raw_html = b"<html><head><meta charset=\"windows1251\"></head></html>";
+        assert_eq!(
+            get_encoding_from_content(raw_html),
+            Some("windows1251".into())
         );
     }
 
