@@ -34,7 +34,7 @@ impl Response {
         let raw_bytes = &self.content.bind(py).as_bytes();
 
         // Release the GIL here because decoding can be CPU-intensive
-        let (decoded_str, detected_encoding_name) = py.allow_threads(move || {
+        let (decoded_str, detected_encoding_name) = py.allow_threads(|| {
             let encoding_name_bytes = &encoding_name.as_bytes().to_vec();
             let encoding = Encoding::for_label(encoding_name_bytes).ok_or_else(|| {
                 PyErr::new::<exceptions::PyValueError, _>(format!(
@@ -68,14 +68,16 @@ impl Response {
     #[getter]
     fn text_markdown(&mut self, py: Python) -> PyResult<String> {
         let raw_bytes = self.content.bind(py).as_bytes();
-        let text = from_read(raw_bytes, usize::MAX);
+        let text = py.allow_threads(|| from_read(raw_bytes, usize::MAX));
         Ok(text)
     }
 
     #[getter]
     fn text_plain(&mut self, py: Python) -> PyResult<String> {
         let raw_bytes = self.content.bind(py).as_bytes();
-        let text = from_read_with_decorator(raw_bytes, usize::MAX, TrivialDecorator::new());
+        let text = py.allow_threads(|| {
+            from_read_with_decorator(raw_bytes, usize::MAX, TrivialDecorator::new())
+        });
         Ok(text)
     }
 }
