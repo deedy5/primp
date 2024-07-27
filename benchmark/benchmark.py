@@ -11,26 +11,31 @@ import pycurl
 import primp
 import curl_cffi.requests
 
+
 class PycurlSession:
     def __init__(self):
         self.c = pycurl.Curl()
         self.content = None
 
+    def __del__(self):
+        self.close()
+
+    def close(self):
+        self.c.close()
+
     def get(self, url):
         buffer = BytesIO()
         self.c.setopt(pycurl.URL, url)
         self.c.setopt(pycurl.WRITEDATA, buffer)
-        self.c.setopt(pycurl.ENCODING, 'gzip')  # Automatically handle gzip encoding
+        self.c.setopt(pycurl.ENCODING, "gzip")  # Automatically handle gzip encoding
         self.c.perform()
         self.content = buffer.getvalue()
         return self
 
     @property
     def text(self):
-        return self.content.decode('utf-8')
+        return self.content.decode("utf-8")
 
-    def __del__(self):
-        self.c.close()
 
 results = []
 PACKAGES = [
@@ -50,13 +55,21 @@ def add_package_version(packages):
 def get_test(session_class, requests_number):
     for _ in range(requests_number):
         s = session_class()
-        s.get(url).text
+        try:
+            s.get(url).text
+        finally:
+            if hasattr(s, "close"):
+                s.close()
 
 
 def session_get_test(session_class, requests_number):
     s = session_class()
-    for _ in range(requests_number):
-        s.get(url).text
+    try:
+        for _ in range(requests_number):
+            s.get(url).text
+    finally:
+        if hasattr(s, "close"):
+            s.close()
 
 
 PACKAGES = add_package_version(PACKAGES)
