@@ -1,8 +1,9 @@
-![Python >= 3.8](https://img.shields.io/badge/python->=3.8-red.svg) [![](https://badgen.net/github/release/deedy5/pyreqwest-impersonate)](https://github.com/deedy5/pyreqwest-impersonate/releases) [![](https://badge.fury.io/py/pyreqwest_impersonate.svg)](https://pypi.org/project/pyreqwest_impersonate) [![Downloads](https://static.pepy.tech/badge/pyreqwest_impersonate/week)](https://pepy.tech/project/pyreqwest_impersonate) [![CI](https://github.com/deedy5/pyreqwest-impersonate/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/deedy5/pyreqwest-impersonate/actions/workflows/CI.yml)
-# Pyreqwest_impersonate
+![Python >= 3.8](https://img.shields.io/badge/python->=3.8-red.svg) [![](https://badgen.net/github/release/deedy5/pyreqwest-impersonate)](https://github.com/deedy5/pyreqwest-impersonate/releases) [![](https://badge.fury.io/py/primp.svg)](https://pypi.org/project/primp) [![Downloads](https://static.pepy.tech/badge/primp/week)](https://pepy.tech/project/primp) [![CI](https://github.com/deedy5/pyreqwest-impersonate/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/deedy5/pyreqwest-impersonate/actions/workflows/CI.yml)
+# PRIMP 
+**P**y**R**eqwest**IMP**ersonate
 
 The fastest python HTTP client that can impersonate web browsers.</br>
-Provides precompiled wheels: 🐧`linux|musllinux` (*amd64*, *aarch64*), 🪟`windows` (*amd64*); 🍏`macos` (*amd64*, *aarch64*).
+Provides precompiled wheels: 🐧`linux|musl`-*amd64*, *aarch64*; 🪟`windows`-*amd64*; 🍏`macos`-*amd64*, *aarch64*.
 
 ## Table of Contents
 
@@ -19,7 +20,7 @@ Provides precompiled wheels: 🐧`linux|musllinux` (*amd64*, *aarch64*), 🪟`wi
 ## Installation
 
 ```python
-pip install -U pyreqwest_impersonate
+pip install -U primp
 ```
 
 ## Features
@@ -33,7 +34,7 @@ pip install -U pyreqwest_impersonate
 
 ## Benchmark
 
-![](https://github.com/deedy5/pyreqwest_impersonate/blob/main/benchmark.jpg?raw=true)
+![](https://github.com/deedy5/primp/blob/main/benchmark.jpg?raw=true)
 
 ## Usage
 ### I. Client
@@ -147,9 +148,9 @@ resp.url
 #### Examples
 
 ```python
-import pyreqwest_impersonate as pri
+import primp
 
-client = pri.Client(impersonate="chrome_126")
+client = primp.Client(impersonate="chrome_126")
 
 # GET request
 resp = client.get("https://tls.peet.ws/api/all")
@@ -191,13 +192,13 @@ resp = client.post(url="https://httpbin.org/anything", auth_bearer=auth_bearer)
 print(r.text)
 
 # Using proxy
-resp = pri.Client(proxy="http://127.0.0.1:8080").get("https://tls.peet.ws/api/all")
+resp = primp.Client(proxy="http://127.0.0.1:8080").get("https://tls.peet.ws/api/all")
 print(resp.json())
 
 # You can also use convenience functions that use a default Client instance under the hood:
-# pri.get() | pri.head() | pri.options() | pri.delete() | pri.post() | pri.patch() | pri.put()
+# primp.get() | primp.head() | primp.options() | primp.delete() | primp.post() | primp.patch() | primp.put()
 # These functions can accept the `impersonate` parameter:
-resp = pri.get("https://httpbin.org/anything", impersonate="chrome_126")
+resp = primp.get("https://httpbin.org/anything", impersonate="chrome_126")
 print(r.text)
 ```
 

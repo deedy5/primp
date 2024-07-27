@@ -7,11 +7,11 @@ use indexmap::IndexMap;
 use pyo3::exceptions;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyString};
-use reqwest_impersonate::header::{HeaderMap, HeaderName, HeaderValue, COOKIE};
-use reqwest_impersonate::impersonate::Impersonate;
-use reqwest_impersonate::multipart;
-use reqwest_impersonate::redirect::Policy;
-use reqwest_impersonate::Method;
+use rquest::header::{HeaderMap, HeaderName, HeaderValue, COOKIE};
+use rquest::impersonate::Impersonate;
+use rquest::multipart;
+use rquest::redirect::Policy;
+use rquest::Method;
 use tokio::runtime::{self, Runtime};
 
 mod response;
@@ -34,7 +34,7 @@ fn runtime() -> &'static Runtime {
 #[pyclass]
 /// HTTP client that can impersonate web browsers.
 pub struct Client {
-    client: Arc<reqwest_impersonate::Client>,
+    client: Arc<rquest::Client>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     params: Option<IndexMap<String, String, RandomState>>,
@@ -71,7 +71,7 @@ impl Client {
     /// # Example
     ///
     /// ```
-    /// from reqwest_impersonate import Client
+    /// from primp import Client
     ///
     /// client = Client(
     ///     auth=("name", "password"),
@@ -117,7 +117,7 @@ impl Client {
         }
 
         // Client builder
-        let mut client_builder = reqwest_impersonate::Client::builder()
+        let mut client_builder = rquest::Client::builder()
             .enable_ech_grease()
             .permute_extensions();
 
@@ -157,7 +157,7 @@ impl Client {
 
         // Proxy
         if let Some(proxy_url) = proxy {
-            let proxy = reqwest_impersonate::Proxy::all(proxy_url)
+            let proxy = rquest::Proxy::all(proxy_url)
                 .map_err(|_| PyErr::new::<exceptions::PyValueError, _>("Invalid proxy URL"))?;
             client_builder = client_builder.proxy(proxy);
         }
@@ -1038,7 +1038,7 @@ fn patch(
 }
 
 #[pymodule]
-fn pyreqwest_impersonate(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn primp(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Client>()?;
     m.add_function(wrap_pyfunction!(request, m)?)?;
     m.add_function(wrap_pyfunction!(get, m)?)?;

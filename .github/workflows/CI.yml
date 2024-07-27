@@ -57,7 +57,7 @@ jobs:
           for version in 3.8 3.9 3.10 3.11 3.12; do
             uv venv --preview --python $version
             source .venv/bin/activate
-            uv pip install pyreqwest_impersonate --no-index --find-links dist --force-reinstall
+            uv pip install primp --no-index --find-links dist --force-reinstall
             uv pip install pytest
             pytest
           done
@@ -77,7 +77,7 @@ jobs:
             for version in 3.8 3.9 3.10 3.11 3.12; do
               uv venv --preview --python $version
               source .venv/bin/activate
-              uv pip install pyreqwest_impersonate --no-index --find-links dist --force-reinstall
+              uv pip install primp --no-index --find-links dist --force-reinstall
               uv pip install pytest
               pytest
             done
@@ -121,7 +121,7 @@ jobs:
             for version in 3.8 3.9 3.10 3.11 3.12; do
               python$version -m venv .venv
               source .venv/bin/activate
-              pip install pyreqwest_impersonate --no-index --find-links dist --force-reinstall
+              pip install primp --no-index --find-links dist --force-reinstall
               pip install pytest
               pytest
             done
@@ -162,7 +162,7 @@ jobs:
           for version in 3.8 3.9 3.10 3.11 3.12; do
             uv venv --preview --python $version
             source .venv/Scripts/activate
-            uv pip install pyreqwest_impersonate --no-index --find-links dist --force-reinstall
+            uv pip install primp --no-index --find-links dist --force-reinstall
             uv pip install pytest
             pytest
           done
@@ -200,7 +200,7 @@ jobs:
           for version in 3.8 3.9 3.10 3.11 3.12; do
             uv venv --preview --python $version
             source .venv/bin/activate
-            uv pip install pyreqwest_impersonate --no-index --find-links dist --force-reinstall
+            uv pip install primp --no-index --find-links dist --force-reinstall
             uv pip install pytest
             pytest
           done
@@ -253,7 +253,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r benchmark/requirements.txt
-          pip install pyreqwest_impersonate --no-index --find-links ./ --force-reinstall
+          pip install primp --no-index --find-links ./ --force-reinstall
       - name: Start Uvicorn server
         run: |
           uvicorn benchmark.server:app --host 0.0.0.0 --port 8000 &
@@ -269,9 +269,9 @@ jobs:
           git add \*.jpg
           git diff --quiet && git diff --staged --quiet || git commit -m "Update generated image"
           git checkout -b update-generated-image
-          git push https://${{ secrets.PUSH_TOKEN }}@github.com/deedy5/pyreqwest_impersonate.git update-generated-image || echo "No changes to push"
+          git push https://${{ secrets.PUSH_TOKEN }}@github.com/deedy5/primp.git update-generated-image || echo "No changes to push"
           git fetch origin
           git checkout main
           git merge update-generated-image
-          git push https://${{ secrets.PUSH_TOKEN }}@github.com/deedy5/pyreqwest_impersonate.git main
+          git push https://${{ secrets.PUSH_TOKEN }}@github.com/deedy5/primp.git main
           git push origin --delete update-generated-image

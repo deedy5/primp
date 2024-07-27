@@ -1,5 +1,5 @@
 [package]
-name = "pyreqwest_impersonate"
+name = "primp"
 version = "0.5.3"
 edition = "2021"
 description = "HTTP client that can impersonate web browsers, mimicking their headers and `TLS/JA3/JA4/HTTP2` fingerprints"
@@ -8,12 +8,12 @@ authors = ["deedy5"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
-name = "pyreqwest_impersonate"
+name = "primp"
 crate-type = ["cdylib"]
 
 [dependencies]
 pyo3 = { version = "0.22", features = ["extension-module", "abi3-py38", "indexmap"] }
-reqwest-impersonate = { version = "0.11", default-features = false, features = [ 
+rquest = { version = "0.11", default-features = false, features = [ 
     "cookies",
     "boring-tls",
     "impersonate",

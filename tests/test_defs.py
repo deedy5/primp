@@ -1,6 +1,6 @@
 from time import sleep
 
-import pyreqwest_impersonate as pri
+import primp  # type: ignore
 
 
 def retry(max_retries=5, delay=1):
@@ -27,7 +27,7 @@ def test_request_get():
     headers = {"X-Test": "test"}
     cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
-    response = pri.request(
+    response = primp.request(
         "GET",
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
@@ -53,7 +53,7 @@ def test_get():
     headers = {"X-Test": "test"}
     cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
-    response = pri.get(
+    response = primp.get(
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
@@ -74,14 +74,14 @@ def test_get():
 
 @retry()
 def test_head():
-    response = pri.head("https://httpbin.org/anything", verify=False)
+    response = primp.head("https://httpbin.org/anything", verify=False)
     assert response.status_code == 200
     assert "content-length" in response.headers
 
 
 @retry()
 def test_options():
-    response = pri.options("https://httpbin.org/anything", verify=False)
+    response = primp.options("https://httpbin.org/anything", verify=False)
     assert response.status_code == 200
     assert sorted(response.headers["allow"].split(", ")) == ['DELETE', 'GET', 'HEAD', 'OPTIONS', 'PATCH', 'POST', 'PUT', 'TRACE']
 
@@ -92,7 +92,7 @@ def test_delete():
     headers = {"X-Test": "test"}
     cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
-    response = pri.delete(
+    response = primp.delete(
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
@@ -118,7 +118,7 @@ def test_post_content():
     cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     content = b"test content"
-    response = pri.post(
+    response = primp.post(
         "https://httpbin.org/anything",
         auth=auth,
         headers=headers,
@@ -144,7 +144,7 @@ def test_post_data():
     cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     data = {"key1": "value1", "key2": "value2"}
-    response = pri.post(
+    response = primp.post(
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
@@ -170,7 +170,7 @@ def test_post_data2():
     cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     data = {"key1": "value1", "key2": ["value2_1", "value2_2"]}
-    response = pri.post(
+    response = primp.post(
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
@@ -196,7 +196,7 @@ def test_post_json():
     cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     data = {"key1": "value1", "key2": "value2"}
-    response = pri.post(
+    response = primp.post(
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
@@ -222,7 +222,7 @@ def test_client_post_files():
     cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     files = {"file1": b"aaa111", "file2": b"bbb222"}
-    response = pri.post(
+    response = primp.post(
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
@@ -248,7 +248,7 @@ def test_patch():
     cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     data = {"key1": "value1", "key2": "value2"}
-    response = pri.patch(
+    response = primp.patch(
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
@@ -274,7 +274,7 @@ def test_put():
     cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     data = {"key1": "value1", "key2": "value2"}
-    response = pri.put(
+    response = primp.put(
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
@@ -295,7 +295,7 @@ def test_put():
 
 @retry()
 def test_get_impersonate_chrome126():
-    response = pri.get("https://tls.peet.ws/api/all", impersonate="chrome_126", verify=False)
+    response = primp.get("https://tls.peet.ws/api/all", impersonate="chrome_126", verify=False)
     assert response.status_code == 200
     json_data = response.json()
     assert json_data["http_version"] == "h2"

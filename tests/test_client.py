@@ -1,6 +1,6 @@
 from time import sleep
 
-from pyreqwest_impersonate import Client
+from primp import Client  # type: ignore
 
 
 def retry(max_retries=5, delay=1):

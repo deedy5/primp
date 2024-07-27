@@ -8,7 +8,7 @@ import requests
 import httpx
 import tls_client
 import pycurl
-import pyreqwest_impersonate
+import primp
 import curl_cffi.requests
 
 class PycurlSession:
@@ -39,7 +39,7 @@ PACKAGES = [
     ("tls_client", tls_client.Session),
     ("curl_cffi", curl_cffi.requests.Session),
     ("pycurl", PycurlSession),
-    ("pyreqwest_impersonate", pyreqwest_impersonate.Client),
+    ("primp", primp.Client),
 ]
 
 
