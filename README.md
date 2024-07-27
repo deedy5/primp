@@ -1,9 +1,10 @@
 ![Python >= 3.8](https://img.shields.io/badge/python->=3.8-red.svg) [![](https://badgen.net/github/release/deedy5/pyreqwest-impersonate)](https://github.com/deedy5/pyreqwest-impersonate/releases) [![](https://badge.fury.io/py/primp.svg)](https://pypi.org/project/primp) [![Downloads](https://static.pepy.tech/badge/primp/week)](https://pepy.tech/project/primp) [![CI](https://github.com/deedy5/pyreqwest-impersonate/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/deedy5/pyreqwest-impersonate/actions/workflows/CI.yml)
 # PRIMP 
-**P**y**R**eqwest**IMP**ersonate
+**PRIMP** = **P**y**R**eqwest_**IMP**ersonate
 
 The fastest python HTTP client that can impersonate web browsers.</br>
-Provides precompiled wheels: 🐧`linux|musl`-*amd64*, *aarch64*; 🪟`windows`-*amd64*; 🍏`macos`-*amd64*, *aarch64*.
+Provides precompiled wheels: 🐧`linux|musl`-*amd64*, *aarch64*; 🪟`windows`-*amd64*; 🍏`macos`-*amd64*, *aarch64*.</br>
+Python binding to the rust [rquest](https://github.com/0x676e67/rquest) library.
 
 ## Table of Contents
 
