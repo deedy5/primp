@@ -1,9 +1,9 @@
 ![Python >= 3.8](https://img.shields.io/badge/python->=3.8-red.svg) [![](https://badgen.net/github/release/deedy5/pyreqwest-impersonate)](https://github.com/deedy5/pyreqwest-impersonate/releases) [![](https://badge.fury.io/py/primp.svg)](https://pypi.org/project/primp) [![Downloads](https://static.pepy.tech/badge/primp/week)](https://pepy.tech/project/primp) [![CI](https://github.com/deedy5/pyreqwest-impersonate/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/deedy5/pyreqwest-impersonate/actions/workflows/CI.yml)
-# PRIMP 
-**PRIMP** = **P**y**R**eqwest_**IMP**ersonate
+# 🪞PRIMP
+**🪞PRIMP** = **P**ython **R**equests **IMP**ersonate
 
 The fastest python HTTP client that can impersonate web browsers.</br>
-Provides precompiled wheels: 🐧`linux|musl`-*amd64*, *aarch64*; 🪟`windows`-*amd64*; 🍏`macos`-*amd64*, *aarch64*.</br>
+Provides precompiled wheels: 🐧`linux|musl`-*amd64*,*aarch64*; 🪟`windows`-*amd64*; 🍏`macos`-*amd64*,*aarch64*.</br>
 Python binding to the rust [rquest](https://github.com/0x676e67/rquest) library.
 
 ## Table of Contents
@@ -26,12 +26,12 @@ pip install -U primp
 
 ## Features
 - [x] Impersonate: impersonate option mimics web browsers by replicating their headers and TLS/JA3/JA4/HTTP2 fingerprints.
-- [x] Automatic Character Encoding Detection: the encoding is taken from the `Content-Type` header or `<meta ... charset=` within the html, or if not found, `UTF-8`. If the encoding does not match the content, the library automatically detects and uses the correct encoding to decode the text.
+- [x] Automatic Character Encoding Detection: the encoding is taken from the `Content-Type` header or `<meta ... charset=` within the html, or if not found, `UTF-8`. If the encoding is incorrect, the library tries to determine the correct encoding to decode the text.
 - [x] Html2text: the `text_plain`|`text_markdown` response attributes extract *plain*|*markdown* text from html.
-- [x] All decoders: `gzip`, `brotli`, `zstd` are already included and do not require third party packages.
-- [x] Small Size: the compiled library is about 6.9MB in size.
+- [x] All Decoders: `gzip`, `brotli`, `zstd` are already included and do not require third party packages.
 - [x] High Performance: the library is designed for a large number of threads, uses all processors, and releases the GIL.
 - [x] Thread-safe: library can be safely used in multithreaded environments.
+- [x] Small Size: the compiled library is about 6.8MB in size.
 
 ## Benchmark
 
