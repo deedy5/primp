@@ -68,16 +68,15 @@ impl Response {
     #[getter]
     fn text_markdown(&mut self, py: Python) -> PyResult<String> {
         let raw_bytes = self.content.bind(py).as_bytes();
-        let text = py.allow_threads(|| from_read(raw_bytes, usize::MAX));
+        let text = py.allow_threads(|| from_read(raw_bytes, 100));
         Ok(text)
     }
 
     #[getter]
     fn text_plain(&mut self, py: Python) -> PyResult<String> {
         let raw_bytes = self.content.bind(py).as_bytes();
-        let text = py.allow_threads(|| {
-            from_read_with_decorator(raw_bytes, usize::MAX, TrivialDecorator::new())
-        });
+        let text =
+            py.allow_threads(|| from_read_with_decorator(raw_bytes, 100, TrivialDecorator::new()));
         Ok(text)
     }
 }
