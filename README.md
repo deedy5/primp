@@ -4,7 +4,6 @@
 
 The fastest python HTTP client that can impersonate web browsers.</br>
 Provides precompiled wheels: 🐧`linux|musl`-*amd64*,*aarch64*; 🪟`windows`-*amd64*; 🍏`macos`-*amd64*,*aarch64*.</br>
-Python binding to the rust [rquest](https://github.com/0x676e67/rquest) library.
 
 ## Table of Contents
 
@@ -57,9 +56,9 @@ class Client:
         referer (bool, optional): Enable or disable automatic setting of the `Referer` header. Default is True.
         proxy (str, optional): Proxy URL for HTTP requests. Example: "socks5://127.0.0.1:9150". Default is None.
         impersonate (str, optional): Entity to impersonate. Example: "chrome_124". Default is None.
-            Chrome: "chrome_99","chrome_100","chrome_101","chrome_104","chrome_105","chrome_106","chrome_107", 
-                "chrome_108","chrome_109","chrome_114","chrome_116","chrome_117","chrome_118","chrome_119", 
-                "chrome_120","chrome_123","chrome_124","chrome_126","chrome_127"
+            Chrome: "chrome_100","chrome_101","chrome_104","chrome_105","chrome_106","chrome_107","chrome_108",
+                "chrome_109","chrome_114","chrome_116","chrome_117","chrome_118","chrome_119","chrome_120",
+                "chrome_123","chrome_124","chrome_126","chrome_127"
             Safari: "safari_ios_16.5","safari_ios_17.2","safari_ios_17.4.1","safari_15.3","safari_15.5","safari_15.6.1",
                 "safari_16","safari_16.5","safari_17.2.1","safari_17.4.1","safari_17.5"
             OkHttp: "okhttp_3.9","okhttp_3.11","okhttp_3.13","okhttp_3.14","okhttp_4.9","okhttp_4.10","okhttp_5"
