@@ -8,7 +8,7 @@ use pyo3::exceptions;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyString};
 use rquest::header::{HeaderMap, HeaderName, HeaderValue, COOKIE};
-use rquest::impersonate::Impersonate;
+use rquest::tls::Impersonate;
 use rquest::multipart;
 use rquest::redirect::Policy;
 use rquest::Method;
