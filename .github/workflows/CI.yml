@@ -25,15 +25,18 @@ jobs:
       fail-fast: false
       matrix:
         platform:
-          - runner: ubuntu-latest
+          - runner: ubuntu-20.04
             target: x86_64
-          - runner: ubuntu-latest
+          - runner: ubuntu-22.04
             target: aarch64
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: 3.x
+      - name: Install aarch64 build dependencies
+        if: ${{ startsWith(matrix.platform.target, 'aarch64') }}
+        run: sudo apt-get update && sudo apt-get install --yes crossbuild-essential-arm64
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -42,8 +45,13 @@ jobs:
           args: --release --out dist
           sccache: 'true'
           manylinux: auto
+          container: 'off'
         env:
           CFLAGS_aarch64_unknown_linux_gnu: "-D__ARM_ARCH=8"
+          CC: ${{ matrix.platform.target }}-linux-gnu-gcc
+          CXX: ${{ matrix.platform.target }}-linux-gnu-g++
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: x86_64-linux-gnu-g++
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-g++
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
@@ -98,6 +106,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: 3.x
+      - name: Install aarch64 build dependencies
+        if: ${{ startsWith(matrix.platform.target, 'aarch64') }}
+        run: sudo apt-get update && sudo apt-get install --yes crossbuild-essential-arm64
+      - name: Prepare musl cross-compiler
+        run: |
+          curl -O http://musl.cc/${{ matrix.platform.target }}-linux-musl-cross.tgz
+          tar xzf ${{ matrix.platform.target }}-linux-musl-cross.tgz -C /opt
+          echo "/opt/${{ matrix.platform.target }}-linux-musl-cross/bin/" >> $GITHUB_PATH
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -106,6 +122,12 @@ jobs:
           args: --release --out dist
           sccache: 'true'
           manylinux: musllinux_1_2
+          container: 'off'
+        env:
+          CC: ${{ matrix.platform.target }}-linux-musl-gcc
+          CXX: ${{ matrix.platform.target }}-linux-musl-g++
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: x86_64-linux-musl-g++
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-musl-g++
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
