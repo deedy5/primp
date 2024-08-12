@@ -3,7 +3,10 @@
 **🪞PRIMP** = **P**ython **R**equests **IMP**ersonate
 
 The fastest python HTTP client that can impersonate web browsers.</br>
-Provides precompiled wheels: 🐧`linux|musl`-*amd64*,*aarch64*; 🪟`windows`-*amd64*; 🍏`macos`-*amd64*,*aarch64*.</br>
+Provides precompiled wheels:</br>
+  * 🐧 linux|musl: `amd64`(*manylinux_2_28|musllinux_1_2*), `aarch64`(*manylinux_2_34‼️|musllinux_1_2*);</br> 
+  * 🪟 windows: `amd64`;</br>
+  * 🍏 macos: `amd64`, `aarch64`.</br>
 
 ## Table of Contents
 
