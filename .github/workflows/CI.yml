@@ -50,7 +50,7 @@ jobs:
           CFLAGS_aarch64_unknown_linux_gnu: "-D__ARM_ARCH=8"
           CC: ${{ matrix.platform.target }}-linux-gnu-gcc
           CXX: ${{ matrix.platform.target }}-linux-gnu-g++
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: x86_64-linux-gnu-g++
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: x86_64-linux-gnu-g++
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-g++
       - name: Upload wheels
         uses: actions/upload-artifact@v4
