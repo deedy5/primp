@@ -386,6 +386,8 @@ impl Client {
         let url = PyString::new_bound(py, &f_url).unbind();
         let content = PyBytes::new_bound(py, &f_buf).unbind();
 
+        log::info!("response: {} {} {} {}", f_url, f_status_code, f_buf.len(), f_encoding);
+
         Ok(Response {
             content,
             cookies,
@@ -1004,6 +1006,8 @@ fn patch(
 
 #[pymodule]
 fn primp(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
+    pyo3_log::init();
+
     m.add_class::<Client>()?;
     m.add_function(wrap_pyfunction!(request, m)?)?;
     m.add_function(wrap_pyfunction!(get, m)?)?;
