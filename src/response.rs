@@ -1,8 +1,10 @@
+use crate::utils::{get_encoding_from_content, get_encoding_from_headers};
+use ahash::RandomState;
 use anyhow::{anyhow, Result};
 use encoding_rs::Encoding;
 use html2text::{from_read, from_read_with_decorator, render::text_renderer::TrivialDecorator};
-use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyDict, PyString};
+use indexmap::IndexMap;
+use pyo3::{prelude::*, types::PyBytes};
 
 /// A struct representing an HTTP response.
 ///
@@ -13,29 +15,43 @@ pub struct Response {
     #[pyo3(get)]
     pub content: Py<PyBytes>,
     #[pyo3(get)]
-    pub cookies: Py<PyDict>,
+    pub cookies: IndexMap<String, String, RandomState>,
+    #[pyo3(get, set)]
+    pub encoding: String,
     #[pyo3(get)]
-    pub encoding: Py<PyString>,
+    pub headers: IndexMap<String, String, RandomState>,
     #[pyo3(get)]
-    pub headers: Py<PyDict>,
+    pub status_code: u16,
     #[pyo3(get)]
-    pub status_code: Py<PyAny>,
-    #[pyo3(get)]
-    pub url: Py<PyString>,
+    pub url: String,
 }
 
 #[pymethods]
 impl Response {
     #[getter]
+    fn get_encoding(&mut self, py: Python) -> Result<&String> {
+        if !self.encoding.is_empty() {
+            return Ok(&self.encoding);
+        }
+        self.encoding = get_encoding_from_headers(&self.headers)
+            .or(get_encoding_from_content(&self.content.bind(py).as_bytes()))
+            .unwrap_or("UTF-8".to_string());
+        Ok(&self.encoding)
+    }
+
+    #[getter]
     fn text(&mut self, py: Python) -> Result<String> {
-        let encoding_name = &self.encoding.bind(py).to_string();
+        // If self.encoding is empty, call get_encoding to populate self.encoding
+        if self.encoding.is_empty() {
+            self.get_encoding(py)?;
+        }
 
         // Convert Py<PyBytes> to &[u8]
         let raw_bytes = &self.content.bind(py).as_bytes();
 
         // Release the GIL here because decoding can be CPU-intensive
         let (decoded_str, detected_encoding_name) = py.allow_threads(|| {
-            let encoding_name_bytes = &encoding_name.as_bytes().to_vec();
+            let encoding_name_bytes = &self.encoding.as_bytes();
             let encoding = Encoding::for_label(encoding_name_bytes).ok_or({
                 anyhow!(
                     "Unsupported charset: {}",
@@ -51,8 +67,8 @@ impl Response {
         })?;
 
         // Update self.encoding based on the detected encoding
-        if encoding_name != &detected_encoding_name {
-            self.encoding = PyString::new_bound(py, &detected_encoding_name).into();
+        if &self.encoding != &detected_encoding_name {
+            self.encoding = detected_encoding_name;
         }
 
         Ok(decoded_str)

@@ -6,7 +6,7 @@ use ahash::RandomState;
 use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyDict, PyString};
+use pyo3::types::{PyBytes, PyDict};
 use rquest::header::{HeaderMap, HeaderName, HeaderValue, COOKIE};
 use rquest::tls::Impersonate;
 use rquest::multipart;
@@ -18,7 +18,7 @@ mod response;
 use response::Response;
 
 mod utils;
-use utils::{get_encoding_from_content, get_encoding_from_headers, json_dumps, url_encode};
+use utils::{json_dumps, url_encode};
 
 // Tokio global one-thread runtime
 fn runtime() -> &'static Runtime {
@@ -359,42 +359,23 @@ impl Client {
             let status_code = resp.status().as_u16();
             let url = resp.url().to_string();
             let buf = resp.bytes().await?;
-            let encoding = get_encoding_from_headers(&headers)
-                .or_else(|| get_encoding_from_content(&buf))
-                .unwrap_or_else(|| "UTF-8".to_string());
-            Ok((buf, cookies, encoding, headers, status_code, url))
+
+            log::info!("response: {} {} {}", url, status_code, buf.len());
+            Ok((buf, cookies, headers, status_code, url))
         };
 
         // Execute an async future, releasing the Python GIL for concurrency.
         // Use Tokio global runtime to block on the future.
         let result = py.allow_threads(|| runtime().block_on(future));
-        let (f_buf, f_cookies, f_encoding, f_headers, f_status_code, f_url) = result?;
-
-        // Response items
-        let cookies_dict = PyDict::new_bound(py);
-        for (key, value) in f_cookies {
-            cookies_dict.set_item(key, value)?;
-        }
-        let cookies = cookies_dict.unbind();
-        let encoding = PyString::new_bound(py, f_encoding.as_str()).unbind();
-        let headers_dict = PyDict::new_bound(py);
-        for (key, value) in f_headers {
-            headers_dict.set_item(key, value)?;
-        }
-        let headers = headers_dict.unbind();
-        let status_code = f_status_code.into_py(py);
-        let url = PyString::new_bound(py, &f_url).unbind();
-        let content = PyBytes::new_bound(py, &f_buf).unbind();
-
-        log::info!("response: {} {} {} {}", f_url, f_status_code, f_buf.len(), f_encoding);
+        let (f_buf, f_cookies, f_headers, f_status_code, f_url) = result?;
 
         Ok(Response {
-            content,
-            cookies,
-            encoding,
-            headers,
-            status_code,
-            url,
+            content: PyBytes::new_bound(py, &f_buf).unbind(),
+            cookies: f_cookies,
+            encoding: String::new(),
+            headers: f_headers,
+            status_code: f_status_code,
+            url: f_url,
         })
     }
 
