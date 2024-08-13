@@ -1,8 +1,8 @@
-import gzip
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
-
 from importlib.metadata import version
+
 import pandas as pd
 import requests
 import httpx
@@ -78,7 +78,7 @@ requests_number = 2000
 for session in [False, True]:
     for response_size in ["5k", "50k", "200k"]:
         url = f"http://127.0.0.1:8000/{response_size}"
-        print(f"\n{session=}, {response_size=}, {requests_number=}")
+        print(f"\nThreads=1, {session=}, {response_size=}, {requests_number=}")
         for name, session_class in PACKAGES:
             start = time.perf_counter()
             cpu_start = time.process_time()
@@ -116,6 +116,64 @@ print(pivot_df)
 
 for session in [False, True]:
     session_df = pivot_df[pivot_df["session"] == session]
-    print(f"\nTable for {session=}:")
+    print(f"\nThreads=1 {session=}:")
     print(session_df.to_string(index=False))
     session_df.to_csv(f"{session=}.csv", index=False)
+
+########################################################
+# Not for generating image, just to check multithreading working
+# Multiple threads
+requests_number = 2000
+threads_numbers = [5, 32]
+for threads_number in threads_numbers:
+    for response_size in ["5k", "50k", "200k"]:
+        url = f"http://127.0.0.1:8000/{response_size}"
+        print(
+            f"\nThreads={threads_number}, session=True, {response_size=}, {requests_number=}"
+        )
+        for name, session_class in PACKAGES:
+            start = time.perf_counter()
+            cpu_start = time.process_time()
+            with ThreadPoolExecutor(threads_number) as executor:
+                futures = [
+                    executor.submit(
+                        session_get_test,
+                        session_class,
+                        int(requests_number / threads_number),
+                    )
+                    for _ in range(threads_number)
+                ]
+                for f in as_completed(futures):
+                    f.result()
+            dur = round(time.perf_counter() - start, 2)
+            cpu_dur = round(time.process_time() - cpu_start, 2)
+            results.append(
+                {
+                    "name": name,
+                    "threads": threads_number,
+                    "size": response_size,
+                    "time": dur,
+                    "cpu_time": cpu_dur,
+                }
+            )
+            print(f"    name: {name:<30} time: {dur} cpu_time: {cpu_dur}")
+
+
+df = pd.DataFrame(results)
+pivot_df = df.pivot_table(
+    index=["name", "threads"],
+    columns="size",
+    values=["time", "cpu_time"],
+    aggfunc="mean",
+)
+pivot_df.reset_index(inplace=True)
+pivot_df.columns = [" ".join(col).strip() for col in pivot_df.columns.values]
+pivot_df = pivot_df[
+    ["name", "threads"]
+    + [col for col in pivot_df.columns if col not in ["name", "threads"]]
+]
+unique_threads = pivot_df["threads"].unique()
+for thread in unique_threads:
+    thread_df = pivot_df[pivot_df["threads"] == thread]
+    print(f"\nThreads={thread} session=True")
+    print(thread_df.to_string(index=False))
