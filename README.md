@@ -69,6 +69,7 @@ class Client:
         follow_redirects (bool, optional): Whether to follow redirects. Default is True.
         max_redirects (int, optional): Maximum redirects to follow. Default 20. Applies if `follow_redirects` is True.
         verify (bool, optional): Verify SSL certificates. Default is True.
+        ca_cert_file (str, optional): Path to CA certificate store. Default is None.
         http1 (bool, optional): Use only HTTP/1.1. Default is None.
         http2 (bool, optional): Use only HTTP/2. Default is None.
          
@@ -196,6 +197,12 @@ print(r.text)
 
 # Using proxy
 resp = primp.Client(proxy="http://127.0.0.1:8080").get("https://tls.peet.ws/api/all")
+print(resp.json())
+
+# Using custom CA certificate store: file or certifi.where()
+resp = primp.Client(ca_cert_file="/cert/cacert.pem").get("https://tls.peet.ws/api/all")
+print(resp.json())
+resp = primp.Client(ca_cert_file=certifi.where()).get("https://tls.peet.ws/api/all")
 print(resp.json())
 
 # You can also use convenience functions that use a default Client instance under the hood:

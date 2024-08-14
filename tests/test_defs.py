@@ -1,5 +1,6 @@
 from time import sleep
 
+import certifi
 import primp  # type: ignore
 
 
@@ -34,7 +35,7 @@ def test_request_get():
         headers=headers,
         cookies=cookies,
         params=params,
-        verify=False,
+        ca_cert_file=certifi.where(),
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -59,7 +60,7 @@ def test_get():
         headers=headers,
         cookies=cookies,
         params=params,
-        verify=False,
+        ca_cert_file=certifi.where(),
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -74,16 +75,27 @@ def test_get():
 
 @retry()
 def test_head():
-    response = primp.head("https://httpbin.org/anything", verify=False)
+    response = primp.head("https://httpbin.org/anything", ca_cert_file=certifi.where())
     assert response.status_code == 200
     assert "content-length" in response.headers
 
 
 @retry()
 def test_options():
-    response = primp.options("https://httpbin.org/anything", verify=False)
+    response = primp.options(
+        "https://httpbin.org/anything", ca_cert_file=certifi.where()
+    )
     assert response.status_code == 200
-    assert sorted(response.headers["allow"].split(", ")) == ['DELETE', 'GET', 'HEAD', 'OPTIONS', 'PATCH', 'POST', 'PUT', 'TRACE']
+    assert sorted(response.headers["allow"].split(", ")) == [
+        "DELETE",
+        "GET",
+        "HEAD",
+        "OPTIONS",
+        "PATCH",
+        "POST",
+        "PUT",
+        "TRACE",
+    ]
 
 
 @retry()
@@ -98,7 +110,7 @@ def test_delete():
         headers=headers,
         cookies=cookies,
         params=params,
-        verify=False,
+        ca_cert_file=certifi.where(),
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -125,7 +137,7 @@ def test_post_content():
         cookies=cookies,
         params=params,
         content=content,
-        verify=False,
+        ca_cert_file=certifi.where(),
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -151,7 +163,7 @@ def test_post_data():
         cookies=cookies,
         params=params,
         data=data,
-        verify=False,
+        ca_cert_file=certifi.where(),
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -177,7 +189,7 @@ def test_post_data2():
         cookies=cookies,
         params=params,
         data=data,
-        verify=False,
+        ca_cert_file=certifi.where(),
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -187,7 +199,7 @@ def test_post_data2():
     assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
     assert json_data["form"] == {"key1": "value1", "key2": ["value2_1", "value2_2"]}
-    
+
 
 @retry()
 def test_post_json():
@@ -203,7 +215,7 @@ def test_post_json():
         cookies=cookies,
         params=params,
         json=data,
-        verify=False,
+        ca_cert_file=certifi.where(),
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -229,7 +241,7 @@ def test_client_post_files():
         cookies=cookies,
         params=params,
         files=files,
-        verify=False,
+        ca_cert_file=certifi.where(),
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -255,7 +267,7 @@ def test_patch():
         cookies=cookies,
         params=params,
         data=data,
-        verify=False,
+        ca_cert_file=certifi.where(),
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -281,7 +293,7 @@ def test_put():
         cookies=cookies,
         params=params,
         data=data,
-        verify=False,
+        ca_cert_file=certifi.where(),
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -295,7 +307,11 @@ def test_put():
 
 @retry()
 def test_get_impersonate_chrome126():
-    response = primp.get("https://tls.peet.ws/api/all", impersonate="chrome_126", verify=False)
+    response = primp.get(
+        "https://tls.peet.ws/api/all",
+        impersonate="chrome_126",
+        ca_cert_file=certifi.where(),
+    )
     assert response.status_code == 200
     json_data = response.json()
     assert json_data["http_version"] == "h2"
