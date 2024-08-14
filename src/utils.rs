@@ -3,7 +3,49 @@ use std::cmp::min;
 use ahash::RandomState;
 use indexmap::IndexMap;
 use pyo3::prelude::*;
+use pyo3::sync::GILOnceCell;
 use pyo3::types::{PyBool, PyDict};
+
+static JSON_DUMPS: GILOnceCell<Py<PyAny>> = GILOnceCell::new();
+static JSON_LOADS: GILOnceCell<Py<PyAny>> = GILOnceCell::new();
+
+/// python json.dumps
+pub fn json_dumps(py: Python<'_>) -> &Bound<'_, PyAny> {
+    JSON_DUMPS
+        .get_or_init(py, || {
+            py.import_bound("json")
+                .unwrap()
+                .getattr("dumps")
+                .unwrap()
+                .unbind()
+        })
+        .bind(py)
+}
+
+/// python json.loads
+pub fn json_loads(py: Python<'_>) -> &Bound<'_, PyAny> {
+    JSON_LOADS
+        .get_or_init(py, || {
+            py.import_bound("json")
+                .unwrap()
+                .getattr("loads")
+                .unwrap()
+                .unbind()
+        })
+        .bind(py)
+}
+
+/// python urllib.parse.urlencode
+pub fn url_encode(py: Python, pydict: Option<&Bound<'_, PyDict>>) -> PyResult<String> {
+    let urllib_parse = PyModule::import_bound(py, "urllib.parse")?;
+    let urlencode = urllib_parse.getattr("urlencode")?;
+    match pydict {
+        Some(dict) => urlencode
+            .call1((dict, ("doseq", py.get_type_bound::<PyBool>().call1(())?)))?
+            .extract::<String>(),
+        None => Ok("".to_string()),
+    }
+}
 
 /// Get encoding from the "Content-Type" header
 pub fn get_encoding_from_headers(
@@ -53,28 +95,6 @@ pub fn get_encoding_from_content(raw_bytes: &[u8]) -> Option<String> {
         Some(charset)
     } else {
         None
-    }
-}
-
-/// python json.dumps
-pub fn json_dumps(py: Python, pydict: Option<&Bound<'_, PyDict>>) -> PyResult<String> {
-    let json_module = PyModule::import_bound(py, "json")?;
-    let dumps = json_module.getattr("dumps")?;
-    match pydict {
-        Some(dict) => dumps.call1((dict,))?.extract::<String>(),
-        None => Ok("".to_string()),
-    }
-}
-
-/// python urllib.parse.urlencode
-pub fn url_encode(py: Python, pydict: Option<&Bound<'_, PyDict>>) -> PyResult<String> {
-    let urllib_parse = PyModule::import_bound(py, "urllib.parse")?;
-    let urlencode = urllib_parse.getattr("urlencode")?;
-    match pydict {
-        Some(dict) => urlencode
-            .call1((dict, ("doseq", py.get_type_bound::<PyBool>().call1(())?)))?
-            .extract::<String>(),
-        None => Ok("".to_string()),
     }
 }
 

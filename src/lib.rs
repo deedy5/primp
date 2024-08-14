@@ -246,9 +246,11 @@ impl Client {
             .map(|data_pydict| url_encode(py, Some(data_pydict)).ok())
             .unwrap_or_else(|| None);
         // Converts 'json' (if any) into a JSON string for sending the data as `application/json` content type.
-        let json_str = json
-            .map(|json_pydict| json_dumps(py, Some(json_pydict)).ok())
-            .unwrap_or_else(|| None);
+        let json_str = json                                                                                                                                                                                               
+            .map(|json_pydict| {                                                                                                                                                                                          
+                json_dumps(py).call1((json_pydict.clone().unbind(),)).unwrap().extract::<String>().ok()                                                                                                                             
+            })                                                                                                                                                                                                            
+            .unwrap_or(None);
 
         let future = async move {
             // Check if method is POST || PUT || PATCH

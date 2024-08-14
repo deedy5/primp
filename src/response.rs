@@ -1,4 +1,4 @@
-use crate::utils::{get_encoding_from_content, get_encoding_from_headers};
+use crate::utils::{get_encoding_from_content, get_encoding_from_headers, json_loads};
 use ahash::RandomState;
 use anyhow::{anyhow, Result};
 use encoding_rs::Encoding;
@@ -78,9 +78,9 @@ impl Response {
     }
 
     fn json(&mut self, py: Python) -> Result<PyObject> {
-        let json_module = PyModule::import_bound(py, "json")?;
-        let loads = json_module.getattr("loads")?;
-        let result = loads.call1((&self.content,))?.extract::<PyObject>()?;
+        let result = json_loads(py)
+            .call1((&self.content,))?
+            .extract::<PyObject>()?;
         Ok(result)
     }
 
