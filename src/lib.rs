@@ -1,5 +1,5 @@
 use std::str::FromStr;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use ahash::RandomState;
@@ -21,15 +21,7 @@ mod utils;
 use utils::{json_dumps, url_encode};
 
 // Tokio global one-thread runtime
-fn runtime() -> &'static Runtime {
-    static RUNTIME: OnceLock<Runtime> = OnceLock::new();
-    RUNTIME.get_or_init(|| {
-        runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-    })
-}
+static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| runtime::Builder::new_current_thread().enable_all().build().unwrap());
 
 #[pyclass]
 /// HTTP client that can impersonate web browsers.
@@ -375,7 +367,7 @@ impl Client {
 
         // Execute an async future, releasing the Python GIL for concurrency.
         // Use Tokio global runtime to block on the future.
-        let result = py.allow_threads(|| runtime().block_on(future));
+        let result = py.allow_threads(|| RUNTIME.block_on(future));
         let (f_buf, f_cookies, f_headers, f_status_code, f_url) = result?;
 
         Ok(Response {
