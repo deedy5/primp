@@ -65,6 +65,7 @@ impl Client {
     /// * `follow_redirects` - A boolean to enable or disable following redirects. Default is `true`.
     /// * `max_redirects` - The maximum number of redirects to follow. Default is 20. Applies if `follow_redirects` is `true`.
     /// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is `true`.
+    /// * `ca_cert_file` - Path to CA certificate store. Default is None.
     /// * `http1` - An optional boolean indicating whether to use only HTTP/1.1. Default is `false`.
     /// * `http2` - An optional boolean indicating whether to use only HTTP/2. Default is `false`.
     ///
@@ -85,14 +86,16 @@ impl Client {
     ///     impersonate="chrome_123",
     ///     follow_redirects=True,
     ///     max_redirects=1,
-    ///     verify=False,
+    ///     verify=True,
+    ///     ca_cert_file="/cert/cacert.pem",
     ///     http1=True,
     ///     http2=False,
     /// )
     /// ```
     #[new]
-    #[pyo3(signature = (auth=None, auth_bearer=None, params=None, headers=None, cookies=None, cookie_store=None, referer=None, 
-        proxy=None, timeout=None, impersonate=None, follow_redirects=None, max_redirects=None, verify=None, http1=None, http2=None))]
+    #[pyo3(signature = (auth=None, auth_bearer=None, params=None, headers=None, cookies=None, 
+        cookie_store=None, referer=None, proxy=None, timeout=None, impersonate=None, follow_redirects=None, 
+        max_redirects=None, verify=None, ca_cert_file=None, http1=None, http2=None))]
     fn new(
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
@@ -107,6 +110,7 @@ impl Client {
         follow_redirects: Option<bool>,
         max_redirects: Option<usize>,
         verify: Option<bool>,
+        ca_cert_file: Option<String>,
         http1: Option<bool>,
         http2: Option<bool>,
     ) -> Result<Self> {
@@ -170,6 +174,11 @@ impl Client {
         let verify: bool = verify.unwrap_or(true);
         if !verify {
             client_builder = client_builder.danger_accept_invalid_certs(true);
+        }
+
+        // Ca_cert_file
+        if let Some(ca_cert_file) = ca_cert_file {
+            client_builder = client_builder.ca_cert_file(ca_cert_file);
         }
 
         // Http version: http1 || http2
@@ -601,7 +610,8 @@ impl Client {
 /// Convenience functions that use a default Client instance under the hood
 #[pyfunction]
 #[pyo3(signature = (method, url, params=None, headers=None, cookies=None, content=None, data=None, 
-    json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, verify=None))]
+    json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, verify=None,
+    ca_cert_file=None))]
 fn request(
     py: Python,
     method: &str,
@@ -618,6 +628,7 @@ fn request(
     timeout: Option<f64>,
     impersonate: Option<&str>,
     verify: Option<bool>,
+    ca_cert_file: Option<String>,
 ) -> Result<Response> {
     let client = Client::new(
         None,
@@ -633,6 +644,7 @@ fn request(
         None,
         None,
         verify,
+        ca_cert_file,
         None,
         None,
     )?;
@@ -655,7 +667,7 @@ fn request(
 
 #[pyfunction]
 #[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, 
-    timeout=None, impersonate=None, verify=None))]
+    timeout=None, impersonate=None, verify=None, ca_cert_file=None))]
 fn get(
     py: Python,
     url: &str,
@@ -667,6 +679,7 @@ fn get(
     timeout: Option<f64>,
     impersonate: Option<&str>,
     verify: Option<bool>,
+    ca_cert_file: Option<String>,
 ) -> Result<Response> {
     let client = Client::new(
         None,
@@ -682,6 +695,7 @@ fn get(
         None,
         None,
         verify,
+        ca_cert_file,
         None,
         None,
     )?;
@@ -699,7 +713,7 @@ fn get(
 
 #[pyfunction]
 #[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, 
-    timeout=None, impersonate=None, verify=None))]
+    timeout=None, impersonate=None, verify=None, ca_cert_file=None))]
 fn head(
     py: Python,
     url: &str,
@@ -711,6 +725,7 @@ fn head(
     timeout: Option<f64>,
     impersonate: Option<&str>,
     verify: Option<bool>,
+    ca_cert_file: Option<String>,
 ) -> Result<Response> {
     let client = Client::new(
         None,
@@ -726,6 +741,7 @@ fn head(
         None,
         None,
         verify,
+        ca_cert_file,
         None,
         None,
     )?;
@@ -743,7 +759,7 @@ fn head(
 
 #[pyfunction]
 #[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, 
-    timeout=None, impersonate=None, verify=None))]
+    timeout=None, impersonate=None, verify=None, ca_cert_file=None))]
 fn options(
     py: Python,
     url: &str,
@@ -755,6 +771,7 @@ fn options(
     timeout: Option<f64>,
     impersonate: Option<&str>,
     verify: Option<bool>,
+    ca_cert_file: Option<String>,
 ) -> Result<Response> {
     let client = Client::new(
         None,
@@ -770,6 +787,7 @@ fn options(
         None,
         None,
         verify,
+        ca_cert_file,
         None,
         None,
     )?;
@@ -787,7 +805,7 @@ fn options(
 
 #[pyfunction]
 #[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, 
-    timeout=None, impersonate=None, verify=None))]
+    timeout=None, impersonate=None, verify=None, ca_cert_file=None))]
 fn delete(
     py: Python,
     url: &str,
@@ -799,6 +817,7 @@ fn delete(
     timeout: Option<f64>,
     impersonate: Option<&str>,
     verify: Option<bool>,
+    ca_cert_file: Option<String>,
 ) -> Result<Response> {
     let client = Client::new(
         None,
@@ -814,6 +833,7 @@ fn delete(
         None,
         None,
         verify,
+        ca_cert_file,
         None,
         None,
     )?;
@@ -831,7 +851,8 @@ fn delete(
 
 #[pyfunction]
 #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, 
-    json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, verify=None))]
+    json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, verify=None,
+    ca_cert_file=None))]
 fn post(
     py: Python,
     url: &str,
@@ -847,6 +868,7 @@ fn post(
     timeout: Option<f64>,
     impersonate: Option<&str>,
     verify: Option<bool>,
+    ca_cert_file: Option<String>,
 ) -> Result<Response> {
     let client = Client::new(
         None,
@@ -862,6 +884,7 @@ fn post(
         None,
         None,
         verify,
+        ca_cert_file,
         None,
         None,
     )?;
@@ -883,7 +906,8 @@ fn post(
 
 #[pyfunction]
 #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, 
-    json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, verify=None))]
+    json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, verify=None,
+    ca_cert_file=None))]
 fn put(
     py: Python,
     url: &str,
@@ -899,6 +923,7 @@ fn put(
     timeout: Option<f64>,
     impersonate: Option<&str>,
     verify: Option<bool>,
+    ca_cert_file: Option<String>,
 ) -> Result<Response> {
     let client = Client::new(
         None,
@@ -914,6 +939,7 @@ fn put(
         None,
         None,
         verify,
+        ca_cert_file,
         None,
         None,
     )?;
@@ -935,7 +961,8 @@ fn put(
 
 #[pyfunction]
 #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, 
-    json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, verify=None))]
+    json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, verify=None,
+    ca_cert_file=None))]
 fn patch(
     py: Python,
     url: &str,
@@ -951,6 +978,7 @@ fn patch(
     timeout: Option<f64>,
     impersonate: Option<&str>,
     verify: Option<bool>,
+    ca_cert_file: Option<String>,
 ) -> Result<Response> {
     let client = Client::new(
         None,
@@ -966,6 +994,7 @@ fn patch(
         None,
         None,
         verify,
+        ca_cert_file,
         None,
         None,
     )?;

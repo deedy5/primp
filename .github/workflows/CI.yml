@@ -66,8 +66,8 @@ jobs:
           for version in 3.8 3.9 3.10 3.11 3.12; do
             uv venv --preview --python $version
             source .venv/bin/activate
+            uv pip install certifi pytest
             uv pip install primp --no-index --find-links dist --force-reinstall
-            uv pip install pytest
             pytest
           done
       - name: pytest
@@ -86,8 +86,8 @@ jobs:
             for version in 3.8 3.9 3.10 3.11 3.12; do
               uv venv --preview --python $version
               source .venv/bin/activate
+              uv pip install certifi pytest
               uv pip install primp --no-index --find-links dist --force-reinstall
-              uv pip install pytest
               pytest
             done
 
@@ -145,8 +145,8 @@ jobs:
             for version in 3.8 3.9 3.10 3.11 3.12; do
               python$version -m venv .venv
               source .venv/bin/activate
+              pip install certifi pytest
               pip install primp --no-index --find-links dist --force-reinstall
-              pip install pytest
               pytest
             done
 
@@ -187,8 +187,8 @@ jobs:
           for version in 3.8 3.9 3.10 3.11 3.12; do
             uv venv --preview --python $version
             source .venv/Scripts/activate
+            uv pip install certifi pytest
             uv pip install primp --no-index --find-links dist --force-reinstall
-            uv pip install pytest
             pytest
           done
 
@@ -226,8 +226,8 @@ jobs:
           for version in 3.8 3.9 3.10 3.11 3.12; do
             uv venv --preview --python $version
             source .venv/bin/activate
+            uv pip install certifi pytest
             uv pip install primp --no-index --find-links dist --force-reinstall
-            uv pip install pytest
             pytest
           done
 
