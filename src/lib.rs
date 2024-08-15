@@ -177,7 +177,7 @@ impl Client {
         match (http1, http2) {
             (Some(true), Some(true)) => return Err(anyhow!("Both http1 and http2 cannot be true")),
             (Some(true), _) => client_builder = client_builder.http1_only(),
-            (_, Some(true)) => client_builder = client_builder.http2_prior_knowledge(),
+            (_, Some(true)) => client_builder = client_builder.http2_only(),
             _ => (),
         }
 

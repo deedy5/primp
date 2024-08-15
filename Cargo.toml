@@ -16,9 +16,7 @@ pyo3 = { version = "0.22", features = ["extension-module", "abi3-py38", "indexma
 anyhow = "1"
 log = "0.4"
 pyo3-log = "0.11"
-rquest = { version = "0.20", default-features = false, features = [ 
-    "boring-tls",
-    "http2",
+rquest = { version = "0.20", features = [ 
     "cookies",
     "multipart",
     "socks",
@@ -30,7 +28,7 @@ rquest = { version = "0.20", default-features = false, features = [
 encoding_rs = { version = "0.8" }
 ahash = "0.8"
 indexmap = { version = "2", features = ["serde"] }
-tokio = { version = "1", features = ["rt"] }
+tokio = { version = "1", features = ["full"] }
 html2text = "0.12"
 
 [profile.release]
