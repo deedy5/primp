@@ -146,6 +146,7 @@ resp.status_code
 resp.text
 resp.text_markdown  # html is converted to markdown text
 resp.text_plain  # html is converted to plain text
+resp.text_rich  # html is converted to rich text
 resp.url
 ```
 
