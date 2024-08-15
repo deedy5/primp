@@ -78,9 +78,7 @@ impl Response {
     }
 
     fn json(&mut self, py: Python) -> Result<PyObject> {
-        let result = json_loads(py)
-            .call1((&self.content,))?
-            .extract::<PyObject>()?;
+        let result = json_loads(py, &self.content)?;
         Ok(result)
     }
 
