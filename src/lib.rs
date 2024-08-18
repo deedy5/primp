@@ -8,7 +8,7 @@ use bytes::Bytes;
 use indexmap::IndexMap;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
-use pyo3::exceptions::{PyException, PyValueError};
+use pyo3::exceptions::PyValueError;
 use rquest::header::{HeaderMap, HeaderName, HeaderValue, COOKIE};
 use rquest::tls::Impersonate;
 use rquest::multipart;
@@ -182,7 +182,7 @@ impl Client {
         }
 
         let client =
-            Arc::new(client_builder.build().map_err(|err| PyException::new_err(err.to_string()))?);
+            Arc::new(client_builder.build()?);
 
         Ok(Client {
             client,
@@ -334,7 +334,7 @@ impl Client {
             }
 
             // Send the request and await the response
-            let resp = request_builder.send().await.map_err(|err| PyException::new_err(err.to_string()))?;
+            let resp = request_builder.send().await?;
 
             // Response items
             let cookies: IndexMap<String, String, RandomState> = resp
@@ -348,7 +348,7 @@ impl Client {
                 .collect();
             let status_code = resp.status().as_u16();
             let url = resp.url().to_string();
-            let buf = resp.bytes().await.map_err(|err| PyException::new_err(err.to_string()))?;
+            let buf = resp.bytes().await?;
 
             log::info!("response: {} {} {}", url, status_code, buf.len());
             Ok((buf, cookies, headers, status_code, url))
