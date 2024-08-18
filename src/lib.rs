@@ -3,10 +3,12 @@ use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use ahash::RandomState;
-use anyhow::{anyhow, Result};
+use anyhow::{Error, Result};
+use bytes::Bytes;
 use indexmap::IndexMap;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
+use pyo3::exceptions::{PyException, PyValueError};
 use rquest::header::{HeaderMap, HeaderName, HeaderValue, COOKIE};
 use rquest::tls::Impersonate;
 use rquest::multipart;
@@ -107,7 +109,7 @@ impl Client {
         http2: Option<bool>,
     ) -> Result<Self> {
         if auth.is_some() && auth_bearer.is_some() {
-            return Err(anyhow!("Cannot provide both auth and auth_bearer"));
+            return Err(PyValueError::new_err("Cannot provide both auth and auth_bearer").into());
         }
 
         // Client builder
@@ -117,7 +119,7 @@ impl Client {
 
         // Impersonate
         if let Some(impersonation_type) = impersonate {
-            let impersonation = Impersonate::from_str(impersonation_type).map_err(|e| anyhow!(e))?;
+            let impersonation = Impersonate::from_str(impersonation_type).map_err(|err| PyValueError::new_err(err))?;
             client_builder = client_builder.impersonate(impersonation);
         }
 
@@ -173,14 +175,14 @@ impl Client {
 
         // Http version: http1 || http2
         match (http1, http2) {
-            (Some(true), Some(true)) => return Err(anyhow!("Both http1 and http2 cannot be true")),
+            (Some(true), Some(true)) => return Err(PyValueError::new_err("Both http1 and http2 cannot be true").into()),
             (Some(true), _) => client_builder = client_builder.http1_only(),
             (_, Some(true)) => client_builder = client_builder.http2_only(),
             _ => (),
         }
 
         let client =
-            Arc::new(client_builder.build()?);
+            Arc::new(client_builder.build().map_err(|err| PyException::new_err(err.to_string()))?);
 
         Ok(Client {
             client,
@@ -235,31 +237,31 @@ impl Client {
         timeout: Option<f64>,
     ) -> Result<Response> {
         let client = Arc::clone(&self.client);
-        let auth = auth.or(self.auth.clone());
-        let auth_bearer = auth_bearer.or(self.auth_bearer.clone());
+        // Method
+        let method = match method {
+            "GET" => Ok(Method::GET),
+            "POST" => Ok(Method::POST),
+            "HEAD" => Ok(Method::HEAD),
+            "OPTIONS" => Ok(Method::OPTIONS),
+            "PUT" => Ok(Method::PUT),
+            "PATCH" => Ok(Method::PATCH),
+            "DELETE" => Ok(Method::DELETE),
+            _ => Err(PyValueError::new_err("Unrecognized HTTP method")),
+        }?;
         let params = params.or(self.params.clone());
         let cookies = cookies.or(self.cookies.clone());
         // Converts 'data' (if any) into a URL-encoded string for sending the data as `application/x-www-form-urlencoded` content type.
         let data_str = data.map(|data| url_encode(py, &data.clone().unbind())).transpose()?;
         // Converts 'json' (if any) into a JSON string for sending the data as `application/json` content type.
         let json_str = json.map(|pydict| json_dumps(py, &pydict.clone().unbind())).transpose()?;
+        let auth = auth.or(self.auth.clone());
+        let auth_bearer = auth_bearer.or(self.auth_bearer.clone());
+        if auth.is_some() && auth_bearer.is_some() {
+            return Err(PyValueError::new_err("Cannot provide both auth and auth_bearer").into());
+        }      
+        let is_post_put_patch = method == "POST" || method == "PUT" || method == "PATCH";
 
         let future = async move {
-            // Check if method is POST || PUT || PATCH
-            let is_post_put_patch = method == "POST" || method == "PUT" || method == "PATCH";
-
-            // Method
-            let method = match method {
-                "GET" => Ok(Method::GET),
-                "POST" => Ok(Method::POST),
-                "HEAD" => Ok(Method::HEAD),
-                "OPTIONS" => Ok(Method::OPTIONS),
-                "PUT" => Ok(Method::PUT),
-                "PATCH" => Ok(Method::PATCH),
-                "DELETE" => Ok(Method::DELETE),
-                &_ => Err(anyhow!("Unrecognized HTTP method")),
-            }?;
-
             // Create request builder
             let mut request_builder = client.request(method, url);
 
@@ -286,7 +288,7 @@ impl Client {
                     .collect::<Vec<String>>()
                     .join("; ");
                 request_builder =
-                    request_builder.header(COOKIE, HeaderValue::from_str(&cookies_str).unwrap());
+                    request_builder.header(COOKIE, HeaderValue::from_str(&cookies_str)?);
             }
 
             // Only if method POST || PUT || PATCH
@@ -320,15 +322,10 @@ impl Client {
             }
 
             // Auth
-            match (auth, auth_bearer) {
-                (Some((username, password)), None) => {
-                    request_builder = request_builder.basic_auth(username, password.as_deref());
-                }
-                (None, Some(token)) => {
-                    request_builder = request_builder.bearer_auth(token);
-                }
-                (Some(_), Some(_)) => return Err(anyhow!("Cannot provide both auth and auth_bearer")),
-                _ => {} // No authentication provided
+            if let Some((username, password)) = auth {
+                request_builder = request_builder.basic_auth(username, password);
+            } else if let Some(token) = auth_bearer {
+                request_builder = request_builder.bearer_auth(token);
             }
 
             // Timeout
@@ -337,7 +334,7 @@ impl Client {
             }
 
             // Send the request and await the response
-            let resp = request_builder.send().await?;
+            let resp = request_builder.send().await.map_err(|err| PyException::new_err(err.to_string()))?;
 
             // Response items
             let cookies: IndexMap<String, String, RandomState> = resp
@@ -351,7 +348,7 @@ impl Client {
                 .collect();
             let status_code = resp.status().as_u16();
             let url = resp.url().to_string();
-            let buf = resp.bytes().await?;
+            let buf = resp.bytes().await.map_err(|err| PyException::new_err(err.to_string()))?;
 
             log::info!("response: {} {} {}", url, status_code, buf.len());
             Ok((buf, cookies, headers, status_code, url))
@@ -359,7 +356,7 @@ impl Client {
 
         // Execute an async future, releasing the Python GIL for concurrency.
         // Use Tokio global runtime to block on the future.
-        let result = py.allow_threads(|| RUNTIME.block_on(future));
+        let result: Result<(Bytes, IndexMap<String, String, RandomState>, IndexMap<String, String, RandomState>, u16, String), Error> = py.allow_threads(|| RUNTIME.block_on(future));
         let (f_buf, f_cookies, f_headers, f_status_code, f_url) = result?;
 
         Ok(Response {

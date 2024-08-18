@@ -30,6 +30,7 @@ ahash = "0.8"
 indexmap = { version = "2", features = ["serde"] }
 tokio = { version = "1", features = ["full"] }
 html2text = "0.12"
+bytes = "1"
 
 [profile.release]
 codegen-units = 1
