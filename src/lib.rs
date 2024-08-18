@@ -123,13 +123,11 @@ impl Client {
 
         // Headers
         if let Some(headers) = headers {
-            let mut headers_new = HeaderMap::with_capacity(headers.len());
-            for (key, value) in headers {
-                headers_new.insert(
-                    HeaderName::from_bytes(key.as_bytes())?,
-                    HeaderValue::from_str(&value)?,
-                );
-            }
+            let headers_new = headers.iter().filter_map(|(k, v)| {                                                                                                                                                                          
+                HeaderName::from_bytes(k.as_bytes()).ok().and_then(|name| {                                                                                                                                               
+                    HeaderValue::from_str(v).ok().map(|value| (name, value))                                                                                                                                              
+                })                                                                                                                                                                                                        
+            }).collect::<HeaderMap>();
             client_builder = client_builder.default_headers(headers_new);
         }
 
@@ -272,13 +270,11 @@ impl Client {
 
             // Headers
             if let Some(headers) = headers {
-                let mut headers_new = HeaderMap::with_capacity(headers.len());
-                for (key, value) in headers {
-                    headers_new.insert(
-                        HeaderName::from_bytes(key.as_bytes())?,
-                        HeaderValue::from_str(&value)?,
-                    );
-                }
+                let headers_new = headers.iter().filter_map(|(k, v)| {                                                                                                                                                                          
+                    HeaderName::from_bytes(k.as_bytes()).ok().and_then(|name| {                                                                                                                                               
+                        HeaderValue::from_str(v).ok().map(|value| (name, value))                                                                                                                                              
+                    })                                                                                                                                                                                                        
+                }).collect::<HeaderMap>();
                 request_builder = request_builder.headers(headers_new);
             }
 
