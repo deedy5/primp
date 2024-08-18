@@ -4,14 +4,13 @@
 
 The fastest python HTTP client that can impersonate web browsers.</br>
 Provides precompiled wheels:</br>
-  * 🐧 linux|musl: `amd64`(*manylinux_2_28|musllinux_1_2*), `aarch64`(*manylinux_2_34‼️|musllinux_1_2*);</br> 
+  * 🐧 linux|musl: `amd64`(*manylinux_2_31‼️|musllinux_1_2*), `aarch64`(*manylinux_2_34‼️|musllinux_1_2*);</br> 
   * 🪟 windows: `amd64`;</br>
   * 🍏 macos: `amd64`, `aarch64`.</br>
 
 ## Table of Contents
 
 - [Installation](#installation)
-- [Features](#features)
 - [Benchmark](#benchmark)
 - [Usage](#usage)
   - [I. Client](#i-client)
@@ -25,15 +24,6 @@ Provides precompiled wheels:</br>
 ```python
 pip install -U primp
 ```
-
-## Features
-- [x] Impersonate: impersonate option mimics web browsers by replicating their headers and TLS/JA3/JA4/HTTP2 fingerprints.
-- [x] Automatic Character Encoding Detection: the encoding is taken from the `Content-Type` header or `<meta ... charset=` within the html, or if not found, `UTF-8`. If the encoding is incorrect, the library tries to determine the correct encoding to decode the text.
-- [x] Html2text: the `text_plain`|`text_markdown`|`text_rich` response attributes extract *plain*|*markdown*|*rich* text from html.
-- [x] All Decoders: `gzip`, `brotli`, `zstd` are already included and do not require third party packages.
-- [x] High Performance: the library is designed for a large number of threads, uses all processors, and releases the GIL.
-- [x] Thread-safe: library can be safely used in multithreaded environments.
-- [x] Small Size: the compiled library is about 6.8MB in size.
 
 ## Benchmark
 
