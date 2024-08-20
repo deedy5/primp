@@ -25,9 +25,9 @@ jobs:
       fail-fast: false
       matrix:
         platform:
-          - runner: ubuntu-20.04
+          - runner: ubuntu-latest
             target: x86_64
-          - runner: ubuntu-22.04
+          - runner: ubuntu-latest
             target: aarch64
     steps:
       - uses: actions/checkout@v4
@@ -35,23 +35,23 @@ jobs:
         with:
           python-version: 3.x
       - name: Install aarch64 build dependencies
-        if: ${{ startsWith(matrix.platform.target, 'aarch64') }}
+        if: matrix.platform.target == 'aarch64'
         run: sudo apt-get update && sudo apt-get install --yes crossbuild-essential-arm64
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           rust-toolchain: stable
           target: ${{ matrix.platform.target }}
-          args: --release --out dist
+          args: ${{ matrix.platform.target == 'x86_64' && '--release --out dist --zig' || '--release --out dist' }}
           sccache: 'true'
           manylinux: auto
           container: 'off'
         env:
-          CFLAGS_aarch64_unknown_linux_gnu: "-D__ARM_ARCH=8"
-          CC: ${{ matrix.platform.target }}-linux-gnu-gcc
-          CXX: ${{ matrix.platform.target }}-linux-gnu-g++
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: x86_64-linux-gnu-g++
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-g++
+          CFLAGS_aarch64_unknown_linux_gnu: ${{ matrix.platform.target == 'aarch64' && '-D__ARM_ARCH=8' || '' }}                                                                                                  
+          CC: ${{ matrix.platform.target == 'aarch64' && 'aarch64-linux-gnu-gcc' || '' }}                                                                                                                      
+          CXX: ${{ matrix.platform.target == 'aarch64' && 'aarch64-linux-gnu-g++' || '' }}                                                                                                                     
+          # CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: x86_64-linux-gnu-g++                                                                                                                                      
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.platform.target == 'aarch64' && 'aarch64-linux-gnu-g++' || '' }}
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
