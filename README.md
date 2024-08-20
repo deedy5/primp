@@ -4,7 +4,7 @@
 
 The fastest python HTTP client that can impersonate web browsers.</br>
 Provides precompiled wheels:</br>
-  * 🐧 linux|musl: `amd64`(*manylinux_2_31‼️|musllinux_1_2*), `aarch64`(*manylinux_2_34‼️|musllinux_1_2*);</br> 
+  * 🐧 linux|musl: `amd64`, `aarch64` (⚠️warning: linux `aarch64` build is `manylinux_2_34` compatible - `ubuntu>=22.04`, `debian>=12`);</br> 
   * 🪟 windows: `amd64`;</br>
   * 🍏 macos: `amd64`, `aarch64`.</br>
 
