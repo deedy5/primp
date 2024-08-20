@@ -1,6 +1,6 @@
 use std::fs;
 use std::str::FromStr;
-use std::sync::{Arc, LazyLock};
+use std::sync::{mpsc, Arc, LazyLock};
 use std::time::Duration;
 
 use ahash::RandomState;
@@ -11,11 +11,12 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use pythonize::depythonize;
+use rayon::{ThreadPool, ThreadPoolBuilder};
 use rquest::boring::x509::{store::X509StoreBuilder, X509};
 use rquest::header::{HeaderMap, HeaderName, HeaderValue, COOKIE};
-use rquest::tls::Impersonate;
 use rquest::multipart;
 use rquest::redirect::Policy;
+use rquest::tls::Impersonate;
 use rquest::Method;
 use serde_json::Value;
 use tokio::runtime::{self, Runtime};
@@ -24,6 +25,9 @@ mod response;
 use response::Response;
 
 mod utils;
+
+// Rayon global thread pool
+static CPU_POOL: LazyLock<ThreadPool> = LazyLock::new(|| ThreadPoolBuilder::new().build().unwrap());
 
 // Tokio global one-thread runtime
 static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
@@ -95,8 +99,8 @@ impl Client {
     /// )
     /// ```
     #[new]
-    #[pyo3(signature = (auth=None, auth_bearer=None, params=None, headers=None, cookies=None, 
-        cookie_store=None, referer=None, proxy=None, timeout=None, impersonate=None, follow_redirects=None, 
+    #[pyo3(signature = (auth=None, auth_bearer=None, params=None, headers=None, cookies=None,
+        cookie_store=None, referer=None, proxy=None, timeout=None, impersonate=None, follow_redirects=None,
         max_redirects=None, verify=None, ca_cert_file=None, http1=None, http2=None))]
     fn new(
         auth: Option<(String, Option<String>)>,
@@ -238,7 +242,7 @@ impl Client {
     /// # Errors
     ///
     /// * `PyException` - If there is an error making the request.
-    #[pyo3(signature = (method, url, params=None, headers=None, cookies=None, content=None, 
+    #[pyo3(signature = (method, url, params=None, headers=None, cookies=None, content=None,
         data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None))]
     fn request(
         &self,
@@ -371,18 +375,25 @@ impl Client {
             Ok((buf, cookies, headers, status_code, url))
         };
 
-        // Execute an async future, releasing the Python GIL for concurrency.
-        // Use Tokio global runtime to block on the future.
-        let result: Result<
-            (
-                Bytes,
-                IndexMap<String, String, RandomState>,
-                IndexMap<String, String, RandomState>,
-                u16,
-                String,
-            ),
-            Error,
-        > = py.allow_threads(|| RUNTIME.block_on(future));
+        // Execute an async future in Python, releasing the GIL for concurrency.
+        // Uses Rayon's global thread pool and Tokio global runtime to block on the future.
+        let (tx, rx) = mpsc::sync_channel(1);
+        py.allow_threads(|| {
+            CPU_POOL.install(|| {
+                let result: Result<
+                    (
+                        Bytes,
+                        IndexMap<String, String, RandomState>,
+                        IndexMap<String, String, RandomState>,
+                        u16,
+                        String,
+                    ),
+                    Error,
+                > = RUNTIME.block_on(future);
+                _ = tx.send(result);
+            });
+        });
+        let result = rx.recv()?;
         let (f_buf, f_cookies, f_headers, f_status_code, f_url) = result?;
 
         Ok(Response {
@@ -511,7 +522,7 @@ impl Client {
         )
     }
 
-    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, 
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None,
         json=None, files=None, auth=None, auth_bearer=None, timeout=None))]
     fn post(
         &self,
@@ -545,7 +556,7 @@ impl Client {
         )
     }
 
-    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, 
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None,
         json=None, files=None, auth=None, auth_bearer=None, timeout=None))]
     fn put(
         &self,
@@ -579,7 +590,7 @@ impl Client {
         )
     }
 
-    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, 
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None,
         json=None, files=None, auth=None, auth_bearer=None, timeout=None))]
     fn patch(
         &self,
@@ -616,7 +627,7 @@ impl Client {
 
 /// Convenience functions that use a default Client instance under the hood
 #[pyfunction]
-#[pyo3(signature = (method, url, params=None, headers=None, cookies=None, content=None, data=None, 
+#[pyo3(signature = (method, url, params=None, headers=None, cookies=None, content=None, data=None,
     json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, verify=None,
     ca_cert_file=None))]
 fn request(
@@ -673,7 +684,7 @@ fn request(
 }
 
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, 
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None,
     timeout=None, impersonate=None, verify=None, ca_cert_file=None))]
 fn get(
     py: Python,
@@ -719,7 +730,7 @@ fn get(
 }
 
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, 
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None,
     timeout=None, impersonate=None, verify=None, ca_cert_file=None))]
 fn head(
     py: Python,
@@ -765,7 +776,7 @@ fn head(
 }
 
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, 
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None,
     timeout=None, impersonate=None, verify=None, ca_cert_file=None))]
 fn options(
     py: Python,
@@ -811,7 +822,7 @@ fn options(
 }
 
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, 
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None,
     timeout=None, impersonate=None, verify=None, ca_cert_file=None))]
 fn delete(
     py: Python,
@@ -857,7 +868,7 @@ fn delete(
 }
 
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, 
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None,
     json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, verify=None,
     ca_cert_file=None))]
 fn post(
@@ -912,7 +923,7 @@ fn post(
 }
 
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, 
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None,
     json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, verify=None,
     ca_cert_file=None))]
 fn put(
@@ -967,7 +978,7 @@ fn put(
 }
 
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, 
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None,
     json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, verify=None,
     ca_cert_file=None))]
 fn patch(
