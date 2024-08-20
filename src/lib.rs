@@ -1,5 +1,5 @@
 use std::str::FromStr;
-use std::sync::{Arc, LazyLock};
+use std::sync::{mpsc, Arc, LazyLock};
 use std::time::Duration;
 
 use ahash::RandomState;
@@ -9,6 +9,7 @@ use indexmap::IndexMap;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
 use pyo3::exceptions::PyValueError;
+use rayon::{ThreadPool, ThreadPoolBuilder};
 use rquest::header::{HeaderMap, HeaderName, HeaderValue, COOKIE};
 use rquest::tls::Impersonate;
 use rquest::multipart;
@@ -21,6 +22,9 @@ use response::Response;
 
 mod utils;
 use utils::{json_dumps, url_encode};
+
+// Rayon global thread pool
+static CPU_POOL: LazyLock<ThreadPool> = LazyLock::new(|| ThreadPoolBuilder::new().build().unwrap());
 
 // Tokio global one-thread runtime
 static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| runtime::Builder::new_current_thread().enable_all().build().unwrap());
@@ -354,9 +358,16 @@ impl Client {
             Ok((buf, cookies, headers, status_code, url))
         };
 
-        // Execute an async future, releasing the Python GIL for concurrency.
-        // Use Tokio global runtime to block on the future.
-        let result: Result<(Bytes, IndexMap<String, String, RandomState>, IndexMap<String, String, RandomState>, u16, String), Error> = py.allow_threads(|| RUNTIME.block_on(future));
+        // Execute an async future in Python, releasing the GIL for concurrency.
+        // Uses Rayon's global thread pool and Tokio global runtime to block on the future.
+        let (tx, rx) = mpsc::sync_channel(1);
+        py.allow_threads(|| {
+            CPU_POOL.install(|| {
+                let result: Result<(Bytes, IndexMap<String, String, RandomState>, IndexMap<String, String, RandomState>, u16, String), Error> = RUNTIME.block_on(future);
+                _ = tx.send(result);
+            });
+        });
+        let result = rx.recv()?;
         let (f_buf, f_cookies, f_headers, f_status_code, f_url) = result?;
 
         Ok(Response {

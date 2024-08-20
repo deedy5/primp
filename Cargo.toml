@@ -31,6 +31,7 @@ indexmap = { version = "2", features = ["serde"] }
 tokio = { version = "1", features = ["full"] }
 html2text = "0.12"
 bytes = "1"
+rayon = "1"
 
 [profile.release]
 codegen-units = 1
