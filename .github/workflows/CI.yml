@@ -63,7 +63,7 @@ jobs:
         run: |
           set -e
           pip install uv
-          for version in 3.8 3.9 3.10 3.11 3.12; do
+          for version in 3.8 3.9 3.10 3.11 3.12 3.13; do
             uv venv --preview --python $version
             source .venv/bin/activate
             uv pip install certifi pytest
@@ -83,7 +83,7 @@ jobs:
           run: |
             set -e
             pip install uv
-            for version in 3.8 3.9 3.10 3.11 3.12; do
+            for version in 3.8 3.9 3.10 3.11 3.12 3.13; do
               uv venv --preview --python $version
               source .venv/bin/activate
               uv pip install certifi pytest
@@ -142,7 +142,7 @@ jobs:
           image: quay.io/pypa/musllinux_1_2_${{ matrix.platform.target }}:latest
           options: -v ${{ github.workspace }}:/io -w /io
           run: |
-            for version in 3.8 3.9 3.10 3.11 3.12; do
+            for version in 3.8 3.9 3.10 3.11 3.12 3.13; do
               python$version -m venv .venv
               source .venv/bin/activate
               pip install certifi pytest
@@ -184,7 +184,7 @@ jobs:
         run: |
           set -e
           pip install uv
-          for version in 3.8 3.9 3.10 3.11 3.12; do
+          for version in 3.8 3.9 3.10 3.11 3.12 3.13; do
             uv venv --preview --python $version
             source .venv/Scripts/activate
             uv pip install certifi pytest
@@ -223,7 +223,7 @@ jobs:
         run: |
           set -e
           pip install uv
-          for version in 3.8 3.9 3.10 3.11 3.12; do
+          for version in 3.8 3.9 3.10 3.11 3.12 3.13; do
             uv venv --preview --python $version
             source .venv/bin/activate
             uv pip install certifi pytest
