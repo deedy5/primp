@@ -1,3 +1,4 @@
+use std::fs;
 use std::str::FromStr;
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
@@ -6,9 +7,10 @@ use ahash::RandomState;
 use anyhow::{Error, Result};
 use bytes::Bytes;
 use indexmap::IndexMap;
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
-use pyo3::exceptions::PyValueError;
+use rquest::boring::x509::{store::X509StoreBuilder, X509};
 use rquest::header::{HeaderMap, HeaderName, HeaderValue, COOKIE};
 use rquest::tls::Impersonate;
 use rquest::multipart;
@@ -23,7 +25,12 @@ mod utils;
 use utils::{json_dumps, url_encode};
 
 // Tokio global one-thread runtime
-static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| runtime::Builder::new_current_thread().enable_all().build().unwrap());
+static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
+    runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+});
 
 #[pyclass]
 /// HTTP client that can impersonate web browsers.
@@ -119,17 +126,21 @@ impl Client {
 
         // Impersonate
         if let Some(impersonation_type) = impersonate {
-            let impersonation = Impersonate::from_str(impersonation_type).map_err(|err| PyValueError::new_err(err))?;
+            let impersonation = Impersonate::from_str(impersonation_type)
+                .map_err(|err| PyValueError::new_err(err))?;
             client_builder = client_builder.impersonate(impersonation);
         }
 
         // Headers
         if let Some(headers) = headers {
-            let headers_new = headers.iter().filter_map(|(k, v)| {                                                                                                                                                                          
-                HeaderName::from_bytes(k.as_bytes()).ok().and_then(|name| {                                                                                                                                               
-                    HeaderValue::from_str(v).ok().map(|value| (name, value))                                                                                                                                              
-                })                                                                                                                                                                                                        
-            }).collect::<HeaderMap>();
+            let headers_new = headers
+                .iter()
+                .filter_map(|(k, v)| {
+                    HeaderName::from_bytes(k.as_bytes())
+                        .ok()
+                        .and_then(|name| HeaderValue::from_str(v).ok().map(|value| (name, value)))
+                })
+                .collect::<HeaderMap>();
             client_builder = client_builder.default_headers(headers_new);
         }
 
@@ -170,19 +181,26 @@ impl Client {
 
         // Ca_cert_file
         if let Some(ca_cert_file) = ca_cert_file {
-            client_builder = client_builder.ca_cert_file(ca_cert_file);
+            // Ca certificates store
+            let mut ca_store = X509StoreBuilder::new()?;
+            let certs = X509::stack_from_pem(&fs::read(ca_cert_file)?)?;
+            for cert in certs {
+                ca_store.add_cert(cert)?;
+            }
+            client_builder = client_builder.ca_cert_store(ca_store.build());
         }
 
         // Http version: http1 || http2
         match (http1, http2) {
-            (Some(true), Some(true)) => return Err(PyValueError::new_err("Both http1 and http2 cannot be true").into()),
+            (Some(true), Some(true)) => {
+                return Err(PyValueError::new_err("Both http1 and http2 cannot be true").into())
+            }
             (Some(true), _) => client_builder = client_builder.http1_only(),
             (_, Some(true)) => client_builder = client_builder.http2_only(),
             _ => (),
         }
 
-        let client =
-            Arc::new(client_builder.build()?);
+        let client = Arc::new(client_builder.build()?);
 
         Ok(Client {
             client,
@@ -251,14 +269,18 @@ impl Client {
         let params = params.or(self.params.clone());
         let cookies = cookies.or(self.cookies.clone());
         // Converts 'data' (if any) into a URL-encoded string for sending the data as `application/x-www-form-urlencoded` content type.
-        let data_str = data.map(|data| url_encode(py, &data.as_unbound())).transpose()?;
+        let data_str = data
+            .map(|data| url_encode(py, &data.as_unbound()))
+            .transpose()?;
         // Converts 'json' (if any) into a JSON string for sending the data as `application/json` content type.
-        let json_str = json.map(|pydict| json_dumps(py, &pydict.as_unbound())).transpose()?;
+        let json_str = json
+            .map(|pydict| json_dumps(py, &pydict.as_unbound()))
+            .transpose()?;
         let auth = auth.or(self.auth.clone());
         let auth_bearer = auth_bearer.or(self.auth_bearer.clone());
         if auth.is_some() && auth_bearer.is_some() {
             return Err(PyValueError::new_err("Cannot provide both auth and auth_bearer").into());
-        }      
+        }
         let is_post_put_patch = method == "POST" || method == "PUT" || method == "PATCH";
 
         let future = async move {
@@ -272,11 +294,14 @@ impl Client {
 
             // Headers
             if let Some(headers) = headers {
-                let headers_new = headers.iter().filter_map(|(k, v)| {                                                                                                                                                                          
-                    HeaderName::from_bytes(k.as_bytes()).ok().and_then(|name| {                                                                                                                                               
-                        HeaderValue::from_str(v).ok().map(|value| (name, value))                                                                                                                                              
-                    })                                                                                                                                                                                                        
-                }).collect::<HeaderMap>();
+                let headers_new = headers
+                    .iter()
+                    .filter_map(|(k, v)| {
+                        HeaderName::from_bytes(k.as_bytes()).ok().and_then(|name| {
+                            HeaderValue::from_str(v).ok().map(|value| (name, value))
+                        })
+                    })
+                    .collect::<HeaderMap>();
                 request_builder = request_builder.headers(headers_new);
             }
 
@@ -356,7 +381,16 @@ impl Client {
 
         // Execute an async future, releasing the Python GIL for concurrency.
         // Use Tokio global runtime to block on the future.
-        let result: Result<(Bytes, IndexMap<String, String, RandomState>, IndexMap<String, String, RandomState>, u16, String), Error> = py.allow_threads(|| RUNTIME.block_on(future));
+        let result: Result<
+            (
+                Bytes,
+                IndexMap<String, String, RandomState>,
+                IndexMap<String, String, RandomState>,
+                u16,
+                String,
+            ),
+            Error,
+        > = py.allow_threads(|| RUNTIME.block_on(future));
         let (f_buf, f_cookies, f_headers, f_status_code, f_url) = result?;
 
         Ok(Response {
