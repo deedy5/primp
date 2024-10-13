@@ -60,7 +60,6 @@ def test_get():
         headers=headers,
         cookies=cookies,
         params=params,
-        ca_cert_file=certifi.where(),
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -110,7 +109,6 @@ def test_delete():
         headers=headers,
         cookies=cookies,
         params=params,
-        ca_cert_file=certifi.where(),
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -137,7 +135,6 @@ def test_post_content():
         cookies=cookies,
         params=params,
         content=content,
-        ca_cert_file=certifi.where(),
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -163,7 +160,6 @@ def test_post_data():
         cookies=cookies,
         params=params,
         data=data,
-        ca_cert_file=certifi.where(),
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -189,7 +185,6 @@ def test_post_data2():
         cookies=cookies,
         params=params,
         data=data,
-        ca_cert_file=certifi.where(),
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -215,7 +210,6 @@ def test_post_json():
         cookies=cookies,
         params=params,
         json=data,
-        ca_cert_file=certifi.where(),
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -241,7 +235,6 @@ def test_client_post_files():
         cookies=cookies,
         params=params,
         files=files,
-        ca_cert_file=certifi.where(),
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -267,7 +260,6 @@ def test_patch():
         cookies=cookies,
         params=params,
         data=data,
-        ca_cert_file=certifi.where(),
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -293,7 +285,6 @@ def test_put():
         cookies=cookies,
         params=params,
         data=data,
-        ca_cert_file=certifi.where(),
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -310,7 +301,6 @@ def test_get_impersonate_chrome126():
     response = primp.get(
         "https://tls.peet.ws/api/all",
         impersonate="chrome_126",
-        ca_cert_file=certifi.where(),
     )
     assert response.status_code == 200
     json_data = response.json()
