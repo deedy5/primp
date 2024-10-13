@@ -46,7 +46,7 @@ def test_client_init_params():
 
 @retry()
 def test_client_request_get():
-    client = primp.Client(ca_cert_file=certifi.where())
+    client = primp.Client()
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
     headers = {"X-Test": "test"}
     cookies = {"ccc": "ddd", "cccc": "dddd"}
@@ -72,7 +72,7 @@ def test_client_request_get():
 
 @retry()
 def test_client_get():
-    client = primp.Client(ca_cert_file=certifi.where())
+    client = primp.Client()
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
     headers = {"X-Test": "test"}
     cookies = {"ccc": "ddd", "cccc": "dddd"}
@@ -97,7 +97,7 @@ def test_client_get():
 
 @retry()
 def test_client_post_content():
-    client = primp.Client(ca_cert_file=certifi.where())
+    client = primp.Client()
     auth = ("user", "password")
     headers = {"X-Test": "test"}
     cookies = {"ccc": "ddd", "cccc": "dddd"}
@@ -123,7 +123,7 @@ def test_client_post_content():
 
 @retry()
 def test_client_post_data():
-    client = primp.Client(ca_cert_file=certifi.where())
+    client = primp.Client()
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
     headers = {"X-Test": "test"}
     cookies = {"ccc": "ddd", "cccc": "dddd"}
@@ -149,7 +149,7 @@ def test_client_post_data():
 
 @retry()
 def test_client_post_data2():
-    client = primp.Client(ca_cert_file=certifi.where())
+    client = primp.Client()
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
     headers = {"X-Test": "test"}
     cookies = {"ccc": "ddd", "cccc": "dddd"}
@@ -175,7 +175,7 @@ def test_client_post_data2():
 
 @retry()
 def test_client_post_json():
-    client = primp.Client(ca_cert_file=certifi.where())
+    client = primp.Client()
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
     headers = {"X-Test": "test"}
     cookies = {"ccc": "ddd", "cccc": "dddd"}
@@ -201,7 +201,7 @@ def test_client_post_json():
 
 @retry()
 def test_client_post_files():
-    client = primp.Client(ca_cert_file=certifi.where())
+    client = primp.Client()
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
     headers = {"X-Test": "test"}
     cookies = {"ccc": "ddd", "cccc": "dddd"}
@@ -227,7 +227,9 @@ def test_client_post_files():
 
 @retry()
 def test_client_impersonate_chrome126():
-    client = primp.Client(impersonate="chrome_126", ca_cert_file=certifi.where())
+    client = primp.Client(
+        impersonate="chrome_126",
+    )
     response = client.get("https://tls.peet.ws/api/all")
     assert response.status_code == 200
     json_data = response.json()
