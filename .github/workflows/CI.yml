@@ -43,7 +43,7 @@ jobs:
           rust-toolchain: stable
           target: ${{ matrix.platform.target }}
           args: ${{ matrix.platform.target == 'x86_64' && '--release --out dist --zig' || '--release --out dist' }}
-          sccache: 'true'
+          sccache: 'false'
           manylinux: auto
           container: 'off'
         env:
