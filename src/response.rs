@@ -4,7 +4,7 @@ use anyhow::{anyhow, Result};
 use encoding_rs::Encoding;
 use html2text::{
     from_read, from_read_with_decorator,
-    render::text_renderer::{RichDecorator, TrivialDecorator},
+    render::{RichDecorator, TrivialDecorator},
 };
 use indexmap::IndexMap;
 use pyo3::{prelude::*, types::PyBytes};
@@ -85,7 +85,7 @@ impl Response {
     #[getter]
     fn text_markdown(&mut self, py: Python) -> Result<String> {
         let raw_bytes = self.content.bind(py).as_bytes();
-        let text = py.allow_threads(|| from_read(raw_bytes, 100));
+        let text = py.allow_threads(|| from_read(raw_bytes, 100))?;
         Ok(text)
     }
 
@@ -93,7 +93,7 @@ impl Response {
     fn text_plain(&mut self, py: Python) -> Result<String> {
         let raw_bytes = self.content.bind(py).as_bytes();
         let text =
-            py.allow_threads(|| from_read_with_decorator(raw_bytes, 100, TrivialDecorator::new()));
+            py.allow_threads(|| from_read_with_decorator(raw_bytes, 100, TrivialDecorator::new()))?;
         Ok(text)
     }
 
@@ -101,7 +101,7 @@ impl Response {
     fn text_rich(&mut self, py: Python) -> Result<String> {
         let raw_bytes = self.content.bind(py).as_bytes();
         let text =
-            py.allow_threads(|| from_read_with_decorator(raw_bytes, 100, RichDecorator::new()));
+            py.allow_threads(|| from_read_with_decorator(raw_bytes, 100, RichDecorator::new()))?;
         Ok(text)
     }
 }
