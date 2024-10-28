@@ -181,13 +181,15 @@ impl Client {
 
         // Ca_cert_file
         if let Some(ca_cert_file) = ca_cert_file {
-            // Ca certificates store
-            let mut ca_store = X509StoreBuilder::new()?;
-            let certs = X509::stack_from_pem(&fs::read(ca_cert_file)?)?;
-            for cert in certs {
-                ca_store.add_cert(cert)?;
-            }
-            client_builder = client_builder.ca_cert_store(ca_store.build());
+            client_builder = client_builder.ca_cert_store(move || {
+                let mut ca_store = X509StoreBuilder::new()?;
+                let cert_file = &fs::read(&ca_cert_file).expect("Failed to read ca_cert_file");
+                let certs = X509::stack_from_pem(&cert_file)?;
+                for cert in certs {
+                    ca_store.add_cert(cert)?;
+                }
+                Ok(ca_store.build())
+            });
         }
 
         // Http version: http1 || http2

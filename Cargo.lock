@@ -1121,9 +1121,9 @@ checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 
 [[package]]
 name = "rh2"
-version = "0.3.41"
+version = "0.3.50"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e4c089b29043a5a2b9304e86be7d54e7966a4c202acb57664fc924fd59388f8"
+checksum = "5857faed635b86543bc5fa925e7f6719748b3072df253ba5016e61aeffc56dd2"
 dependencies = [
  "atomic-waker",
  "bytes",
@@ -1140,9 +1140,9 @@ dependencies = [
 
 [[package]]
 name = "rhyper"
-version = "0.14.40"
+version = "0.14.51"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49c7e7d40b100d005379213010799d97d5f4b2d30501a58e19b87280ff603f23"
+checksum = "c270594a5c719889552d795ee0410e00f76ef945ba7babb7fa8e893e18e79632"
 dependencies = [
  "bytes",
  "futures-channel",
@@ -1164,9 +1164,9 @@ dependencies = [
 
 [[package]]
 name = "rquest"
-version = "0.23.0"
+version = "0.26.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9ecc29dc2c99d8ed9ef071b9acd82c6008a303ebd1ad6d23678f1df18f56ff7"
+checksum = "fa610f62e221cb26f7f2f95bd82e2119fd90bc04cf3cf6a1a56670ed98cd3d15"
 dependencies = [
  "antidote",
  "async-compression",
@@ -1183,7 +1183,6 @@ dependencies = [
  "http",
  "http-body",
  "ipnet",
- "libc",
  "linked_hash_set",
  "log",
  "mime",
@@ -1192,7 +1191,6 @@ dependencies = [
  "pin-project-lite",
  "rboring",
  "rboring-sys",
- "rh2",
  "rhyper",
  "serde",
  "serde_urlencoded",
