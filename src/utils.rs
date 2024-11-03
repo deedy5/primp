@@ -1,28 +1,7 @@
 use std::cmp::min;
 
 use ahash::RandomState;
-use anyhow::Result;
 use indexmap::IndexMap;
-use pyo3::prelude::*;
-use pyo3::sync::GILOnceCell;
-use pyo3::types::PyBytes;
-
-static JSON_LOADS: GILOnceCell<Py<PyAny>> = GILOnceCell::new();
-
-/// python json.loads
-pub fn json_loads(py: Python<'_>, content: &Py<PyBytes>) -> Result<PyObject> {
-    let json_loads = JSON_LOADS
-        .get_or_init(py, || {
-            py.import_bound("json")
-                .unwrap()
-                .getattr("loads")
-                .unwrap()
-                .unbind()
-        })
-        .bind(py);
-    let result = json_loads.call1((content,))?.extract::<PyObject>()?;
-    Ok(result)
-}
 
 /// Get encoding from the "Content-Type" header
 pub fn get_encoding_from_headers(

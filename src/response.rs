@@ -1,4 +1,4 @@
-use crate::utils::{get_encoding_from_content, get_encoding_from_headers, json_loads};
+use crate::utils::{get_encoding_from_content, get_encoding_from_headers};
 use ahash::RandomState;
 use anyhow::{anyhow, Result};
 use encoding_rs::Encoding;
@@ -8,6 +8,8 @@ use html2text::{
 };
 use indexmap::IndexMap;
 use pyo3::{prelude::*, types::PyBytes};
+use pythonize::pythonize;
+use serde_json::from_slice;
 
 /// A struct representing an HTTP response.
 ///
@@ -78,7 +80,8 @@ impl Response {
     }
 
     fn json(&mut self, py: Python) -> Result<PyObject> {
-        let result = json_loads(py, &self.content)?;
+        let json_value: serde_json::Value = from_slice(self.content.as_bytes(py))?;
+        let result = pythonize(py, &json_value).unwrap().into();
         Ok(result)
     }
 
