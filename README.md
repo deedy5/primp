@@ -146,7 +146,7 @@ resp.url
 ```python
 import primp
 
-client = primp.Client(impersonate="chrome_127")
+client = primp.Client(impersonate="chrome_130")
 
 # GET request
 resp = client.get("https://tls.peet.ws/api/all")
@@ -200,7 +200,7 @@ print(resp.json())
 # You can also use convenience functions that use a default Client instance under the hood:
 # primp.get() | primp.head() | primp.options() | primp.delete() | primp.post() | primp.patch() | primp.put()
 # These functions can accept the `impersonate` parameter:
-resp = primp.get("https://httpbin.org/anything", impersonate="chrome_127")
+resp = primp.get("https://httpbin.org/anything", impersonate="chrome_130")
 print(r.text)
 ```
 
