@@ -1,6 +1,6 @@
 [package]
 name = "primp"
-version = "0.6.5"
+version = "0.7.0"
 edition = "2021"
 description = "HTTP client that can impersonate web browsers, mimicking their headers and `TLS/JA3/JA4/HTTP2` fingerprints"
 authors = ["deedy5"]
