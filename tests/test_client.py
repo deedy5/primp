@@ -200,16 +200,14 @@ def test_client_post_files():
 
 
 @retry()
-def test_client_impersonate_chrome126():
+def test_client_impersonate_chrome130():
     client = primp.Client(
-        impersonate="chrome_126",
+        impersonate="chrome_130",
     )
-    response = client.get("https://tls.peet.ws/api/all")
+    # response = client.get("https://tls.peet.ws/api/all")
+    response = client.get("https://tls.http.rw/api/clean")
     assert response.status_code == 200
     json_data = response.json()
-    assert json_data["http_version"] == "h2"
-    assert json_data["tls"]["ja4"].startswith("t13d")
-    assert (
-        json_data["http2"]["akamai_fingerprint_hash"]
-        == "90224459f8bf70b7d0a8797eb916dbc9"
-    )
+    assert json_data["ja4"] == "t13d1516h2_8daaf6152771_b1ff8ab2d16f"
+    assert json_data["akamai_hash"] == "90224459f8bf70b7d0a8797eb916dbc9"
+    assert json_data["peetprint_hash"] == "b8ce945a4d9a7a9b5b6132e3658fe033"

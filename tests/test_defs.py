@@ -272,16 +272,14 @@ def test_put():
 
 
 @retry()
-def test_get_impersonate_chrome126():
+def test_get_impersonate_chrome130():
     response = primp.get(
-        "https://tls.peet.ws/api/all",
-        impersonate="chrome_126",
+        # "https://tls.peet.ws/api/clean",
+        "https://tls.http.rw/api/clean",
+        impersonate="chrome_130",
     )
     assert response.status_code == 200
     json_data = response.json()
-    assert json_data["http_version"] == "h2"
-    assert json_data["tls"]["ja4"].startswith("t13d")
-    assert (
-        json_data["http2"]["akamai_fingerprint_hash"]
-        == "90224459f8bf70b7d0a8797eb916dbc9"
-    )
+    assert json_data["ja4"] == "t13d1516h2_8daaf6152771_b1ff8ab2d16f"
+    assert json_data["akamai_hash"] == "90224459f8bf70b7d0a8797eb916dbc9"
+    assert json_data["peetprint_hash"] == "b8ce945a4d9a7a9b5b6132e3658fe033"
