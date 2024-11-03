@@ -5,25 +5,9 @@ use anyhow::Result;
 use indexmap::IndexMap;
 use pyo3::prelude::*;
 use pyo3::sync::GILOnceCell;
-use pyo3::types::{PyBytes, PyDict};
+use pyo3::types::PyBytes;
 
-static JSON_DUMPS: GILOnceCell<Py<PyAny>> = GILOnceCell::new();
 static JSON_LOADS: GILOnceCell<Py<PyAny>> = GILOnceCell::new();
-
-/// python json.dumps
-pub fn json_dumps(py: Python<'_>, pydict: &Py<PyDict>) -> Result<String> {
-    let json_dumps = JSON_DUMPS
-        .get_or_init(py, || {
-            py.import_bound("json")
-                .unwrap()
-                .getattr("dumps")
-                .unwrap()
-                .unbind()
-        })
-        .bind(py);
-    let result = json_dumps.call1((pydict,))?.extract::<String>()?;
-    Ok(result)
-}
 
 /// python json.loads
 pub fn json_loads(py: Python<'_>, content: &Py<PyBytes>) -> Result<PyObject> {

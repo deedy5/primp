@@ -24,7 +24,6 @@ mod response;
 use response::Response;
 
 mod utils;
-use utils::json_dumps;
 
 // Tokio global one-thread runtime
 static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
@@ -273,10 +272,7 @@ impl Client {
         let params = params.or(self.params.clone());
         let cookies = cookies.or(self.cookies.clone());
         let data_value: Option<Value> = data.map(|data| depythonize(&data)).transpose()?;
-        // Converts 'json' (if any) into a JSON string for sending the data as `application/json` content type.
-        let json_str = json
-            .map(|pydict| json_dumps(py, &pydict.as_unbound()))
-            .transpose()?;
+        let json_value: Option<Value> = json.map(|json| depythonize(&json)).transpose()?;
         let auth = auth.or(self.auth.clone());
         let auth_bearer = auth_bearer.or(self.auth_bearer.clone());
         if auth.is_some() && auth_bearer.is_some() {
@@ -328,10 +324,8 @@ impl Client {
                     request_builder = request_builder.form(&form_data);
                 }
                 // Json
-                if let Some(json_str) = json_str {
-                    request_builder = request_builder
-                        .header("Content-Type", "application/json")
-                        .body(json_str);
+                if let Some(json_data) = json_value {
+                    request_builder = request_builder.json(&json_data);
                 }
                 // Files
                 if let Some(files) = files {

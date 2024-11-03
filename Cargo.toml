@@ -19,6 +19,7 @@ pyo3-log = "0.11"
 rquest = { version = "0.26", features = [ 
     "cookies",
     "multipart",
+    "json",
     "socks",
     "gzip",
     "brotli",
