@@ -10,19 +10,21 @@ use indexmap::IndexMap;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
+use pythonize::depythonize;
 use rquest::boring::x509::{store::X509StoreBuilder, X509};
 use rquest::header::{HeaderMap, HeaderName, HeaderValue, COOKIE};
 use rquest::tls::Impersonate;
 use rquest::multipart;
 use rquest::redirect::Policy;
 use rquest::Method;
+use serde_json::Value;
 use tokio::runtime::{self, Runtime};
 
 mod response;
 use response::Response;
 
 mod utils;
-use utils::{json_dumps, url_encode};
+use utils::json_dumps;
 
 // Tokio global one-thread runtime
 static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
@@ -270,10 +272,7 @@ impl Client {
         }?;
         let params = params.or(self.params.clone());
         let cookies = cookies.or(self.cookies.clone());
-        // Converts 'data' (if any) into a URL-encoded string for sending the data as `application/x-www-form-urlencoded` content type.
-        let data_str = data
-            .map(|data| url_encode(py, &data.as_unbound()))
-            .transpose()?;
+        let data_value: Option<Value> = data.map(|data| depythonize(&data)).transpose()?;
         // Converts 'json' (if any) into a JSON string for sending the data as `application/json` content type.
         let json_str = json
             .map(|pydict| json_dumps(py, &pydict.as_unbound()))
@@ -325,10 +324,8 @@ impl Client {
                     request_builder = request_builder.body(content);
                 }
                 // Data
-                if let Some(url_encoded_data) = data_str {
-                    request_builder = request_builder
-                        .header("Content-Type", "application/x-www-form-urlencoded")
-                        .body(url_encoded_data);
+                if let Some(form_data) = data_value {
+                    request_builder = request_builder.form(&form_data);
                 }
                 // Json
                 if let Some(json_str) = json_str {

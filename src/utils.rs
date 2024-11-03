@@ -5,11 +5,10 @@ use anyhow::Result;
 use indexmap::IndexMap;
 use pyo3::prelude::*;
 use pyo3::sync::GILOnceCell;
-use pyo3::types::{PyBool, PyBytes, PyDict};
+use pyo3::types::{PyBytes, PyDict};
 
 static JSON_DUMPS: GILOnceCell<Py<PyAny>> = GILOnceCell::new();
 static JSON_LOADS: GILOnceCell<Py<PyAny>> = GILOnceCell::new();
-static URLLIB_PARSE_URLENCODE: GILOnceCell<Py<PyAny>> = GILOnceCell::new();
 
 /// python json.dumps
 pub fn json_dumps(py: Python<'_>, pydict: &Py<PyDict>) -> Result<String> {
@@ -38,23 +37,6 @@ pub fn json_loads(py: Python<'_>, content: &Py<PyBytes>) -> Result<PyObject> {
         })
         .bind(py);
     let result = json_loads.call1((content,))?.extract::<PyObject>()?;
-    Ok(result)
-}
-
-/// python urllib.parse.urlencode
-pub fn url_encode(py: Python, pydict: &Py<PyDict>) -> Result<String> {
-    let urlencode = URLLIB_PARSE_URLENCODE
-        .get_or_init(py, || {
-            py.import_bound("urllib.parse")
-                .unwrap()
-                .getattr("urlencode")
-                .unwrap()
-                .unbind()
-        })
-        .bind(py);
-    let result: String = urlencode
-        .call1((pydict, ("doseq", py.get_type_bound::<PyBool>().call1(())?)))?
-        .extract()?;
     Ok(result)
 }
 
