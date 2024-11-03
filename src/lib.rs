@@ -121,9 +121,7 @@ impl Client {
         }
 
         // Client builder
-        let mut client_builder = rquest::Client::builder()
-            .enable_ech_grease()
-            .permute_extensions();
+        let mut client_builder = rquest::Client::builder();
 
         // Impersonate
         if let Some(impersonation_type) = impersonate {
