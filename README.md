@@ -191,10 +191,13 @@ print(r.text)
 resp = primp.Client(proxy="http://127.0.0.1:8080").get("https://tls.peet.ws/api/all")
 print(resp.json())
 
-# Using custom CA certificate store: file or certifi.where()
+# Using custom CA certificate store: file or certifi.where() or env var CA_CERT_FILE
 resp = primp.Client(ca_cert_file="/cert/cacert.pem").get("https://tls.peet.ws/api/all")
 print(resp.json())
 resp = primp.Client(ca_cert_file=certifi.where()).get("https://tls.peet.ws/api/all")
+print(resp.json())
+export CA_CERT_FILE="/home/user/Downloads/cert.pem"
+resp = primp.Client().get("https://tls.peet.ws/api/all")
 print(resp.json())
 
 # You can also use convenience functions that use a default Client instance under the hood:

@@ -179,6 +179,7 @@ impl Client {
         }
 
         // Ca_cert_file
+        let ca_cert_file = ca_cert_file.or(std::env::var("CA_CERT_FILE").ok());
         if let Some(ca_cert_file) = ca_cert_file {
             client_builder = client_builder.ca_cert_store(move || {
                 let mut ca_store = X509StoreBuilder::new()?;
