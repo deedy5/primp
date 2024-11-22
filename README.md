@@ -51,7 +51,8 @@ class Client:
         impersonate (str, optional): Entity to impersonate. Example: "chrome_124". Default is None.
             Chrome: "chrome_100","chrome_101","chrome_104","chrome_105","chrome_106","chrome_107","chrome_108",
                 "chrome_109","chrome_114","chrome_116","chrome_117","chrome_118","chrome_119","chrome_120",
-                "chrome_123","chrome_124","chrome_126","chrome_127","chrome_128","chrome_129","chrome_130"
+                "chrome_123","chrome_124","chrome_126","chrome_127","chrome_128","chrome_129","chrome_130",
+                "chrome_131"
             Safari: "safari_ios_16.5","safari_ios_17.2","safari_ios_17.4.1","safari_15.3","safari_15.5","safari_15.6.1",
                 "safari_16","safari_16.5","safari_17.0","safari_17.2.1","safari_17.4.1","safari_17.5","safari_18", 
                 "safari_ipad_18"
@@ -146,7 +147,7 @@ resp.url
 ```python
 import primp
 
-client = primp.Client(impersonate="chrome_130")
+client = primp.Client(impersonate="chrome_131")
 
 # GET request
 resp = client.get("https://tls.peet.ws/api/all")
@@ -203,7 +204,7 @@ print(resp.json())
 # You can also use convenience functions that use a default Client instance under the hood:
 # primp.get() | primp.head() | primp.options() | primp.delete() | primp.post() | primp.patch() | primp.put()
 # These functions can accept the `impersonate` parameter:
-resp = primp.get("https://httpbin.org/anything", impersonate="chrome_130")
+resp = primp.get("https://httpbin.org/anything", impersonate="chrome_131")
 print(r.text)
 ```
 
