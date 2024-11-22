@@ -283,3 +283,17 @@ def test_get_impersonate_chrome130():
     assert json_data["ja4"] == "t13d1516h2_8daaf6152771_b1ff8ab2d16f"
     assert json_data["akamai_hash"] == "90224459f8bf70b7d0a8797eb916dbc9"
     assert json_data["peetprint_hash"] == "b8ce945a4d9a7a9b5b6132e3658fe033"
+
+
+@retry()
+def test_get_impersonate_chrome131():
+    response = primp.get(
+        # "https://tls.peet.ws/api/clean",
+        "https://tls.http.rw/api/clean",
+        impersonate="chrome_131",
+    )
+    assert response.status_code == 200
+    json_data = response.json()
+    assert json_data["ja4"] == "t13d1516h2_8daaf6152771_b1ff8ab2d16f"
+    assert json_data["akamai_hash"] == "90224459f8bf70b7d0a8797eb916dbc9"
+    assert json_data["peetprint_hash"] == "7466733991096b3f4e6c0e79b0083559"
