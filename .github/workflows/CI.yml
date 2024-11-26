@@ -27,16 +27,31 @@ jobs:
         platform:
           - runner: ubuntu-latest
             target: x86_64
+            apt_packages: ''
+            custom_env: {}
           - runner: ubuntu-latest
             target: aarch64
+            apt_packages: crossbuild-essential-arm64
+            custom_env:
+              CFLAGS_aarch64_unknown_linux_gnu: -D__ARM_ARCH=8
+              CC: aarch64-linux-gnu-gcc
+              CXX: aarch64-linux-gnu-g++
+              CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-g++
+          - runner: ubuntu-latest
+            target: armv7
+            apt_packages: crossbuild-essential-armhf
+            custom_env:
+              CC: arm-linux-gnueabihf-gcc
+              CXX: arm-linux-gnueabihf-g++
+              CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-g++
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: 3.x
-      - name: Install aarch64 build dependencies
-        if: matrix.platform.target == 'aarch64'
-        run: sudo apt-get update && sudo apt-get install --yes crossbuild-essential-arm64
+      - name: Install target-specific APT dependencies
+        if: "matrix.platform.apt_packages != ''"
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.platform.apt_packages }}
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -46,18 +61,13 @@ jobs:
           sccache: 'false'
           manylinux: auto
           container: 'off'
-        env:
-          CFLAGS_aarch64_unknown_linux_gnu: ${{ matrix.platform.target == 'aarch64' && '-D__ARM_ARCH=8' || '' }}                                                                                                  
-          CC: ${{ matrix.platform.target == 'aarch64' && 'aarch64-linux-gnu-gcc' || '' }}                                                                                                                      
-          CXX: ${{ matrix.platform.target == 'aarch64' && 'aarch64-linux-gnu-g++' || '' }}                                                                                                                     
-          # CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: x86_64-linux-gnu-g++                                                                                                                                      
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.platform.target == 'aarch64' && 'aarch64-linux-gnu-g++' || '' }}
+        env: ${{ matrix.platform.custom_env }}
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
           name: wheels-linux-${{ matrix.platform.target }}
           path: dist
-      - name: pytest
+      - name: pytest x86_64
         if: ${{ startsWith(matrix.platform.target, 'x86_64') }}
         shell: bash
         run: |
@@ -70,8 +80,8 @@ jobs:
             uv pip install primp --no-index --find-links dist --force-reinstall
             pytest
           done
-      - name: pytest
-        if: ${{ !startsWith(matrix.platform.target, 'x86') && matrix.platform.target != 'ppc64' }}
+      - name: pytest aarch64
+        if: ${{ startsWith(matrix.platform.target, 'aarch64') }}
         uses: uraimo/run-on-arch-action@v2
         with:
           arch: ${{ matrix.platform.target }}
@@ -90,6 +100,23 @@ jobs:
               uv pip install primp --no-index --find-links dist --force-reinstall
               pytest
             done
+      - name: pytest armv7
+        if: ${{ startsWith(matrix.platform.target, 'armv7') }}
+        uses: uraimo/run-on-arch-action@v2
+        with:
+          arch: ${{ matrix.platform.target }}
+          distro: ubuntu22.04
+          githubToken: ${{ github.token }}
+          install: |
+            apt-get update
+            apt-get install -y --no-install-recommends python3 python3-pip python3-venv
+          run: |
+            set -e
+            python3 -m venv .venv
+            source .venv/bin/activate
+            pip install primp --no-index --find-links dist --force-reinstall
+            pip install certifi pytest
+            pytest
 
   musllinux:
     runs-on: ${{ matrix.platform.runner }}
@@ -99,21 +126,41 @@ jobs:
         platform:
           - runner: ubuntu-latest
             target: x86_64
+            package: x86_64-linux-musl-cross
+            apt_packages: ''
+            custom_env:
+              CC: x86_64-linux-musl-gcc
+              CXX: x86_64-linux-musl-gcc
+              CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: x86_64-linux-musl-g++
           - runner: ubuntu-latest
             target: aarch64
+            package: aarch64-linux-musl-cross
+            apt_packages: crossbuild-essential-arm64
+            custom_env:
+              CC: aarch64-linux-musl-gcc
+              CXX: aarch64-linux-musl-gcc
+              CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-musl-g++
+          #- runner: ubuntu-latest
+          #  target: armv7
+          #  package: armv7l-linux-musleabihf-cross
+          #  apt_packages: crossbuild-essential-armhf
+          #  custom_env:
+          #    CC: armv7l-linux-musleabihf-gcc
+          #    CXX: armv7l-linux-musleabihf-g++
+          #    CARGO_TARGET_ARMV7_UNKNOWN_LINUX_MUSLEABIHF_LINKER: armv7l-linux-musleabihf-g++
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: 3.x
-      - name: Install aarch64 build dependencies
-        if: ${{ startsWith(matrix.platform.target, 'aarch64') }}
-        run: sudo apt-get update && sudo apt-get install --yes crossbuild-essential-arm64
+      - name: Install target-specific APT dependencies
+        if: "matrix.platform.apt_packages != ''"
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.platform.apt_packages }}
       - name: Prepare musl cross-compiler
         run: |
-          curl -O http://musl.cc/${{ matrix.platform.target }}-linux-musl-cross.tgz
-          tar xzf ${{ matrix.platform.target }}-linux-musl-cross.tgz -C /opt
-          echo "/opt/${{ matrix.platform.target }}-linux-musl-cross/bin/" >> $GITHUB_PATH
+          curl -O http://musl.cc/${{ matrix.platform.package }}.tgz
+          tar xzf ${{ matrix.platform.package }}.tgz -C /opt
+          echo "/opt/${{ matrix.platform.package }}/bin/" >> $GITHUB_PATH
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -123,11 +170,7 @@ jobs:
           sccache: 'true'
           manylinux: musllinux_1_2
           container: 'off'
-        env:
-          CC: ${{ matrix.platform.target }}-linux-musl-gcc
-          CXX: ${{ matrix.platform.target }}-linux-musl-g++
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: x86_64-linux-musl-g++
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-musl-g++
+        env: ${{ matrix.platform.custom_env }}
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
