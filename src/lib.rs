@@ -386,7 +386,7 @@ impl Client {
         let (f_buf, f_cookies, f_headers, f_status_code, f_url) = result?;
 
         Ok(Response {
-            content: PyBytes::new_bound(py, &f_buf).unbind(),
+            content: PyBytes::new(py, &f_buf).unbind(),
             cookies: f_cookies,
             encoding: String::new(),
             headers: f_headers,
