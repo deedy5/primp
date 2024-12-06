@@ -32,7 +32,11 @@ static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
         .build()
         .unwrap()
 });
-
+static PRIMP_CA_BUNDLE: LazyLock<Option<String>> = LazyLock::new(|| {
+    std::env::var("PRIMP_CA_BUNDLE")
+        .or(std::env::var("CA_CERT_FILE"))
+        .ok()
+});
 static PRIMP_PROXY: LazyLock<Option<String>> = LazyLock::new(|| std::env::var("PRIMP_PROXY").ok());
 
 #[pyclass]
@@ -182,7 +186,7 @@ impl Client {
         }
 
         // Ca_cert_file
-        let ca_cert_file = ca_cert_file.or(std::env::var("CA_CERT_FILE").ok());
+        let ca_cert_file = ca_cert_file.or(PRIMP_CA_BUNDLE.clone());
         if let Some(ca_cert_file) = ca_cert_file {
             client_builder = client_builder.ca_cert_store(move || {
                 let mut ca_store = X509StoreBuilder::new()?;
