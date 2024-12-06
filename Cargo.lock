@@ -62,9 +62,9 @@ checksum = "34fde25430d87a9388dadbe6e34d7f72a462c8b43ac8d309b42b0a8505d7e2a5"
 
 [[package]]
 name = "anyhow"
-version = "1.0.93"
+version = "1.0.94"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c95c10ba0b00a02636238b814946408b1322d5ac4760326e6fb8ec956d85775"
+checksum = "c1fd03a028ef38ba2276dce7e33fcd6369c158a1bca17946c4b1b701891c1ff7"
 
 [[package]]
 name = "arc-swap"
@@ -147,9 +147,9 @@ checksum = "b048fb63fd8b5923fc5aa7b340d8e156aec7ec02f0c78fa8a6ddc2613f6f71de"
 
 [[package]]
 name = "boring-sys2"
-version = "4.13.0"
+version = "4.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec4f49862fee9ed1669e512b6eaf86926e7106e5e18d1ebc49e7900833faf695"
+checksum = "413a79749f9fd586e81aa94860e6c295c955c6a96d04224f106122f81f9e30d8"
 dependencies = [
  "autocfg",
  "bindgen",
@@ -160,9 +160,9 @@ dependencies = [
 
 [[package]]
 name = "boring2"
-version = "4.13.0"
+version = "4.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "353195dd52bdc6510134727d887a3a6d2169387a08e5722e225b2782273ed552"
+checksum = "bdf6143a1291827f550c4ed1b5788c56525d84ec45ced3cb74016261709e984e"
 dependencies = [
  "bitflags",
  "boring-sys2",
@@ -571,9 +571,9 @@ checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 
 [[package]]
 name = "hyper2"
-version = "0.14.62"
+version = "0.14.66"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41eb4c86eeb444eebebaa935f4594c9c8eded5f68d3e317ec9343f47b27921dc"
+checksum = "ae1f878abe9e3fd7d2a64cf087bd30e1e78c138e292faf0f13225a56845ade93"
 dependencies = [
  "bytes",
  "futures-channel",
@@ -1322,9 +1322,9 @@ dependencies = [
 
 [[package]]
 name = "rquest"
-version = "0.27.7"
+version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e69ca084d726de32c0f759c79b98c2db4fa3f5f68463f791e4230c63249ff755"
+checksum = "4d2f01cd182776cb8d28135d4f8dd8bf1a76845f982cf97d9f21f5b1037a36e6"
 dependencies = [
  "antidote",
  "async-compression",
@@ -1679,9 +1679,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-boring2"
-version = "4.13.0"
+version = "4.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96829eb2a2277cb4aa3128cc76fbe76de83eab085156895dfc07ea483bbac487"
+checksum = "ba587f53564b4c66f585ad85c2df3be332cb9173be7a01d2a3d78b632c768c27"
 dependencies = [
  "boring-sys2",
  "boring2",
@@ -1714,9 +1714,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-util"
-version = "0.7.12"
+version = "0.7.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61e7c3654c13bcd040d4a03abee2c75b1d14a37b423cf5a813ceae1cc903ec6a"
+checksum = "d7fcaa8d55a2bdd6b83ace262b016eca0d79ee02818c5c1bcdf0305114081078"
 dependencies = [
  "bytes",
  "futures-core",
