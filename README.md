@@ -37,7 +37,7 @@ HTTP client that can impersonate web browsers.
 ```python
 class Client:
     """Initializes an HTTP client that can impersonate web browsers.
-    
+
     Args:
         auth (tuple, optional): A tuple containing the username and password for basic authentication. Default is None.
         auth_bearer (str, optional): Bearer token for authentication. Default is None.
@@ -45,7 +45,7 @@ class Client:
         headers (dict, optional): Default headers to send with requests. If `impersonate` is set, this will be ignored.
         cookies (dict, optional): - An optional map of cookies to send with requests as the `Cookie` header.
         timeout (float, optional): HTTP request timeout in seconds. Default is 30.
-        cookie_store (bool, optional): Enable a persistent cookie store. Received cookies will be preserved and included 
+        cookie_store (bool, optional): Enable a persistent cookie store. Received cookies will be preserved and included
             in additional requests. Default is True.
         referer (bool, optional): Enable or disable automatic setting of the `Referer` header. Default is True.
         proxy (str, optional): Proxy URL for HTTP requests. Example: "socks5://127.0.0.1:9150". Default is None.
@@ -55,7 +55,7 @@ class Client:
                 "chrome_123","chrome_124","chrome_126","chrome_127","chrome_128","chrome_129","chrome_130",
                 "chrome_131"
             Safari: "safari_ios_16.5","safari_ios_17.2","safari_ios_17.4.1","safari_15.3","safari_15.5","safari_15.6.1",
-                "safari_16","safari_16.5","safari_17.0","safari_17.2.1","safari_17.4.1","safari_17.5","safari_18", 
+                "safari_16","safari_16.5","safari_17.0","safari_17.2.1","safari_17.4.1","safari_17.5","safari_18",
                 "safari_ipad_18"
             OkHttp: "okhttp_3.9","okhttp_3.11","okhttp_3.13","okhttp_3.14","okhttp_4.9","okhttp_4.10","okhttp_5"
             Edge: "edge_101","edge_122","edge_127"
@@ -65,7 +65,7 @@ class Client:
         ca_cert_file (str, optional): Path to CA certificate store. Default is None.
         http1 (bool, optional): Use only HTTP/1.1. Default is None.
         http2 (bool, optional): Use only HTTP/2. Default is None.
-         
+
     """
 ```
 
@@ -74,12 +74,12 @@ class Client:
 The `Client` class provides a set of methods for making HTTP requests: `get`, `head`, `options`, `delete`, `post`, `put`, `patch`, each of which internally utilizes the `request()` method for execution. The parameters for these methods closely resemble those in `httpx`.
 ```python
 def get(
-    url: str, 
-    params: Optional[Dict[str, str]] = None, 
-    headers: Optional[Dict[str, str]] = None, 
-    cookies: Optional[Dict[str, str]] = None, 
-    auth: Optional[Tuple[str, Optional[str]]] = None, 
-    auth_bearer: Optional[str] = None, 
+    url: str,
+    params: Optional[Dict[str, str]] = None,
+    headers: Optional[Dict[str, str]] = None,
+    cookies: Optional[Dict[str, str]] = None,
+    auth: Optional[Tuple[str, Optional[str]]] = None,
+    auth_bearer: Optional[str] = None,
     timeout: Optional[float] = 30,
 ):
     """Performs a GET request to the specified URL.
@@ -89,7 +89,7 @@ def get(
         params (Optional[Dict[str, str]]): A map of query parameters to append to the URL. Default is None.
         headers (Optional[Dict[str, str]]): A map of HTTP headers to send with the request. Default is None.
         cookies (Optional[Dict[str, str]]): - An optional map of cookies to send with requests as the `Cookie` header.
-        auth (Optional[Tuple[str, Optional[str]]]): A tuple containing the username and an optional password 
+        auth (Optional[Tuple[str, Optional[str]]]): A tuple containing the username and an optional password
             for basic authentication. Default is None.
         auth_bearer (Optional[str]): A string representing the bearer token for bearer token authentication. Default is None.
         timeout (Optional[float]): The timeout for the request in seconds. Default is 30.
@@ -98,16 +98,16 @@ def get(
 ```
 ```python
 def post(
-    url: str, 
-    params: Optional[Dict[str, str]] = None, 
-    headers: Optional[Dict[str, str]] = None, 
-    cookies: Optional[Dict[str, str]] = None, 
-    content: Optional[bytes] = None, 
-    data: Optional[Dict[str, str]] = None, 
-    json: Any = None, 
-    files: Optional[Dict[str, bytes]] = None, 
-    auth: Optional[Tuple[str, Optional[str]]] = None, 
-    auth_bearer: Optional[str] = None, 
+    url: str,
+    params: Optional[Dict[str, str]] = None,
+    headers: Optional[Dict[str, str]] = None,
+    cookies: Optional[Dict[str, str]] = None,
+    content: Optional[bytes] = None,
+    data: Optional[Dict[str, str]] = None,
+    json: Any = None,
+    files: Optional[Dict[str, bytes]] = None,
+    auth: Optional[Tuple[str, Optional[str]]] = None,
+    auth_bearer: Optional[str] = None,
     timeout: Optional[float] = 30,
 ):
     """Performs a POST request to the specified URL.
@@ -121,7 +121,7 @@ def post(
         data (Optional[Dict[str, str]]): The form data to send in the request body. Default is None.
         json (Any): A JSON serializable object to send in the request body. Default is None.
         files (Optional[Dict[str, bytes]]): A map of file fields to file contents to be sent as multipart/form-data. Default is None.
-        auth (Optional[Tuple[str, Optional[str]]]): A tuple containing the username and an optional password 
+        auth (Optional[Tuple[str, Optional[str]]]): A tuple containing the username and an optional password
             for basic authentication. Default is None.
         auth_bearer (Optional[str]): A string representing the bearer token for bearer token authentication. Default is None.
         timeout (Optional[float]): The timeout for the request in seconds. Default is 30.
@@ -189,16 +189,19 @@ auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
 resp = client.post(url="https://httpbin.org/anything", auth_bearer=auth_bearer)
 print(r.text)
 
-# Using proxy
+# Using proxy or env var PRIMP_PROXY
 resp = primp.Client(proxy="http://127.0.0.1:8080").get("https://tls.peet.ws/api/all")
 print(resp.json())
+export PRIMP_PROXY="socks5://127.0.0.1:1080"
+resp = primp.Client().get("https://tls.peet.ws/api/all")
+print(resp.json())
 
-# Using custom CA certificate store: file or certifi.where() or env var CA_CERT_FILE
+# Using custom CA certificate store: file or certifi.where() or env var PRIMP_CA_BUNDLE
 resp = primp.Client(ca_cert_file="/cert/cacert.pem").get("https://tls.peet.ws/api/all")
 print(resp.json())
 resp = primp.Client(ca_cert_file=certifi.where()).get("https://tls.peet.ws/api/all")
 print(resp.json())
-export CA_CERT_FILE="/home/user/Downloads/cert.pem"
+export PRIMP_CA_BUNDLE="/home/user/Downloads/cert.pem"
 resp = primp.Client().get("https://tls.peet.ws/api/all")
 print(resp.json())
 
