@@ -207,9 +207,9 @@ checksum = "325918d6fe32f23b19878fe4b34794ae41fc19ddbe53b10571a4874d44ffd39b"
 
 [[package]]
 name = "cc"
-version = "1.2.2"
+version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f34d93e62b03caf570cccc334cbc6c2fceca82f39211051345108adcba3eebdc"
+checksum = "27f657647bcff5394bf56c7317665bbf790a137a50eaaa5c6bfbb9e27a518f2d"
 dependencies = [
  "jobserver",
  "libc",
@@ -1322,9 +1322,9 @@ dependencies = [
 
 [[package]]
 name = "rquest"
-version = "0.30.0"
+version = "0.30.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d2f01cd182776cb8d28135d4f8dd8bf1a76845f982cf97d9f21f5b1037a36e6"
+checksum = "9d2945834d2fcbdfd1dab3943f3c549beafca5b5f941b6a94d341ac1e100b625"
 dependencies = [
  "antidote",
  "async-compression",
