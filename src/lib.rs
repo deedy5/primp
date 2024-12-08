@@ -11,12 +11,20 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use pythonize::depythonize;
-use rquest::boring::x509::{store::X509StoreBuilder, X509};
-use rquest::header::{HeaderMap, HeaderName, HeaderValue, COOKIE};
-use rquest::multipart;
-use rquest::redirect::Policy;
-use rquest::tls::Impersonate;
-use rquest::Method;
+use rquest::{
+    boring::{
+        error::ErrorStack,
+        ssl::{SslConnector, SslCurve, SslMethod, SslOptions},
+        x509::{store::X509Store, store::X509StoreBuilder, store::X509StoreRef, X509},
+    },
+    header::{self, HeaderMap, HeaderName, HeaderValue, COOKIE},
+    multipart,
+    redirect::Policy,
+    tls::{Http2Settings, Impersonate, ImpersonateSettings, TlsSettings, Version},
+    HttpVersionPref, Method,
+    PseudoOrder::*,
+    SettingsOrder::*,
+};
 use serde_json::Value;
 use tokio::runtime::{self, Runtime};
 
@@ -38,6 +46,45 @@ static PRIMP_CA_BUNDLE: LazyLock<Option<String>> = LazyLock::new(|| {
         .ok()
 });
 static PRIMP_PROXY: LazyLock<Option<String>> = LazyLock::new(|| std::env::var("PRIMP_PROXY").ok());
+static HEADER_ORDER: [HeaderName; 5] = [
+    header::USER_AGENT,
+    header::ACCEPT_LANGUAGE,
+    header::ACCEPT_ENCODING,
+    header::COOKIE,
+    header::HOST,
+];
+
+/// Loads the CA certificates from venv var PRIMP_CA_BUNDLE or the WebPKI certificate store
+fn load_ca_certs() -> Option<&'static X509StoreRef> {
+    static CERT_STORE: LazyLock<Result<X509Store, ErrorStack>> = LazyLock::new(|| {
+        let mut ca_store = X509StoreBuilder::new()?;
+        if let Some(ca_cert_path) = &*PRIMP_CA_BUNDLE {
+            let cert_file =
+                &fs::read(ca_cert_path).expect("Failed to read env var PRIMP_CA_BUNDLE");
+            let certs = X509::stack_from_pem(&cert_file)?;
+            for cert in certs {
+                ca_store.add_cert(cert)?;
+            }
+        } else {
+            for cert in webpki_root_certs::TLS_SERVER_ROOT_CERTS {
+                let x509 = X509::from_der(cert)?;
+                ca_store.add_cert(x509)?;
+            }
+        }
+        Ok(ca_store.build())
+    });
+
+    match CERT_STORE.as_ref() {
+        Ok(cert_store) => {
+            log::info!("Loaded CA certs");
+            Some(cert_store)
+        }
+        Err(err) => {
+            log::error!("Failed to load CA certs: {:?}", err);
+            None
+        }
+    }
+}
 
 #[pyclass]
 /// HTTP client that can impersonate web browsers.
@@ -73,7 +120,7 @@ impl Client {
     /// * `follow_redirects` - A boolean to enable or disable following redirects. Default is `true`.
     /// * `max_redirects` - The maximum number of redirects to follow. Default is 20. Applies if `follow_redirects` is `true`.
     /// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is `true`.
-    /// * `ca_cert_file` - Path to CA certificate store. Default is None.
+    /// * `ca_cert_file` - Path to CA certificate store. Deprecated! Use PRIMP_CA_BUNDLE environment variable.
     /// * `http1` - An optional boolean indicating whether to use only HTTP/1.1. Default is `false`.
     /// * `http2` - An optional boolean indicating whether to use only HTTP/2. Default is `false`.
     ///
@@ -130,10 +177,83 @@ impl Client {
         let mut client_builder = rquest::Client::builder();
 
         // Impersonate
-        if let Some(impersonation_type) = impersonate {
-            let impersonation = Impersonate::from_str(impersonation_type)
-                .map_err(|err| PyValueError::new_err(err))?;
-            client_builder = client_builder.impersonate(impersonation);
+        match impersonate {
+            Some("random") => {
+                // Create a TLS connector builder
+                let mut connector =
+                    SslConnector::no_default_verify_builder(SslMethod::tls_client())?;
+                connector.set_curves(&[SslCurve::SECP224R1, SslCurve::SECP521R1])?;
+                connector.set_options(SslOptions::NO_TICKET);
+
+                // Create a pre-configured TLS settings
+                let tls_settings = TlsSettings::builder()
+                    .connector(connector)
+                    .tls_sni(true)
+                    .http_version_pref(HttpVersionPref::All)
+                    .application_settings(true)
+                    .pre_shared_key(true)
+                    .enable_ech_grease(true)
+                    .permute_extensions(true)
+                    .grease_enabled(true)
+                    .enable_ocsp_stapling(true)
+                    .min_tls_version(Version::TLS_1_0)
+                    .max_tls_version(Version::TLS_1_3)
+                    .build();
+                //    .curves(curves);
+
+                // Create http2 settings
+                let http2_settings = Http2Settings::builder()
+                    .initial_stream_window_size(6291456)
+                    .initial_connection_window_size(15728640)
+                    .max_concurrent_streams(1000)
+                    .max_header_list_size(262144)
+                    .header_table_size(65536)
+                    .enable_push(false)
+                    .headers_priority((0, 255, true))
+                    .headers_pseudo_order([Method, Scheme, Authority, Path])
+                    .settings_order([
+                        HeaderTableSize,
+                        EnablePush,
+                        MaxConcurrentStreams,
+                        InitialWindowSize,
+                        MaxFrameSize,
+                        MaxHeaderListSize,
+                        UnknownSetting8,
+                        UnknownSetting9,
+                    ])
+                    .build();
+
+                // Create headers
+                let headers = {
+                    let mut headers = HeaderMap::new();
+                    headers.insert(header::USER_AGENT, HeaderValue::from_static("primp"));
+                    headers.insert(
+                        header::ACCEPT_LANGUAGE,
+                        HeaderValue::from_static("en-US,en;q=0.9"),
+                    );
+                    headers.insert(
+                        header::ACCEPT_ENCODING,
+                        HeaderValue::from_static("gzip, deflate, br, zstd"),
+                    );
+                    headers
+                };
+
+                // Create impersonate settings
+                let impersonate_settings = ImpersonateSettings::builder()
+                    .tls(tls_settings)
+                    .http2(http2_settings)
+                    .headers(headers)
+                    .headers_order(&HEADER_ORDER)
+                    .build();
+
+                client_builder = client_builder.use_preconfigured_tls(impersonate_settings);
+            }
+            Some(impersonation_type) => {
+                let impersonation = Impersonate::from_str(impersonation_type)
+                    .map_err(|err| PyValueError::new_err(err))?;
+                client_builder = client_builder.impersonate(impersonation);
+            }
+            None => {}
         }
 
         // Headers
@@ -181,22 +301,15 @@ impl Client {
 
         // Verify
         let verify: bool = verify.unwrap_or(true);
-        if !verify {
+        if verify {
+            client_builder = client_builder.ca_cert_store(load_ca_certs)
+        } else {
             client_builder = client_builder.danger_accept_invalid_certs(true);
         }
 
         // Ca_cert_file
-        let ca_cert_file = ca_cert_file.or(PRIMP_CA_BUNDLE.clone());
-        if let Some(ca_cert_file) = ca_cert_file {
-            client_builder = client_builder.ca_cert_store(move || {
-                let mut ca_store = X509StoreBuilder::new()?;
-                let cert_file = &fs::read(&ca_cert_file).expect("Failed to read ca_cert_file");
-                let certs = X509::stack_from_pem(&cert_file)?;
-                for cert in certs {
-                    ca_store.add_cert(cert)?;
-                }
-                Ok(ca_store.build())
-            });
+        if let Some(_ca_cert_file) = ca_cert_file {
+            println!("ca_cert_file parameter is deprecated. Primp built with the Mozilla's latest trusted root certificates. Use PRIMP_CA_BUNDLE environment variable instead.")
         }
 
         // Http version: http1 || http2

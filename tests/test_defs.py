@@ -1,6 +1,5 @@
 from time import sleep
 
-import certifi
 import primp  # type: ignore
 
 
@@ -35,7 +34,6 @@ def test_request_get():
         headers=headers,
         cookies=cookies,
         params=params,
-        ca_cert_file=certifi.where(),
     )
     assert response.status_code == 200
     json_data = response.json()
@@ -74,16 +72,14 @@ def test_get():
 
 @retry()
 def test_head():
-    response = primp.head("https://httpbin.org/anything", ca_cert_file=certifi.where())
+    response = primp.head("https://httpbin.org/anything")
     assert response.status_code == 200
     assert "content-length" in response.headers
 
 
 @retry()
 def test_options():
-    response = primp.options(
-        "https://httpbin.org/anything", ca_cert_file=certifi.where()
-    )
+    response = primp.options("https://httpbin.org/anything")
     assert response.status_code == 200
     assert sorted(response.headers["allow"].split(", ")) == [
         "DELETE",
