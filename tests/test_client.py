@@ -1,6 +1,5 @@
 from time import sleep
 
-import certifi
 import primp  # type: ignore
 
 
@@ -33,7 +32,6 @@ def test_client_init_params():
         params=params,
         headers=headers,
         cookies=cookies,
-        ca_cert_file=certifi.where(),
     )
     response = client.get("https://httpbin.org/anything")
     assert response.status_code == 200

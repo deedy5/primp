@@ -32,7 +32,6 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = [
-    "certifi",
     "pytest>=8.1.1",
 ]
 

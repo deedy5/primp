@@ -17,6 +17,7 @@ Provides precompiled wheels:</br>
   - [I. Client](#i-client)
     - [Client methods](#client-methods)
     - [Response object](#response-object)
+    - [Devices](#devices)
     - [Examples](#examples)
   - [II. AsyncClient](#ii-asyncclient)
 
@@ -62,7 +63,7 @@ class Client:
         follow_redirects (bool, optional): Whether to follow redirects. Default is True.
         max_redirects (int, optional): Maximum redirects to follow. Default 20. Applies if `follow_redirects` is True.
         verify (bool, optional): Verify SSL certificates. Default is True.
-        ca_cert_file (str, optional): Path to CA certificate store. Default is None.
+        ca_cert_file (str, optional): Path to CA certificate store. Deprecated! Use PRIMP_CA_BUNDLE environment variable.
         http1 (bool, optional): Use only HTTP/1.1. Default is None.
         http2 (bool, optional): Use only HTTP/2. Default is None.
 
@@ -143,12 +144,25 @@ resp.text_rich  # html is converted to rich text
 resp.url
 ```
 
+#### Devices
+
+- Chrome: `Chrome100`，`Chrome101`，`Chrome104`，`Chrome105`，`Chrome106`，`Chrome107`，`Chrome108`，`Chrome109`，`Chrome114`，`Chrome116`，`Chrome117`，`Chrome118`，`Chrome119`，`Chrome120`，`Chrome123`，`Chrome124`，`Chrome126`，`Chrome127`，`Chrome128`，`Chrome129`，`Chrome130`，`Chrome131`
+
+- Edge: `Edge101`，`Edge122`，`Edge127`
+
+- Safari: `SafariIos17_2`，`SafariIos17_4_1`，`SafariIos16_5`，`Safari15_3`，`Safari15_5`，`Safari15_6_1`，`Safari16`，`Safari16_5`，`Safari17_0`，`Safari17_2_1`，`Safari17_4_1`，`Safari17_5`，`Safari18`，`SafariIPad18`
+
+- OkHttp: `OkHttp3_9`，`OkHttp3_11`，`OkHttp3_13`，`OkHttp3_14`，`OkHttp4_9`，`OkHttp4_10`，`OkHttp5`
+
 #### Examples
 
 ```python
 import primp
 
-client = primp.Client(impersonate="chrome_131")
+# Impersonate
+client = primp.Client(impersonate="chrome_131")  # chrome_131
+client = primp.Client(impersonate="random")  # random selection from the Devices
+client = primp.Client(impersonate="chaos")  # device-chaos (randomly generated ja4, akamai, peetprint)
 
 # GET request
 resp = client.get("https://tls.peet.ws/api/all")
@@ -196,11 +210,8 @@ export PRIMP_PROXY="socks5://127.0.0.1:1080"
 resp = primp.Client().get("https://tls.peet.ws/api/all")
 print(resp.json())
 
-# Using custom CA certificate store: file or certifi.where() or env var PRIMP_CA_BUNDLE
-resp = primp.Client(ca_cert_file="/cert/cacert.pem").get("https://tls.peet.ws/api/all")
-print(resp.json())
-resp = primp.Client(ca_cert_file=certifi.where()).get("https://tls.peet.ws/api/all")
-print(resp.json())
+# Using custom CA certificate store: env var PRIMP_CA_BUNDLE
+# (Primp built with the Mozilla's latest trusted root certificates, so maybe it's not necessary)
 export PRIMP_CA_BUNDLE="/home/user/Downloads/cert.pem"
 resp = primp.Client().get("https://tls.peet.ws/api/all")
 print(resp.json())
