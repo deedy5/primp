@@ -1,4 +1,3 @@
-use std::fs;
 use std::str::FromStr;
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
@@ -11,19 +10,24 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use pythonize::depythonize;
-use rquest::boring::x509::{store::X509StoreBuilder, X509};
-use rquest::header::{HeaderMap, HeaderName, HeaderValue, COOKIE};
-use rquest::multipart;
-use rquest::redirect::Policy;
-use rquest::tls::Impersonate;
-use rquest::Method;
+use rquest::{
+    header::{HeaderMap, HeaderName, HeaderValue, COOKIE},
+    multipart,
+    redirect::Policy,
+    tls::Impersonate,
+    Method,
+};
 use serde_json::Value;
 use tokio::runtime::{self, Runtime};
+
+mod impersonate;
+use impersonate::{get_chaos_impersonate_settings, get_random_element, IMPERSONATES};
 
 mod response;
 use response::Response;
 
 mod utils;
+use utils::load_ca_certs;
 
 // Tokio global one-thread runtime
 static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
@@ -31,11 +35,6 @@ static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
         .enable_all()
         .build()
         .unwrap()
-});
-static PRIMP_CA_BUNDLE: LazyLock<Option<String>> = LazyLock::new(|| {
-    std::env::var("PRIMP_CA_BUNDLE")
-        .or(std::env::var("CA_CERT_FILE"))
-        .ok()
 });
 static PRIMP_PROXY: LazyLock<Option<String>> = LazyLock::new(|| std::env::var("PRIMP_PROXY").ok());
 
@@ -73,7 +72,7 @@ impl Client {
     /// * `follow_redirects` - A boolean to enable or disable following redirects. Default is `true`.
     /// * `max_redirects` - The maximum number of redirects to follow. Default is 20. Applies if `follow_redirects` is `true`.
     /// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is `true`.
-    /// * `ca_cert_file` - Path to CA certificate store. Default is None.
+    /// * `ca_cert_file` - Path to CA certificate store. Deprecated! Use PRIMP_CA_BUNDLE environment variable.
     /// * `http1` - An optional boolean indicating whether to use only HTTP/1.1. Default is `false`.
     /// * `http2` - An optional boolean indicating whether to use only HTTP/2. Default is `false`.
     ///
@@ -130,10 +129,23 @@ impl Client {
         let mut client_builder = rquest::Client::builder();
 
         // Impersonate
-        if let Some(impersonation_type) = impersonate {
-            let impersonation = Impersonate::from_str(impersonation_type)
-                .map_err(|err| PyValueError::new_err(err))?;
-            client_builder = client_builder.impersonate(impersonation);
+        match impersonate {
+            Some("random") => {
+                let random_impersonate_settings =
+                    Impersonate::from_str(get_random_element(IMPERSONATES.to_vec()))
+                        .map_err(|err| PyValueError::new_err(err))?;
+                client_builder = client_builder.impersonate(random_impersonate_settings);
+            }
+            Some("chaos") => {
+                let chaos_impersonate_settings = get_chaos_impersonate_settings()?;
+                client_builder = client_builder.use_preconfigured_tls(chaos_impersonate_settings);
+            }
+            Some(impersonation_type) => {
+                let impersonation = Impersonate::from_str(impersonation_type)
+                    .map_err(|err| PyValueError::new_err(err))?;
+                client_builder = client_builder.impersonate(impersonation);
+            }
+            None => {}
         }
 
         // Headers
@@ -181,22 +193,15 @@ impl Client {
 
         // Verify
         let verify: bool = verify.unwrap_or(true);
-        if !verify {
+        if verify {
+            client_builder = client_builder.ca_cert_store(load_ca_certs)
+        } else {
             client_builder = client_builder.danger_accept_invalid_certs(true);
         }
 
         // Ca_cert_file
-        let ca_cert_file = ca_cert_file.or(PRIMP_CA_BUNDLE.clone());
-        if let Some(ca_cert_file) = ca_cert_file {
-            client_builder = client_builder.ca_cert_store(move || {
-                let mut ca_store = X509StoreBuilder::new()?;
-                let cert_file = &fs::read(&ca_cert_file).expect("Failed to read ca_cert_file");
-                let certs = X509::stack_from_pem(&cert_file)?;
-                for cert in certs {
-                    ca_store.add_cert(cert)?;
-                }
-                Ok(ca_store.build())
-            });
+        if let Some(_ca_cert_file) = ca_cert_file {
+            log::warn!("ca_cert_file parameter is deprecated. Primp built with the Mozilla's latest trusted root certificates. Use PRIMP_CA_BUNDLE env var instead.")
         }
 
         // Http version: http1 || http2
