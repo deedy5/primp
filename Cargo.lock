@@ -517,7 +517,7 @@ dependencies = [
  "markup5ever",
  "nom",
  "tendril",
- "thiserror 2.0.4",
+ "thiserror 2.0.6",
  "unicode-width",
 ]
 
@@ -571,9 +571,9 @@ checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 
 [[package]]
 name = "hyper2"
-version = "0.14.66"
+version = "0.14.83"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae1f878abe9e3fd7d2a64cf087bd30e1e78c138e292faf0f13225a56845ade93"
+checksum = "d9737fcbdab5ba611c942dd67cbe39b944541b6997a9f728474512a86ebd5646"
 dependencies = [
  "bytes",
  "futures-channel",
@@ -584,6 +584,7 @@ dependencies = [
  "httparse",
  "httpdate",
  "itoa",
+ "lru",
  "pin-project-lite",
  "rh2",
  "socket2",
@@ -781,9 +782,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.167"
+version = "0.2.168"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09d6582e104315a817dff97f75133544b2e094ee22447d2acf4a74e189ba06fc"
+checksum = "5aaeb2981e0606ca11d79718f8bb01164f1d6ed75080182d3abf017e6d244b6d"
 
 [[package]]
 name = "libloading"
@@ -837,6 +838,12 @@ name = "log"
 version = "0.4.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
+
+[[package]]
+name = "lru"
+version = "0.12.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "234cf4f4a04dc1f57e24b96cc0cd600cf2af460d4161ac5ecdd0af8e1f3b2a38"
 
 [[package]]
 name = "mac"
@@ -897,9 +904,9 @@ checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 
 [[package]]
 name = "miniz_oxide"
-version = "0.8.0"
+version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e2d80299ef12ff69b16a84bb182e3b9df68b5a91574d3d4fa6e41b65deec4df1"
+checksum = "4ffbe83022cedc1d264172192511ae958937694cd57ce297164951b8b3568394"
 dependencies = [
  "adler2",
 ]
@@ -1108,9 +1115,11 @@ dependencies = [
  "pyo3",
  "pyo3-log",
  "pythonize",
+ "rand",
  "rquest",
  "serde_json",
  "tokio",
+ "webpki-root-certs",
 ]
 
 [[package]]
@@ -1322,9 +1331,9 @@ dependencies = [
 
 [[package]]
 name = "rquest"
-version = "0.30.5"
+version = "0.31.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d2945834d2fcbdfd1dab3943f3c549beafca5b5f941b6a94d341ac1e100b625"
+checksum = "3ec45993a20ed6cfdfd5545352ff8e4611f6ced82a26063d21a23730db13d462"
 dependencies = [
  "antidote",
  "async-compression",
@@ -1589,11 +1598,11 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "2.0.4"
+version = "2.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f49a1853cf82743e3b7950f77e0f4d622ca36cf4317cba00c767838bac8d490"
+checksum = "8fec2a1820ebd077e2b90c4df007bebf344cd394098a13c563957d0afc83ea47"
 dependencies = [
- "thiserror-impl 2.0.4",
+ "thiserror-impl 2.0.6",
 ]
 
 [[package]]
@@ -1609,9 +1618,9 @@ dependencies = [
 
 [[package]]
 name = "thiserror-impl"
-version = "2.0.4"
+version = "2.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8381894bb3efe0c4acac3ded651301ceee58a15d47c2e34885ed1908ad667061"
+checksum = "d65750cab40f4ff1929fb1ba509e9914eb756131cef4210da8d5d700d26f6312"
 dependencies = [
  "proc-macro2",
  "quote",

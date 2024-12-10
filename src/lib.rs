@@ -1,4 +1,3 @@
-use std::fs;
 use std::str::FromStr;
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
@@ -11,12 +10,13 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use pythonize::depythonize;
-use rquest::boring::x509::{store::X509StoreBuilder, X509};
-use rquest::header::{HeaderMap, HeaderName, HeaderValue, COOKIE};
-use rquest::multipart;
-use rquest::redirect::Policy;
-use rquest::tls::Impersonate;
-use rquest::Method;
+use rquest::{
+    header::{HeaderMap, HeaderName, HeaderValue, COOKIE},
+    multipart,
+    redirect::Policy,
+    tls::Impersonate,
+    Method,
+};
 use serde_json::Value;
 use tokio::runtime::{self, Runtime};
 
@@ -24,6 +24,7 @@ mod response;
 use response::Response;
 
 mod utils;
+use utils::load_ca_certs;
 
 // Tokio global one-thread runtime
 static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
@@ -32,12 +33,6 @@ static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
         .build()
         .unwrap()
 });
-static PRIMP_CA_BUNDLE: LazyLock<Option<String>> = LazyLock::new(|| {
-    std::env::var("PRIMP_CA_BUNDLE")
-        .or(std::env::var("CA_CERT_FILE"))
-        .ok()
-});
-static PRIMP_PROXY: LazyLock<Option<String>> = LazyLock::new(|| std::env::var("PRIMP_PROXY").ok());
 
 #[pyclass]
 /// HTTP client that can impersonate web browsers.
@@ -112,7 +107,7 @@ impl Client {
         cookies: Option<IndexMap<String, String, RandomState>>,
         cookie_store: Option<bool>,
         referer: Option<bool>,
-        proxy: Option<&str>,
+        proxy: Option<String>,
         timeout: Option<f64>,
         impersonate: Option<&str>,
         follow_redirects: Option<bool>,
@@ -160,8 +155,7 @@ impl Client {
         }
 
         // Proxy
-        let proxy = proxy.or(PRIMP_PROXY.as_deref());
-        if let Some(proxy_url) = proxy {
+        if let Some(proxy_url) = proxy.or_else(|| std::env::var("PRIMP_PROXY").ok()) {
             let proxy = rquest::Proxy::all(proxy_url)?;
             client_builder = client_builder.proxy(proxy);
         }
@@ -179,24 +173,16 @@ impl Client {
             client_builder = client_builder.redirect(Policy::none());
         }
 
-        // Verify
-        let verify: bool = verify.unwrap_or(true);
-        if !verify {
-            client_builder = client_builder.danger_accept_invalid_certs(true);
+        // Ca_cert_file. BEFORE!!! verify (fn load_ca_certs() reads env var PRIMP_CA_BUNDLE)
+        if let Some(ca_bundle_path) = ca_cert_file {
+            std::env::set_var("PRIMP_CA_BUNDLE", ca_bundle_path);
         }
 
-        // Ca_cert_file
-        let ca_cert_file = ca_cert_file.or(PRIMP_CA_BUNDLE.clone());
-        if let Some(ca_cert_file) = ca_cert_file {
-            client_builder = client_builder.ca_cert_store(move || {
-                let mut ca_store = X509StoreBuilder::new()?;
-                let cert_file = &fs::read(&ca_cert_file).expect("Failed to read ca_cert_file");
-                let certs = X509::stack_from_pem(&cert_file)?;
-                for cert in certs {
-                    ca_store.add_cert(cert)?;
-                }
-                Ok(ca_store.build())
-            });
+        // Verify
+        if verify.unwrap_or(true) {
+            client_builder = client_builder.ca_cert_store(load_ca_certs);
+        } else {
+            client_builder = client_builder.danger_accept_invalid_certs(true);
         }
 
         // Http version: http1 || http2
@@ -275,12 +261,12 @@ impl Client {
             "DELETE" => Ok(Method::DELETE),
             _ => Err(PyValueError::new_err("Unrecognized HTTP method")),
         }?;
-        let params = params.or(self.params.clone());
-        let cookies = cookies.or(self.cookies.clone());
+        let params = params.or_else(|| self.params.clone());
+        let cookies = cookies.or_else(|| self.cookies.clone());
         let data_value: Option<Value> = data.map(|data| depythonize(&data)).transpose()?;
         let json_value: Option<Value> = json.map(|json| depythonize(&json)).transpose()?;
-        let auth = auth.or(self.auth.clone());
-        let auth_bearer = auth_bearer.or(self.auth_bearer.clone());
+        let auth = auth.or_else(|| self.auth.clone());
+        let auth_bearer = auth_bearer.or_else(|| self.auth_bearer.clone());
         if auth.is_some() && auth_bearer.is_some() {
             return Err(PyValueError::new_err("Cannot provide both auth and auth_bearer").into());
         }
