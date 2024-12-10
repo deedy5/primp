@@ -39,7 +39,7 @@ impl Response {
             return Ok(&self.encoding);
         }
         self.encoding = get_encoding_from_headers(&self.headers)
-            .or(get_encoding_from_content(&self.content.bind(py).as_bytes()))
+            .or_else(|| get_encoding_from_content(&self.content.bind(py).as_bytes()))
             .unwrap_or("UTF-8".to_string());
         Ok(&self.encoding)
     }
