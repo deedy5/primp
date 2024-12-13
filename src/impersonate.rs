@@ -7,7 +7,7 @@ use rquest::{
     header::{self, HeaderMap, HeaderName, HeaderValue, ACCEPT},
     tls::{
         cert_compression::CertCompressionAlgorithm, Http2Settings, ImpersonateSettings,
-        TlsSettings, Version,
+        TlsSettings, TlsVersion,
     },
     HttpVersionPref,
     PseudoOrder::{self, *},
@@ -161,8 +161,8 @@ pub fn get_chaos_impersonate_settings() -> Result<ImpersonateSettings, Error> {
         .curves(Cow::Owned(shuffle_list(CURVES)))
         .sigalgs_list(Cow::Owned(shuffle_list(SIGALGS_LIST).join(":")))
         .cipher_list(Cow::Owned(shuffle_list(CIPHER_LIST).join(":")))
-        .min_tls_version(Version::TLS_1_2)
-        .max_tls_version(Version::TLS_1_3)
+        .min_tls_version(TlsVersion::TLS_1_2)
+        .max_tls_version(TlsVersion::TLS_1_3)
         .permute_extensions(true)
         .pre_shared_key(true)
         .enable_ech_grease(true)

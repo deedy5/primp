@@ -131,7 +131,7 @@ impl Client {
         match impersonate {
             Some("chaos") => {
                 let chaos_impersonate_settings = get_chaos_impersonate_settings()?;
-                client_builder = client_builder.use_preconfigured_tls(chaos_impersonate_settings);
+                client_builder = client_builder.impersonate_settings(chaos_impersonate_settings);
             }
             Some("random") => {
                 let impersonation = Impersonate::from_str(*get_random_element(IMPERSONATES))
