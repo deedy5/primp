@@ -69,8 +69,8 @@ impl Client {
     /// * `max_redirects` - The maximum number of redirects to follow. Default is 20. Applies if `follow_redirects` is `true`.
     /// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is `true`.
     /// * `ca_cert_file` - Path to CA certificate store. Default is None.
-    /// * `http1` - An optional boolean indicating whether to use only HTTP/1.1. Default is `false`.
-    /// * `http2` - An optional boolean indicating whether to use only HTTP/2. Default is `false`.
+    /// * `https_only` - Restrict the Client to be used with HTTPS only requests. Default is `false`.
+    /// * `http2_only` - If true - use only HTTP/2, if false - use only HTTP/1. Default is `false`.
     ///
     /// # Example
     ///
@@ -91,14 +91,14 @@ impl Client {
     ///     max_redirects=1,
     ///     verify=True,
     ///     ca_cert_file="/cert/cacert.pem",
-    ///     http1=True,
-    ///     http2=False,
+    ///     https_only=True,
+    ///     http2_only=True,
     /// )
     /// ```
     #[new]
     #[pyo3(signature = (auth=None, auth_bearer=None, params=None, headers=None, cookies=None,
-        cookie_store=None, referer=None, proxy=None, timeout=None, impersonate=None, follow_redirects=None,
-        max_redirects=None, verify=None, ca_cert_file=None, http1=None, http2=None))]
+        cookie_store=true, referer=true, proxy=None, timeout=None, impersonate=None, follow_redirects=true,
+        max_redirects=20, verify=true, ca_cert_file=None, https_only=false, http2_only=false))]
     fn new(
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
@@ -114,8 +114,8 @@ impl Client {
         max_redirects: Option<usize>,
         verify: Option<bool>,
         ca_cert_file: Option<String>,
-        http1: Option<bool>,
-        http2: Option<bool>,
+        https_only: Option<bool>,
+        http2_only: Option<bool>,
     ) -> Result<Self> {
         if auth.is_some() && auth_bearer.is_some() {
             return Err(PyValueError::new_err("Cannot provide both auth and auth_bearer").into());
@@ -185,14 +185,14 @@ impl Client {
             client_builder = client_builder.danger_accept_invalid_certs(true);
         }
 
-        // Http version: http1 || http2
-        match (http1, http2) {
-            (Some(true), Some(true)) => {
-                return Err(PyValueError::new_err("Both http1 and http2 cannot be true").into())
-            }
-            (Some(true), _) => client_builder = client_builder.http1_only(),
-            (_, Some(true)) => client_builder = client_builder.http2_only(),
-            _ => (),
+        // Https_only
+        if let Some(true) = https_only {
+            client_builder = client_builder.https_only(true);
+        }
+
+        // Http2_only
+        if let Some(true) = http2_only {
+            client_builder = client_builder.http2_only();
         }
 
         let client = Arc::new(client_builder.build()?);
