@@ -64,8 +64,8 @@ class Client:
         max_redirects (int, optional): Maximum redirects to follow. Default 20. Applies if `follow_redirects` is True.
         verify (bool, optional): Verify SSL certificates. Default is True.
         ca_cert_file (str, optional): Path to CA certificate store. Default is None.
-        http1 (bool, optional): Use only HTTP/1.1. Default is None.
-        http2 (bool, optional): Use only HTTP/2. Default is None.
+        https_only`: Restrict the Client to be used with HTTPS only requests. Default is `false`.
+        http2_only`: If true - use only HTTP/2; if false - use only HTTP/1. Default is `false`.
 
     """
 ```
