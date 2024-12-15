@@ -2,9 +2,9 @@ use std::str::FromStr;
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
-use ahash::RandomState;
 use anyhow::{Error, Result};
 use bytes::Bytes;
+use foldhash::fast::RandomState;
 use indexmap::IndexMap;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;

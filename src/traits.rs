@@ -1,4 +1,4 @@
-use ahash::RandomState;
+use foldhash::fast::RandomState;
 use anyhow::{Error, Ok};
 use indexmap::IndexMap;
 
