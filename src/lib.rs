@@ -124,10 +124,6 @@ impl Client {
         https_only: Option<bool>,
         http2_only: Option<bool>,
     ) -> Result<Self> {
-        if auth.is_some() && auth_bearer.is_some() {
-            return Err(PyValueError::new_err("Cannot provide both auth and auth_bearer").into());
-        }
-
         // Client builder
         let mut client_builder = rquest::Client::builder();
 
@@ -288,9 +284,6 @@ impl Client {
         let json_value: Option<Value> = json.map(|json| depythonize(&json)).transpose()?;
         let auth = auth.or_else(|| self.auth.clone());
         let auth_bearer = auth_bearer.or_else(|| self.auth_bearer.clone());
-        if auth.is_some() && auth_bearer.is_some() {
-            return Err(PyValueError::new_err("Cannot provide both auth and auth_bearer").into());
-        }
         let is_post_put_patch = method == "POST" || method == "PUT" || method == "PATCH";
 
         let future = async move {
