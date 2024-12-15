@@ -179,7 +179,7 @@ impl Client {
 
         // Verify
         if verify.unwrap_or(true) {
-            client_builder = client_builder.ca_cert_store(load_ca_certs);
+            client_builder = client_builder.root_certs_store(load_ca_certs);
         } else {
             client_builder = client_builder.danger_accept_invalid_certs(true);
         }

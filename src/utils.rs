@@ -6,13 +6,13 @@ use indexmap::IndexMap;
 use rquest::boring::{
     error::ErrorStack,
     x509::{
-        store::{X509Store, X509StoreBuilder, X509StoreRef},
+        store::{X509Store, X509StoreBuilder},
         X509,
     },
 };
 
 /// Loads the CA certificates from venv var PRIMP_CA_BUNDLE or the WebPKI certificate store
-pub fn load_ca_certs() -> Option<&'static X509StoreRef> {
+pub fn load_ca_certs() -> Option<&'static X509Store> {
     static CERT_STORE: LazyLock<Result<X509Store, ErrorStack>> = LazyLock::new(|| {
         let mut ca_store = X509StoreBuilder::new()?;
         if let Some(ca_cert_path) = std::env::var("PRIMP_CA_BUNDLE")
