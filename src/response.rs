@@ -1,7 +1,7 @@
 use crate::utils::{get_encoding_from_content, get_encoding_from_headers};
-use ahash::RandomState;
 use anyhow::{anyhow, Result};
 use encoding_rs::Encoding;
+use foldhash::fast::RandomState;
 use html2text::{
     from_read, from_read_with_decorator,
     render::{RichDecorator, TrivialDecorator},

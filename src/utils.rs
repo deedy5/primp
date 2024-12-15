@@ -1,7 +1,7 @@
 use std::cmp::min;
 use std::sync::LazyLock;
 
-use ahash::RandomState;
+use foldhash::fast::RandomState;
 use indexmap::IndexMap;
 use rquest::boring::{
     error::ErrorStack,
