@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::str::FromStr;
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
@@ -47,8 +48,12 @@ pub struct Client {
     auth_bearer: Option<String>,
     #[pyo3(get, set)]
     params: Option<IndexMap<String, String, RandomState>>,
-    #[pyo3(get)]
+    #[pyo3(get, set)]
     cookies: Option<IndexMap<String, String, RandomState>>,
+    #[pyo3(get, set)]
+    proxy: Option<String>,
+    #[pyo3(get, set)]
+    timeout: Option<f64>,
 }
 
 #[pymethods]
@@ -150,9 +155,9 @@ impl Client {
         }
 
         // Proxy
-        if let Some(proxy_url) = proxy.or_else(|| std::env::var("PRIMP_PROXY").ok()) {
-            let proxy = rquest::Proxy::all(proxy_url)?;
-            client_builder = client_builder.proxy(proxy);
+        let proxy = proxy.or_else(|| std::env::var("PRIMP_PROXY").ok());
+        if let Some(proxy) = &proxy {
+            client_builder = client_builder.proxy(rquest::Proxy::all(proxy)?);
         }
 
         // Timeout
@@ -161,15 +166,14 @@ impl Client {
         }
 
         // Redirects
-        let max_redirects = max_redirects.unwrap_or(20);
         if follow_redirects.unwrap_or(true) {
-            client_builder = client_builder.redirect(Policy::limited(max_redirects));
+            client_builder = client_builder.redirect(Policy::limited(max_redirects.unwrap_or(20)));
         } else {
             client_builder = client_builder.redirect(Policy::none());
         }
 
         // Ca_cert_file. BEFORE!!! verify (fn load_ca_certs() reads env var PRIMP_CA_BUNDLE)
-        if let Some(ca_bundle_path) = ca_cert_file {
+        if let Some(ca_bundle_path) = &ca_cert_file {
             std::env::set_var("PRIMP_CA_BUNDLE", ca_bundle_path);
         }
 
@@ -198,6 +202,8 @@ impl Client {
             auth_bearer,
             params,
             cookies,
+            proxy,
+            timeout,
         })
     }
 
@@ -220,6 +226,20 @@ impl Client {
                 headers.insert_key_value(k, v)?
             }
         }
+        Ok(())
+    }
+
+    #[getter]
+    pub fn get_proxy(&self) -> Result<Option<String>> {
+        Ok(self.proxy.to_owned())
+    }
+
+    #[setter]
+    pub fn set_proxy(&mut self, proxy: String) -> Result<()> {
+        let mut client = self.client.lock().unwrap();
+        let rproxy = rquest::Proxy::all(proxy.clone())?;
+        client.set_proxies(Cow::Owned(vec![rproxy]));
+        self.proxy = Some(proxy);
         Ok(())
     }
 
@@ -269,15 +289,15 @@ impl Client {
         let client = Arc::clone(&self.client);
         // Method
         let method = match method {
-            "GET" => Ok(Method::GET),
-            "POST" => Ok(Method::POST),
-            "HEAD" => Ok(Method::HEAD),
-            "OPTIONS" => Ok(Method::OPTIONS),
-            "PUT" => Ok(Method::PUT),
-            "PATCH" => Ok(Method::PATCH),
-            "DELETE" => Ok(Method::DELETE),
-            _ => Err(PyValueError::new_err("Unrecognized HTTP method")),
-        }?;
+            "GET" => Method::GET,
+            "POST" => Method::POST,
+            "HEAD" => Method::HEAD,
+            "OPTIONS" => Method::OPTIONS,
+            "PUT" => Method::PUT,
+            "PATCH" => Method::PATCH,
+            "DELETE" => Method::DELETE,
+            _ => panic!("Unrecognized HTTP method"),
+        };
         let params = params.or_else(|| self.params.clone());
         let cookies = cookies.or_else(|| self.cookies.clone());
         let data_value: Option<Value> = data.map(|data| depythonize(&data)).transpose()?;
@@ -285,6 +305,7 @@ impl Client {
         let auth = auth.or_else(|| self.auth.clone());
         let auth_bearer = auth_bearer.or_else(|| self.auth_bearer.clone());
         let is_post_put_patch = method == "POST" || method == "PUT" || method == "PATCH";
+        let timeout: Option<f64> = timeout.or_else(|| self.timeout);
 
         let future = async move {
             // Create request builder
