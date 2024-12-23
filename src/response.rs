@@ -39,8 +39,8 @@ impl Response {
             return Ok(&self.encoding);
         }
         self.encoding = get_encoding_from_headers(&self.headers)
-            .or_else(|| get_encoding_from_content(&self.content.bind(py).as_bytes()))
-            .unwrap_or("UTF-8".to_string());
+            .or_else(|| get_encoding_from_content(self.content.as_bytes(py)))
+            .unwrap_or_else(|| "UTF-8".to_string());
         Ok(&self.encoding)
     }
 
@@ -52,31 +52,21 @@ impl Response {
         }
 
         // Convert Py<PyBytes> to &[u8]
-        let raw_bytes = &self.content.bind(py).as_bytes();
+        let raw_bytes = self.content.as_bytes(py);
 
         // Release the GIL here because decoding can be CPU-intensive
-        let (decoded_str, detected_encoding_name) = py.allow_threads(|| {
-            let encoding_name_bytes = &self.encoding.as_bytes();
-            let encoding = Encoding::for_label(encoding_name_bytes).ok_or({
-                anyhow!(
-                    "Unsupported charset: {}",
-                    String::from_utf8_lossy(encoding_name_bytes)
-                )
-            })?;
+        py.allow_threads(|| {
+            let encoding = Encoding::for_label(self.encoding.as_bytes())
+                .ok_or_else(|| anyhow!("Unsupported charset: {}", self.encoding))?;
             let (decoded_str, detected_encoding, _) = encoding.decode(raw_bytes);
-            // Return the decoded string and the name of the detected encoding
-            Ok::<(String, String), PyErr>((
-                decoded_str.to_string(),
-                detected_encoding.name().to_string(),
-            ))
-        })?;
 
-        // Update self.encoding based on the detected encoding
-        if &self.encoding != &detected_encoding_name {
-            self.encoding = detected_encoding_name;
-        }
+            // Update self.encoding based on the detected encoding
+            if &self.encoding != detected_encoding.name() {
+                self.encoding = detected_encoding.name().to_string();
+            }
 
-        Ok(decoded_str)
+            Ok(decoded_str.to_string())
+        })
     }
 
     fn json(&mut self, py: Python) -> Result<PyObject> {
