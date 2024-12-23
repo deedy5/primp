@@ -25,7 +25,7 @@ mod response;
 use response::Response;
 
 mod traits;
-use traits::HeadersTraits;
+use traits::{CookiesTraits, HeadersTraits};
 
 mod utils;
 use utils::load_ca_certs;
@@ -48,8 +48,6 @@ pub struct Client {
     auth_bearer: Option<String>,
     #[pyo3(get, set)]
     params: Option<IndexMap<String, String, RandomState>>,
-    #[pyo3(get, set)]
-    cookies: Option<IndexMap<String, String, RandomState>>,
     #[pyo3(get, set)]
     proxy: Option<String>,
     #[pyo3(get, set)]
@@ -139,10 +137,16 @@ impl Client {
             client_builder = client_builder.impersonate(impersonation);
         }
 
-        // Headers
-        if let Some(headers) = headers {
-            client_builder = client_builder.default_headers(headers.to_headermap());
-        }
+        // Headers || Cookies
+        if headers.is_some() || cookies.is_some() {
+            let headers = headers.unwrap_or_else(|| IndexMap::with_hasher(RandomState::default()));
+            let mut headers_headermap = headers.to_headermap();
+            if let Some(cookies) = cookies {
+                let cookies_str = cookies.to_string();
+                headers_headermap.insert(COOKIE, HeaderValue::from_str(&cookies_str)?);
+            }
+            client_builder = client_builder.default_headers(headers_headermap);
+        };
 
         // Cookie_store
         if cookie_store.unwrap_or(true) {
@@ -201,7 +205,6 @@ impl Client {
             auth,
             auth_bearer,
             params,
-            cookies,
             proxy,
             timeout,
         })
@@ -209,8 +212,10 @@ impl Client {
 
     #[getter]
     pub fn get_headers(&self) -> Result<IndexMap<String, String, RandomState>> {
-        let headers = self.client.lock().unwrap().headers_mut().to_indexmap();
-        Ok(headers)
+        let mut client = self.client.lock().unwrap();
+        let mut headers = client.headers_mut().clone();
+        headers.remove(COOKIE);
+        Ok(headers.to_indexmap())
     }
 
     #[setter]
@@ -225,6 +230,35 @@ impl Client {
             for (k, v) in new_headers {
                 headers.insert_key_value(k, v)?
             }
+        }
+        Ok(())
+    }
+
+    #[getter]
+    pub fn get_cookies(&self) -> Result<IndexMap<String, String, RandomState>> {
+        let mut client = self.client.lock().unwrap();
+        let headers = client.headers_mut();
+        let mut cookies: IndexMap<String, String, RandomState> =
+            IndexMap::with_hasher(RandomState::default());
+        if let Some(cookie_header) = headers.get(COOKIE) {
+            for part in cookie_header.to_str()?.split(';') {
+                if let Some((key, value)) = part.trim().split_once('=') {
+                    cookies.insert(key.into(), value.into());
+                }
+            }
+        }
+        Ok(cookies)
+    }
+
+    #[setter]
+    pub fn set_cookies(
+        &self,
+        cookies: Option<IndexMap<String, String, RandomState>>,
+    ) -> Result<()> {
+        let mut client = self.client.lock().unwrap();
+        let headers = client.headers_mut();
+        if let Some(cookies) = cookies {
+            headers.insert(COOKIE, HeaderValue::from_str(&cookies.to_string())?);
         }
         Ok(())
     }
@@ -299,7 +333,6 @@ impl Client {
             _ => panic!("Unrecognized HTTP method"),
         };
         let params = params.or_else(|| self.params.clone());
-        let cookies = cookies.or_else(|| self.cookies.clone());
         let data_value: Option<Value> = data.map(|data| depythonize(&data)).transpose()?;
         let json_value: Option<Value> = json.map(|json| depythonize(&json)).transpose()?;
         let auth = auth.or_else(|| self.auth.clone());
@@ -307,7 +340,7 @@ impl Client {
         let is_post_put_patch = method == "POST" || method == "PUT" || method == "PATCH";
         let timeout: Option<f64> = timeout.or_else(|| self.timeout);
 
-        let future = async move {
+        let future = async {
             // Create request builder
             let mut request_builder = client.lock().unwrap().request(method, url);
 
@@ -323,13 +356,8 @@ impl Client {
 
             // Cookies
             if let Some(cookies) = cookies {
-                let cookies_str = cookies
-                    .iter()
-                    .map(|(k, v)| format!("{}={}", k, v))
-                    .collect::<Vec<String>>()
-                    .join("; ");
                 request_builder =
-                    request_builder.header(COOKIE, HeaderValue::from_str(&cookies_str)?);
+                    request_builder.header(COOKIE, HeaderValue::from_str(&cookies.to_string())?);
             }
 
             // Only if method POST || PUT || PATCH

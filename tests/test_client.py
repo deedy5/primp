@@ -45,6 +45,33 @@ def test_client_init_params():
 
 
 @retry()
+def test_client_setters():
+    client = primp.Client()
+    client.auth = ("user", "password")
+    client.headers = {"X-Test": "TesT"}
+    client.cookies = {"ccc": "ddd", "cccc": "dddd"}
+    client.params = {"x": "aaa", "y": "bbb"}
+    client.timeout = 20
+
+    response = client.get("https://httpbin.org/anything")
+    assert response.status_code == 200
+    assert response.status_code == 200
+    assert client.auth == ("user", "password")
+    assert client.headers == {"x-test": "TesT"}
+    assert client.cookies == {"ccc": "ddd", "cccc": "dddd"}
+    assert client.params == {"x": "aaa", "y": "bbb"}
+    assert client.timeout == 20.0
+    json_data = response.json()
+    assert json_data["method"] == "GET"
+    assert json_data["headers"]["X-Test"] == "TesT"
+    assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
+    assert json_data["headers"]["Authorization"] == "Basic dXNlcjpwYXNzd29yZA=="
+    assert json_data["args"] == {"x": "aaa", "y": "bbb"}
+    assert "Basic dXNlcjpwYXNzd29yZA==" in response.text
+    assert b"Basic dXNlcjpwYXNzd29yZA==" in response.content
+
+
+@retry()
 def test_client_request_get():
     client = primp.Client()
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
