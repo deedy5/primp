@@ -66,7 +66,7 @@ pub fn get_encoding_from_headers(
             if let Some(param) = params.to_ascii_lowercase().strip_prefix("charset=") {
                 Some(param.trim_matches('"').to_string())
             } else if media_type == "application/json" {
-                Some("UTF-8".into())
+                Some("UTF-8".to_string())
             } else {
                 None
             }
@@ -160,7 +160,10 @@ mod utils_tests {
             String::from("Content-Type"),
             String::from("text/html;charset=UTF-8"),
         );
-        assert_eq!(get_encoding_from_headers(&headers), Some("utf-8".into()));
+        assert_eq!(
+            get_encoding_from_headers(&headers),
+            Some("utf-8".to_string())
+        );
 
         // Test case: Content-Type header without charset specified
         headers.clear();
@@ -177,7 +180,10 @@ mod utils_tests {
             String::from("Content-Type"),
             String::from("application/json"),
         );
-        assert_eq!(get_encoding_from_headers(&headers), Some("UTF-8".into()));
+        assert_eq!(
+            get_encoding_from_headers(&headers),
+            Some("UTF-8".to_string())
+        );
     }
 
     #[test]
@@ -185,7 +191,7 @@ mod utils_tests {
         let raw_html = b"<html><head><meta charset=windows1252\"></head></html>";
         assert_eq!(
             get_encoding_from_content(raw_html),
-            Some("windows1252".into())
+            Some("windows1252".to_string())
         );
     }
 
@@ -194,7 +200,7 @@ mod utils_tests {
         let raw_html = b"<html><head><meta charset=\"windows1251\"></head></html>";
         assert_eq!(
             get_encoding_from_content(raw_html),
-            Some("windows1251".into())
+            Some("windows1251".to_string())
         );
     }
 
