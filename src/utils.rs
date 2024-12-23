@@ -54,8 +54,8 @@ pub fn get_encoding_from_headers(
 ) -> Option<String> {
     headers
         .iter()
-        .find(|(key, _)| key.to_ascii_lowercase() == "content-type")
-        .map(|(_, value)| value.as_str())
+        .find(|(key, _)| key.eq_ignore_ascii_case("content-type"))
+        .map(|(_, value)| value)
         .and_then(|content_type| {
             // Parse the Content-Type header to separate the media type and parameters
             let mut parts = content_type.split(';');
@@ -75,28 +75,28 @@ pub fn get_encoding_from_headers(
 
 /// Get encoding from the `<meta charset="...">` tag within the first 2048 bytes of HTML content.
 pub fn get_encoding_from_content(raw_bytes: &[u8]) -> Option<String> {
-    let start_sequence = b"charset=";
-    let start_sequence_len = start_sequence.len();
-    let end_sequence = b'>';
+    const START_SEQUENCE: &[u8] = b"charset=";
+    const START_SEQUENCE_LEN: usize = START_SEQUENCE.len();
+    const END_SEQUENCE: u8 = b'>';
     let max_index = min(2048, raw_bytes.len());
 
-    let start_index = raw_bytes[..max_index]
-        .windows(start_sequence_len)
-        .position(|window| window == start_sequence);
-
-    if let Some(start_index) = start_index {
-        let end_index = &raw_bytes[start_index..max_index]
+    if let Some(start_index) = raw_bytes[..max_index]
+        .windows(START_SEQUENCE_LEN)
+        .position(|window| window == START_SEQUENCE)
+    {
+        if let Some(end_index) = &raw_bytes[start_index..max_index]
             .iter()
-            .position(|&byte| byte == end_sequence)?;
-
-        let charset_slice = &raw_bytes[start_index + start_sequence_len..start_index + end_index];
-        let charset = String::from_utf8_lossy(charset_slice)
-            .trim_matches('"')
-            .to_string();
-        Some(charset)
-    } else {
-        None
+            .position(|&byte| byte == END_SEQUENCE)
+        {
+            let charset_slice =
+                &raw_bytes[start_index + START_SEQUENCE_LEN..start_index + end_index];
+            let charset = String::from_utf8_lossy(charset_slice)
+                .trim_matches('"')
+                .to_string();
+            return Some(charset);
+        }
     }
+    None
 }
 
 #[cfg(test)]
