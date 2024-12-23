@@ -60,6 +60,7 @@ class Client:
                 "safari_17.2.1","safari_17.4.1","safari_17.5","safari_18","safari_18.2","safari_ipad_18"
             OkHttp: "okhttp_3.9","okhttp_3.11","okhttp_3.13","okhttp_3.14","okhttp_4.9","okhttp_4.10","okhttp_5"
             Edge: "edge_101","edge_122","edge_127","edge_131"
+            Firefox: "firefox_109","firefox_133"
         follow_redirects (bool, optional): Whether to follow redirects. Default is True.
         max_redirects (int, optional): Maximum redirects to follow. Default 20. Applies if `follow_redirects` is True.
         verify (bool, optional): Verify SSL certificates. Default is True.
@@ -153,6 +154,8 @@ resp.url
 - Safari: `safari_ios_17.2`，`safari_ios_17.4.1`，`safari_ios_16.5`，`safari_ios_18.1.1`, `safari_15.3`，`safari_15.5`，`safari_15.6.1`，`safari_16`，`safari_16.5`，`safari_17.0`，`safari_17.2.1`，`safari_17.4.1`，`safari_17.5`，`safari_18`，`safari_18.2`, `safari_ipad_18`
 
 - OkHttp: `okhttp_3.9`，`okhttp_3.11`，`okhttp_3.13`，`okhttp_3.14`，`okhttp_4.9`，`okhttp_4.10`，`okhttp_5`
+
+- Firefox: `firefox_109`, `firefox_133`
 
 #### Examples
 
