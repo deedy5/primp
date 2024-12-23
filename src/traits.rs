@@ -29,7 +29,7 @@ impl HeadersTraits for IndexMap<String, String, RandomState> {
             .collect()
     }
     fn insert_key_value(&mut self, key: String, value: String) -> Result<(), Error> {
-        self.insert(key.into(), value.into());
+        self.insert(key.to_string(), value.to_string());
         Ok(())
     }
 }

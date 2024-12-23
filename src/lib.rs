@@ -243,7 +243,7 @@ impl Client {
         if let Some(cookie_header) = headers.get(COOKIE) {
             for part in cookie_header.to_str()?.split(';') {
                 if let Some((key, value)) = part.trim().split_once('=') {
-                    cookies.insert(key.into(), value.into());
+                    cookies.insert(key.to_string(), value.to_string());
                 }
             }
         }
