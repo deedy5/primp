@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::str::FromStr;
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
@@ -272,7 +271,7 @@ impl Client {
     pub fn set_proxy(&mut self, proxy: String) -> Result<()> {
         let mut client = self.client.lock().unwrap();
         let rproxy = rquest::Proxy::all(proxy.clone())?;
-        client.set_proxies(Cow::Owned(vec![rproxy]));
+        client.set_proxies(vec![rproxy]);
         self.proxy = Some(proxy);
         Ok(())
     }

@@ -16,15 +16,17 @@ pyo3 = { version = "0.23", features = ["extension-module", "abi3-py38", "indexma
 anyhow = "1"
 log = "0.4"
 pyo3-log = "0.12"
-rquest = { version = "0.33", features = [
-    "cookies",
-    "multipart",
+rquest = { version = "1.1", features = [
     "json",
+    "cookies",
     "socks",
     "gzip",
     "brotli",
-    "deflate",
     "zstd",
+    "deflate",
+    "multipart",
+    "impersonate_str",
+    "impersonate_settings",
 ] }
 encoding_rs = { version = "0.8" }
 foldhash = "0.1"
@@ -35,7 +37,6 @@ bytes = "1"
 pythonize = "0.23"
 serde_json = "1"
 webpki-root-certs = "0.26"
-rand = "0.8"
 
 [profile.release]
 codegen-units = 1

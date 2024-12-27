@@ -530,9 +530,9 @@ dependencies = [
 
 [[package]]
 name = "http"
-version = "0.2.12"
+version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "601cbb57e577e2f5ef5be8e7b83f0f63994f25aa94d673e54a92d5c516d101f1"
+checksum = "f16ca2af56261c99fba8bac40a10251ce8188205a4c448fbb745a2e4daa76fea"
 dependencies = [
  "bytes",
  "fnv",
@@ -541,12 +541,24 @@ dependencies = [
 
 [[package]]
 name = "http-body"
-version = "0.4.6"
+version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ceab25649e9960c0311ea418d17bee82c0dcec1bd053b5f9a66e265a693bed2"
+checksum = "1efedce1fb8e6913f23e0c92de8e62cd5b772a67e7b3946df930a62566c93184"
 dependencies = [
  "bytes",
  "http",
+]
+
+[[package]]
+name = "http-body-util"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "793429d76616a256bcb62c2a2ec2bed781c8307e797e2598c50010f2bee2544f"
+dependencies = [
+ "bytes",
+ "futures-util",
+ "http",
+ "http-body",
  "pin-project-lite",
 ]
 
@@ -557,33 +569,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d71d3574edd2771538b901e6549113b4006ece66150fb69c0fb6d9a2adae946"
 
 [[package]]
-name = "httpdate"
-version = "1.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
-
-[[package]]
 name = "hyper2"
-version = "0.14.85"
+version = "1.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5cefd1d139069141d06b474aa8010ec8330dcd1658d8f1d21204bb13c259951d"
+checksum = "88a38fb08a11f659d5f5aa7f9ceacb875e990b3c4c701c27a04dcf778a1410fe"
 dependencies = [
  "bytes",
  "futures-channel",
- "futures-core",
  "futures-util",
  "http",
  "http-body",
  "httparse",
- "httpdate",
  "itoa",
- "lru",
  "pin-project-lite",
  "rh2",
- "socket2",
+ "smallvec",
  "tokio",
- "tower-service",
- "tracing",
  "want",
 ]
 
@@ -1108,7 +1109,6 @@ dependencies = [
  "pyo3",
  "pyo3-log",
  "pythonize",
- "rand",
  "rquest",
  "serde_json",
  "tokio",
@@ -1305,9 +1305,9 @@ checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 
 [[package]]
 name = "rh2"
-version = "0.3.63"
+version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "908ef27e55c78b2d7d7b2df0943bbb57d7b44745737f84f8bf46b78a87da3aaf"
+checksum = "0482b9a34d36b56d070ba7dc699a385b66a48d4eab2b9d56dbfba4b32952ca53"
 dependencies = [
  "atomic-waker",
  "bytes",
@@ -1324,9 +1324,9 @@ dependencies = [
 
 [[package]]
 name = "rquest"
-version = "0.33.7"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2fdc63b1400e66f43c488971abc8f839c4cb2c6ece0cf3e0c156d5d45f93d5a0"
+checksum = "bb4788560b6cb3277f2a88a581c489c4e07a7304821d9f8dffdfa737b2e14148"
 dependencies = [
  "antidote",
  "async-compression",
@@ -1340,14 +1340,17 @@ dependencies = [
  "encoding_rs",
  "flate2",
  "foreign-types",
+ "futures-channel",
  "futures-core",
  "futures-util",
  "http",
  "http-body",
+ "http-body-util",
  "hyper2",
  "ipnet",
  "linked_hash_set",
  "log",
+ "lru",
  "mime",
  "mime_guess",
  "percent-encoding",
@@ -1355,11 +1358,14 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_urlencoded",
+ "socket2",
+ "sync_wrapper",
  "system-configuration",
  "tokio",
  "tokio-boring2",
  "tokio-socks",
  "tokio-util",
+ "tower",
  "tower-layer",
  "tower-service",
  "typed-builder",
@@ -1530,6 +1536,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "sync_wrapper"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0bf256ce5efdfa370213c1dabab5935a12e49f2c58d15e9eac2870d3b4f27263"
+dependencies = [
+ "futures-core",
 ]
 
 [[package]]
@@ -1726,6 +1741,21 @@ dependencies = [
  "futures-sink",
  "pin-project-lite",
  "tokio",
+]
+
+[[package]]
+name = "tower"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d039ad9159c98b70ecfd540b2573b97f7f52c3e8d9f8ad57a24b916a536975f9"
+dependencies = [
+ "futures-core",
+ "futures-util",
+ "pin-project-lite",
+ "sync_wrapper",
+ "tokio",
+ "tower-layer",
+ "tower-service",
 ]
 
 [[package]]
