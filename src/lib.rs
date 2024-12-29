@@ -376,9 +376,8 @@ impl Client {
                 // Files
                 if let Some(files) = files {
                     let mut form = multipart::Form::new();
-                    for (file_name, file_content) in files {
-                        let part =
-                            multipart::Part::bytes(file_content).file_name(file_name.clone());
+                    for (file_name, file_buf) in files {
+                        let part = multipart::Part::stream(file_buf).file_name(file_name.clone());
                         form = form.part(file_name, part);
                     }
                     request_builder = request_builder.multipart(form);
