@@ -190,7 +190,7 @@ resp = client.post(url="https://httpbin.org/anything", json=json)
 print(r.text)
 
 # POST Multipart-Encoded Files
-files = {'file1': open('file1.txt', 'rb').read(), 'file2': open('file2.txt', 'rb').read()}
+files = {'file1': open('file1.txt'), 'file2': open('file2.txt')}
 r = client.post("https://httpbin.org/post", files=files)
 print(r.text)
 
