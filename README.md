@@ -155,7 +155,7 @@ resp.url
 
 - OkHttp: `okhttp_3.9`，`okhttp_3.11`，`okhttp_3.13`，`okhttp_3.14`，`okhttp_4.9`，`okhttp_4.10`，`okhttp_5`
 
-- Firefox: `firefox_109`, `firefox_133`
+- Firefox: `firefox_109`, `firefox_117`, `firefox_133`
 
 #### Examples
 
