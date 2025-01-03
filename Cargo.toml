@@ -16,7 +16,7 @@ pyo3 = { version = "0.23", features = ["extension-module", "abi3-py38", "indexma
 anyhow = "1"
 log = "0.4"
 pyo3-log = "0.12"
-rquest = { version = "1.1", features = [
+rquest = { version = "1.2", features = [
     "json",
     "cookies",
     "socks",

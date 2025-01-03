@@ -1324,9 +1324,9 @@ dependencies = [
 
 [[package]]
 name = "rquest"
-version = "1.1.0"
+version = "1.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb4788560b6cb3277f2a88a581c489c4e07a7304821d9f8dffdfa737b2e14148"
+checksum = "9c51a68561aefd30b9a9c2bf100e505fda90918413dd452b9f43349289cff44f"
 dependencies = [
  "antidote",
  "async-compression",
