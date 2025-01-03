@@ -1,6 +1,4 @@
-use std::str::FromStr;
-
-use anyhow::{Error, Ok};
+use anyhow::{Error, Ok, Result};
 use foldhash::fast::RandomState;
 use indexmap::IndexMap;
 
@@ -20,9 +18,9 @@ impl HeadersTraits for IndexMap<String, String, RandomState> {
         self.iter()
             .map(|(k, v)| {
                 (
-                    HeaderName::from_str(k)
+                    HeaderName::from_bytes(k.as_bytes())
                         .unwrap_or_else(|k| panic!("Invalid header name: {k:?}")),
-                    HeaderValue::from_str(v)
+                    HeaderValue::from_bytes(v.as_bytes())
                         .unwrap_or_else(|v| panic!("Invalid header value: {v:?}")),
                 )
             })
@@ -53,9 +51,9 @@ impl HeadersTraits for HeaderMap {
     }
 
     fn insert_key_value(&mut self, key: String, value: String) -> Result<(), Error> {
-        let header_name = HeaderName::from_str(key.as_str())
+        let header_name = HeaderName::from_bytes(key.as_bytes())
             .unwrap_or_else(|k| panic!("Invalid header name: {k:?}"));
-        let header_value = HeaderValue::from_str(value.as_str())
+        let header_value = HeaderValue::from_bytes(value.as_bytes())
             .unwrap_or_else(|k| panic!("Invalid header value: {k:?}"));
         self.insert(header_name, header_value);
         Ok(())

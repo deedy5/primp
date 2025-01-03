@@ -320,24 +320,14 @@ impl Client {
         timeout: Option<f64>,
     ) -> Result<Response> {
         let client = Arc::clone(&self.client);
-        // Method
-        let method = match method {
-            "GET" => Method::GET,
-            "POST" => Method::POST,
-            "HEAD" => Method::HEAD,
-            "OPTIONS" => Method::OPTIONS,
-            "PUT" => Method::PUT,
-            "PATCH" => Method::PATCH,
-            "DELETE" => Method::DELETE,
-            _ => panic!("Unrecognized HTTP method"),
-        };
+        let method = Method::from_bytes(method.as_bytes())?;
+        let is_post_put_patch = matches!(method, Method::POST | Method::PUT | Method::PATCH);
         let params = params.or_else(|| self.params.clone());
-        let data_value: Option<Value> = data.map(|data| depythonize(&data)).transpose()?;
-        let json_value: Option<Value> = json.map(|json| depythonize(&json)).transpose()?;
-        let auth = auth.or_else(|| self.auth.clone());
-        let auth_bearer = auth_bearer.or_else(|| self.auth_bearer.clone());
-        let is_post_put_patch = method == "POST" || method == "PUT" || method == "PATCH";
-        let timeout: Option<f64> = timeout.or_else(|| self.timeout);
+        let data_value: Option<Value> = data.map(depythonize).transpose()?;
+        let json_value: Option<Value> = json.map(depythonize).transpose()?;
+        let auth = auth.or(self.auth.clone());
+        let auth_bearer = auth_bearer.or(self.auth_bearer.clone());
+        let timeout: Option<f64> = timeout.or(self.timeout);
 
         let future = async {
             // Create request builder
