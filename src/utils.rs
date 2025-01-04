@@ -64,9 +64,9 @@ pub fn get_encoding_from_headers(
 
             // Check for specific conditions and return the appropriate encoding
             if let Some(param) = params.to_ascii_lowercase().strip_prefix("charset=") {
-                Some(param.trim_matches('"').to_string())
+                Some(param.trim_matches('"').to_ascii_lowercase())
             } else if media_type == "application/json" {
-                Some("UTF-8".to_string())
+                Some("utf-8".to_string())
             } else {
                 None
             }
@@ -75,24 +75,23 @@ pub fn get_encoding_from_headers(
 
 /// Get encoding from the `<meta charset="...">` tag within the first 2048 bytes of HTML content.
 pub fn get_encoding_from_content(raw_bytes: &[u8]) -> Option<String> {
-    const START_SEQUENCE: &[u8] = b"charset=";
-    const START_SEQUENCE_LEN: usize = START_SEQUENCE.len();
-    const END_SEQUENCE: u8 = b'>';
+    let start_sequence: &[u8] = b"charset=";
     let max_index = min(2048, raw_bytes.len());
 
     if let Some(start_index) = raw_bytes[..max_index]
-        .windows(START_SEQUENCE_LEN)
-        .position(|window| window == START_SEQUENCE)
+        .windows(start_sequence.len())
+        .position(|window| window == start_sequence)
     {
-        if let Some(end_index) = &raw_bytes[start_index..max_index]
+        let remaining_bytes = &raw_bytes[start_index + start_sequence.len()..max_index];
+        if let Some(end_index) = remaining_bytes
             .iter()
-            .position(|&byte| byte == END_SEQUENCE)
+            .enumerate()
+            .position(|(i, &byte)| matches!(byte, b' ' | b'"' | b'>') && i > 0)
         {
-            let charset_slice =
-                &raw_bytes[start_index + START_SEQUENCE_LEN..start_index + end_index];
+            let charset_slice = &remaining_bytes[..end_index];
             let charset = String::from_utf8_lossy(charset_slice)
                 .trim_matches('"')
-                .to_string();
+                .to_ascii_lowercase();
             return Some(charset);
         }
     }
@@ -182,7 +181,7 @@ mod utils_tests {
         );
         assert_eq!(
             get_encoding_from_headers(&headers),
-            Some("UTF-8".to_string())
+            Some("utf-8".to_string())
         );
     }
 
@@ -201,6 +200,16 @@ mod utils_tests {
         assert_eq!(
             get_encoding_from_content(raw_html),
             Some("windows1251".to_string())
+        );
+    }
+
+    #[test]
+    fn test_get_encoding_from_content_present_charset3() {
+        let raw_html =
+            b"<html><head><meta charset=\"UTF-8\" src=\"https://www.gstatic.com/\" ></head></html>";
+        assert_eq!(
+            get_encoding_from_content(raw_html),
+            Some("utf-8".to_string())
         );
     }
 
