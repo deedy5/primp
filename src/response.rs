@@ -40,7 +40,7 @@ impl Response {
         }
         self.encoding = get_encoding_from_headers(&self.headers)
             .or_else(|| get_encoding_from_content(self.content.as_bytes(py)))
-            .unwrap_or_else(|| "UTF-8".to_string());
+            .unwrap_or_else(|| "utf-8".to_string());
         Ok(&self.encoding)
     }
 
