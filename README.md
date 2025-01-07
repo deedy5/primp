@@ -40,17 +40,17 @@ class Client:
     """Initializes an HTTP client that can impersonate web browsers.
 
     Args:
-        auth (tuple, optional): A tuple containing the username and password for basic authentication. Default is None.
-        auth_bearer (str, optional): Bearer token for authentication. Default is None.
-        params (dict, optional): Default query parameters to include in all requests. Default is None.
-        headers (dict, optional): Default headers to send with requests. If `impersonate` is set, this will be ignored.
-        cookies (dict, optional): - An optional map of cookies to send with requests as the `Cookie` header.
-        timeout (float, optional): HTTP request timeout in seconds. Default is 30.
-        cookie_store (bool, optional): Enable a persistent cookie store. Received cookies will be preserved and included
+        auth (tuple[str, str| None] | None): Username and password for basic authentication. Default is None.
+        auth_bearer (str | None): Bearer token for authentication. Default is None.
+        params (dict[str, str] | None): Default query parameters to include in all requests. Default is None.
+        headers (dict[str, str] | None): Default headers to send with requests. If `impersonate` is set, this will be ignored.
+        cookies (dict[str, str] | None): - Map of cookies to send with requests as the `Cookie` header.
+        timeout (float | None): HTTP request timeout in seconds. Default is 30.
+        cookie_store (bool | None): Enable a persistent cookie store. Received cookies will be preserved and included
             in additional requests. Default is True.
-        referer (bool, optional): Enable or disable automatic setting of the `Referer` header. Default is True.
-        proxy (str, optional): Proxy URL for HTTP requests. Example: "socks5://127.0.0.1:9150". Default is None.
-        impersonate (str, optional): Entity to impersonate. Example: "chrome_124". Default is None.
+        referer (bool | None): Enable or disable automatic setting of the `Referer` header. Default is True.
+        proxy (str | None): Proxy URL for HTTP requests. Example: "socks5://127.0.0.1:9150". Default is None.
+        impersonate (str | None): Entity to impersonate. Example: "chrome_124". Default is None.
             Chrome: "chrome_100","chrome_101","chrome_104","chrome_105","chrome_106","chrome_107","chrome_108",
                 "chrome_109","chrome_114","chrome_116","chrome_117","chrome_118","chrome_119","chrome_120",
                 "chrome_123","chrome_124","chrome_126","chrome_127","chrome_128","chrome_129","chrome_130",
@@ -61,12 +61,12 @@ class Client:
             OkHttp: "okhttp_3.9","okhttp_3.11","okhttp_3.13","okhttp_3.14","okhttp_4.9","okhttp_4.10","okhttp_5"
             Edge: "edge_101","edge_122","edge_127","edge_131"
             Firefox: "firefox_109","firefox_117","firefox_133"
-        follow_redirects (bool, optional): Whether to follow redirects. Default is True.
-        max_redirects (int, optional): Maximum redirects to follow. Default 20. Applies if `follow_redirects` is True.
-        verify (bool, optional): Verify SSL certificates. Default is True.
-        ca_cert_file (str, optional): Path to CA certificate store. Default is None.
-        https_only`: Restrict the Client to be used with HTTPS only requests. Default is `false`.
-        http2_only`: If true - use only HTTP/2; if false - use only HTTP/1. Default is `false`.
+        follow_redirects (bool | None): Whether to follow redirects. Default is True.
+        max_redirects (int | None): Maximum redirects to follow. Default 20. Applies if `follow_redirects` is True.
+        verify (bool | None): Verify SSL certificates. Default is True.
+        ca_cert_file (str | None): Path to CA certificate store. Default is None.
+        https_only` (bool | None): Restrict the Client to be used with HTTPS only requests. Default is `false`.
+        http2_only` (bool | None): If true - use only HTTP/2; if false - use only HTTP/1. Default is `false`.
 
     """
 ```
@@ -77,56 +77,56 @@ The `Client` class provides a set of methods for making HTTP requests: `get`, `h
 ```python
 def get(
     url: str,
-    params: Optional[Dict[str, str]] = None,
-    headers: Optional[Dict[str, str]] = None,
-    cookies: Optional[Dict[str, str]] = None,
-    auth: Optional[Tuple[str, Optional[str]]] = None,
-    auth_bearer: Optional[str] = None,
-    timeout: Optional[float] = 30,
+    params: dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
+    cookies: dict[str, str] | None = None,
+    auth: tuple[str, str| None] | None = None,
+    auth_bearer: str | None = None,
+    timeout: float | None = 30,
 ):
     """Performs a GET request to the specified URL.
 
     Args:
         url (str): The URL to which the request will be made.
-        params (Optional[Dict[str, str]]): A map of query parameters to append to the URL. Default is None.
-        headers (Optional[Dict[str, str]]): A map of HTTP headers to send with the request. Default is None.
-        cookies (Optional[Dict[str, str]]): - An optional map of cookies to send with requests as the `Cookie` header.
-        auth (Optional[Tuple[str, Optional[str]]]): A tuple containing the username and an optional password
+        params (dict[str, str] | None): A map of query parameters to append to the URL. Default is None.
+        headers (dict[str, str] | None): A map of HTTP headers to send with the request. Default is None.
+        cookies (dict[str, str] | None): - An optional map of cookies to send with requests as the `Cookie` header.
+        auth (tuple[str, str| None] | None): A tuple containing the username and an optional password
             for basic authentication. Default is None.
-        auth_bearer (Optional[str]): A string representing the bearer token for bearer token authentication. Default is None.
-        timeout (Optional[float]): The timeout for the request in seconds. Default is 30.
+        auth_bearer (str | None): A string representing the bearer token for bearer token authentication. Default is None.
+        timeout (float | None): The timeout for the request in seconds. Default is 30.
 
     """
 ```
 ```python
 def post(
     url: str,
-    params: Optional[Dict[str, str]] = None,
-    headers: Optional[Dict[str, str]] = None,
-    cookies: Optional[Dict[str, str]] = None,
-    content: Optional[bytes] = None,
-    data: Optional[Dict[str, str]] = None,
-    json: Any = None,
-    files: Optional[Dict[str, str]] = None,
-    auth: Optional[Tuple[str, Optional[str]]] = None,
-    auth_bearer: Optional[str] = None,
-    timeout: Optional[float] = 30,
+    params: dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
+    cookies: dict[str, str] | None = None,
+    content: bytes | None = None,
+    data: dict[str, Any] | None = None,
+    json: Any | None = None,
+    files: dict[str, str] | None = None,
+    auth: tuple[str, str| None] | None = None,
+    auth_bearer: str | None = None,
+    timeout: float | None = 30,
 ):
     """Performs a POST request to the specified URL.
 
     Args:
         url (str): The URL to which the request will be made.
-        params (Optional[Dict[str, str]]): A map of query parameters to append to the URL. Default is None.
-        headers (Optional[Dict[str, str]]): A map of HTTP headers to send with the request. Default is None.
-        cookies (Optional[Dict[str, str]]): - An optional map of cookies to send with requests as the `Cookie` header.
-        content (Optional[bytes]): The content to send in the request body as bytes. Default is None.
-        data (Optional[Dict[str, str]]): The form data to send in the request body. Default is None.
-        json (Any): A JSON serializable object to send in the request body. Default is None.
-        files (Optional[Dict[str, str]]): A map of file fields to file paths to be sent as multipart/form-data. Default is None.
-        auth (Optional[Tuple[str, Optional[str]]]): A tuple containing the username and an optional password
+        params (dict[str, str] | None): A map of query parameters to append to the URL. Default is None.
+        headers (dict[str, str] | None): A map of HTTP headers to send with the request. Default is None.
+        cookies (dict[str, str] | None): - An optional map of cookies to send with requests as the `Cookie` header.
+        content (bytes | None): The content to send in the request body as bytes. Default is None.
+        data (dict[str, Any] | None): The form data to send in the request body. Default is None.
+        json (Any | None): A JSON serializable object to send in the request body. Default is None.
+        files (dict[str, str] | None): A map of file fields to file paths to be sent as multipart/form-data. Default is None.
+        auth (tuple[str, str| None] | None): A tuple containing the username and an optional password
             for basic authentication. Default is None.
-        auth_bearer (Optional[str]): A string representing the bearer token for bearer token authentication. Default is None.
-        timeout (Optional[float]): The timeout for the request in seconds. Default is 30.
+        auth_bearer (str | None): A string representing the bearer token for bearer token authentication. Default is None.
+        timeout (float | None): The timeout for the request in seconds. Default is 30.
 
     """
 ```
