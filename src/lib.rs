@@ -204,6 +204,12 @@ impl Client {
             client_builder = client_builder.http2_only();
         }
 
+        client_builder = client_builder.gzip(true);
+        client_builder = client_builder.deflate(true);
+        client_builder = client_builder.brotli(true);
+        client_builder = client_builder.zstd(true);
+        client_builder = client_builder.http1_title_case_headers(true);
+
         let client = Arc::new(Mutex::new(client_builder.build()?));
 
         Ok(Client {
