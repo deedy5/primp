@@ -1,5 +1,7 @@
 from time import sleep
 
+import pytest
+
 import certifi
 import primp  # type: ignore
 
@@ -200,14 +202,26 @@ def test_client_post_json():
     assert json_data["json"] == data
 
 
-@retry()
-def test_client_post_files():
+@pytest.fixture(scope="session")
+def test_files(tmp_path_factory):
+    tmp_path_factory.mktemp("data")
+    temp_file1 = tmp_path_factory.mktemp("data") / "img1.png"
+    with open(temp_file1, "w") as f:
+        f.write("aaa111")
+    temp_file2 = tmp_path_factory.mktemp("data") / "img2.png"
+    with open(temp_file2, "w") as f:
+        f.write("bbb222")
+    return str(temp_file1), str(temp_file2)
+
+
+def test_client_post_files(test_files):
+    temp_file1, temp_file2 = test_files
     client = primp.Client()
     auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
     headers = {"X-Test": "test"}
     cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
-    files = {"file1": b"aaa111", "file2": b"bbb222"}
+    files = {"file1": temp_file1, "file2": temp_file2}
     response = client.post(
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
