@@ -54,6 +54,7 @@ IMPERSONATE = Literal[
     "edge_131",
     "firefox_109",
     "firefox_117",
+    "firefox_128",
     "firefox_133",
 ]
 
