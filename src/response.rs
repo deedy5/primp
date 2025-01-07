@@ -61,7 +61,7 @@ impl Response {
             let (decoded_str, detected_encoding, _) = encoding.decode(raw_bytes);
 
             // Update self.encoding based on the detected encoding
-            if &self.encoding != detected_encoding.name() {
+            if self.encoding != detected_encoding.name() {
                 self.encoding = detected_encoding.name().to_string();
             }
 

@@ -4,14 +4,16 @@ use indexmap::IndexMap;
 
 use rquest::header::{HeaderMap, HeaderName, HeaderValue};
 
+type IndexMapSSR = IndexMap<String, String, RandomState>;
+
 pub trait HeadersTraits {
-    fn to_indexmap(&self) -> IndexMap<String, String, RandomState>;
+    fn to_indexmap(&self) -> IndexMapSSR;
     fn to_headermap(&self) -> HeaderMap;
     fn insert_key_value(&mut self, key: String, value: String) -> Result<(), Error>;
 }
 
-impl HeadersTraits for IndexMap<String, String, RandomState> {
-    fn to_indexmap(&self) -> IndexMap<String, String, RandomState> {
+impl HeadersTraits for IndexMapSSR {
+    fn to_indexmap(&self) -> IndexMapSSR {
         self.clone()
     }
     fn to_headermap(&self) -> HeaderMap {
@@ -33,7 +35,7 @@ impl HeadersTraits for IndexMap<String, String, RandomState> {
 }
 
 impl HeadersTraits for HeaderMap {
-    fn to_indexmap(&self) -> IndexMap<String, String, RandomState> {
+    fn to_indexmap(&self) -> IndexMapSSR {
         self.iter()
             .map(|(k, v)| {
                 (
@@ -64,7 +66,7 @@ pub trait CookiesTraits {
     fn to_string(&self) -> String;
 }
 
-impl CookiesTraits for IndexMap<String, String, RandomState> {
+impl CookiesTraits for IndexMapSSR {
     fn to_string(&self) -> String {
         self.iter()
             .map(|(k, v)| format!("{}={}", k, v))

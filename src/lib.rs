@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_arguments)]
 use std::str::FromStr;
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
@@ -33,6 +34,8 @@ use traits::{CookiesTraits, HeadersTraits};
 mod utils;
 use utils::load_ca_certs;
 
+type IndexMapSSR = IndexMap<String, String, RandomState>;
+
 // Tokio global one-thread runtime
 static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
     runtime::Builder::new_current_thread()
@@ -50,7 +53,7 @@ pub struct Client {
     #[pyo3(get, set)]
     auth_bearer: Option<String>,
     #[pyo3(get, set)]
-    params: Option<IndexMap<String, String, RandomState>>,
+    params: Option<IndexMapSSR>,
     #[pyo3(get, set)]
     proxy: Option<String>,
     #[pyo3(get, set)]
@@ -115,9 +118,9 @@ impl Client {
     fn new(
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
-        params: Option<IndexMap<String, String, RandomState>>,
-        headers: Option<IndexMap<String, String, RandomState>>,
-        cookies: Option<IndexMap<String, String, RandomState>>,
+        params: Option<IndexMapSSR>,
+        headers: Option<IndexMapSSR>,
+        cookies: Option<IndexMapSSR>,
         cookie_store: Option<bool>,
         referer: Option<bool>,
         proxy: Option<String>,
@@ -135,8 +138,8 @@ impl Client {
 
         // Impersonate
         if let Some(impersonation_type) = impersonate {
-            let impersonation = Impersonate::from_str(impersonation_type)
-                .map_err(|err| PyValueError::new_err(err))?;
+            let impersonation =
+                Impersonate::from_str(impersonation_type).map_err(PyValueError::new_err)?;
             client_builder = client_builder.impersonate(impersonation);
         }
 
@@ -214,7 +217,7 @@ impl Client {
     }
 
     #[getter]
-    pub fn get_headers(&self) -> Result<IndexMap<String, String, RandomState>> {
+    pub fn get_headers(&self) -> Result<IndexMapSSR> {
         let mut client = self.client.lock().unwrap();
         let mut headers = client.headers_mut().clone();
         headers.remove(COOKIE);
@@ -222,10 +225,7 @@ impl Client {
     }
 
     #[setter]
-    pub fn set_headers(
-        &self,
-        new_headers: Option<IndexMap<String, String, RandomState>>,
-    ) -> Result<()> {
+    pub fn set_headers(&self, new_headers: Option<IndexMapSSR>) -> Result<()> {
         let mut client = self.client.lock().unwrap();
         let headers = client.headers_mut();
         headers.clear();
@@ -238,11 +238,10 @@ impl Client {
     }
 
     #[getter]
-    pub fn get_cookies(&self) -> Result<IndexMap<String, String, RandomState>> {
+    pub fn get_cookies(&self) -> Result<IndexMapSSR> {
         let mut client = self.client.lock().unwrap();
         let headers = client.headers_mut();
-        let mut cookies: IndexMap<String, String, RandomState> =
-            IndexMap::with_hasher(RandomState::default());
+        let mut cookies: IndexMapSSR = IndexMap::with_hasher(RandomState::default());
         if let Some(cookie_header) = headers.get(COOKIE) {
             for part in cookie_header.to_str()?.split(';') {
                 if let Some((key, value)) = part.trim().split_once('=') {
@@ -254,10 +253,7 @@ impl Client {
     }
 
     #[setter]
-    pub fn set_cookies(
-        &self,
-        cookies: Option<IndexMap<String, String, RandomState>>,
-    ) -> Result<()> {
+    pub fn set_cookies(&self, cookies: Option<IndexMapSSR>) -> Result<()> {
         let mut client = self.client.lock().unwrap();
         let headers = client.headers_mut();
         if let Some(cookies) = cookies {
@@ -312,9 +308,9 @@ impl Client {
         py: Python,
         method: &str,
         url: &str,
-        params: Option<IndexMap<String, String, RandomState>>,
-        headers: Option<IndexMap<String, String, RandomState>>,
-        cookies: Option<IndexMap<String, String, RandomState>>,
+        params: Option<IndexMapSSR>,
+        headers: Option<IndexMapSSR>,
+        cookies: Option<IndexMapSSR>,
         content: Option<Vec<u8>>,
         data: Option<&Bound<'_, PyAny>>,
         json: Option<&Bound<'_, PyAny>>,
@@ -397,11 +393,11 @@ impl Client {
             let resp = request_builder.send().await?;
 
             // Response items
-            let cookies: IndexMap<String, String, RandomState> = resp
+            let cookies: IndexMapSSR = resp
                 .cookies()
                 .map(|cookie| (cookie.name().to_string(), cookie.value().to_string()))
                 .collect();
-            let headers: IndexMap<String, String, RandomState> = resp.headers().to_indexmap();
+            let headers: IndexMapSSR = resp.headers().to_indexmap();
             let status_code = resp.status().as_u16();
             let url = resp.url().to_string();
             let buf = resp.bytes().await?;
@@ -412,16 +408,8 @@ impl Client {
 
         // Execute an async future, releasing the Python GIL for concurrency.
         // Use Tokio global runtime to block on the future.
-        let result: Result<
-            (
-                Bytes,
-                IndexMap<String, String, RandomState>,
-                IndexMap<String, String, RandomState>,
-                u16,
-                String,
-            ),
-            Error,
-        > = py.allow_threads(|| RUNTIME.block_on(future));
+        let result: Result<(Bytes, IndexMapSSR, IndexMapSSR, u16, String), Error> =
+            py.allow_threads(|| RUNTIME.block_on(future));
         let (f_buf, f_cookies, f_headers, f_status_code, f_url) = result?;
 
         Ok(Response {
@@ -439,9 +427,9 @@ impl Client {
         &self,
         py: Python,
         url: &str,
-        params: Option<IndexMap<String, String, RandomState>>,
-        headers: Option<IndexMap<String, String, RandomState>>,
-        cookies: Option<IndexMap<String, String, RandomState>>,
+        params: Option<IndexMapSSR>,
+        headers: Option<IndexMapSSR>,
+        cookies: Option<IndexMapSSR>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -468,9 +456,9 @@ impl Client {
         &self,
         py: Python,
         url: &str,
-        params: Option<IndexMap<String, String, RandomState>>,
-        headers: Option<IndexMap<String, String, RandomState>>,
-        cookies: Option<IndexMap<String, String, RandomState>>,
+        params: Option<IndexMapSSR>,
+        headers: Option<IndexMapSSR>,
+        cookies: Option<IndexMapSSR>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -497,9 +485,9 @@ impl Client {
         &self,
         py: Python,
         url: &str,
-        params: Option<IndexMap<String, String, RandomState>>,
-        headers: Option<IndexMap<String, String, RandomState>>,
-        cookies: Option<IndexMap<String, String, RandomState>>,
+        params: Option<IndexMapSSR>,
+        headers: Option<IndexMapSSR>,
+        cookies: Option<IndexMapSSR>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -526,9 +514,9 @@ impl Client {
         &self,
         py: Python,
         url: &str,
-        params: Option<IndexMap<String, String, RandomState>>,
-        headers: Option<IndexMap<String, String, RandomState>>,
-        cookies: Option<IndexMap<String, String, RandomState>>,
+        params: Option<IndexMapSSR>,
+        headers: Option<IndexMapSSR>,
+        cookies: Option<IndexMapSSR>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -556,9 +544,9 @@ impl Client {
         &self,
         py: Python,
         url: &str,
-        params: Option<IndexMap<String, String, RandomState>>,
-        headers: Option<IndexMap<String, String, RandomState>>,
-        cookies: Option<IndexMap<String, String, RandomState>>,
+        params: Option<IndexMapSSR>,
+        headers: Option<IndexMapSSR>,
+        cookies: Option<IndexMapSSR>,
         content: Option<Vec<u8>>,
         data: Option<&Bound<'_, PyAny>>,
         json: Option<&Bound<'_, PyAny>>,
@@ -590,9 +578,9 @@ impl Client {
         &self,
         py: Python,
         url: &str,
-        params: Option<IndexMap<String, String, RandomState>>,
-        headers: Option<IndexMap<String, String, RandomState>>,
-        cookies: Option<IndexMap<String, String, RandomState>>,
+        params: Option<IndexMapSSR>,
+        headers: Option<IndexMapSSR>,
+        cookies: Option<IndexMapSSR>,
         content: Option<Vec<u8>>,
         data: Option<&Bound<'_, PyAny>>,
         json: Option<&Bound<'_, PyAny>>,
@@ -624,9 +612,9 @@ impl Client {
         &self,
         py: Python,
         url: &str,
-        params: Option<IndexMap<String, String, RandomState>>,
-        headers: Option<IndexMap<String, String, RandomState>>,
-        cookies: Option<IndexMap<String, String, RandomState>>,
+        params: Option<IndexMapSSR>,
+        headers: Option<IndexMapSSR>,
+        cookies: Option<IndexMapSSR>,
         content: Option<Vec<u8>>,
         data: Option<&Bound<'_, PyAny>>,
         json: Option<&Bound<'_, PyAny>>,
@@ -662,9 +650,9 @@ fn request(
     py: Python,
     method: &str,
     url: &str,
-    params: Option<IndexMap<String, String, RandomState>>,
-    headers: Option<IndexMap<String, String, RandomState>>,
-    cookies: Option<IndexMap<String, String, RandomState>>,
+    params: Option<IndexMapSSR>,
+    headers: Option<IndexMapSSR>,
+    cookies: Option<IndexMapSSR>,
     content: Option<Vec<u8>>,
     data: Option<&Bound<'_, PyAny>>,
     json: Option<&Bound<'_, PyAny>>,
@@ -717,9 +705,9 @@ fn request(
 fn get(
     py: Python,
     url: &str,
-    params: Option<IndexMap<String, String, RandomState>>,
-    headers: Option<IndexMap<String, String, RandomState>>,
-    cookies: Option<IndexMap<String, String, RandomState>>,
+    params: Option<IndexMapSSR>,
+    headers: Option<IndexMapSSR>,
+    cookies: Option<IndexMapSSR>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
@@ -763,9 +751,9 @@ fn get(
 fn head(
     py: Python,
     url: &str,
-    params: Option<IndexMap<String, String, RandomState>>,
-    headers: Option<IndexMap<String, String, RandomState>>,
-    cookies: Option<IndexMap<String, String, RandomState>>,
+    params: Option<IndexMapSSR>,
+    headers: Option<IndexMapSSR>,
+    cookies: Option<IndexMapSSR>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
@@ -809,9 +797,9 @@ fn head(
 fn options(
     py: Python,
     url: &str,
-    params: Option<IndexMap<String, String, RandomState>>,
-    headers: Option<IndexMap<String, String, RandomState>>,
-    cookies: Option<IndexMap<String, String, RandomState>>,
+    params: Option<IndexMapSSR>,
+    headers: Option<IndexMapSSR>,
+    cookies: Option<IndexMapSSR>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
@@ -855,9 +843,9 @@ fn options(
 fn delete(
     py: Python,
     url: &str,
-    params: Option<IndexMap<String, String, RandomState>>,
-    headers: Option<IndexMap<String, String, RandomState>>,
-    cookies: Option<IndexMap<String, String, RandomState>>,
+    params: Option<IndexMapSSR>,
+    headers: Option<IndexMapSSR>,
+    cookies: Option<IndexMapSSR>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
@@ -902,9 +890,9 @@ fn delete(
 fn post(
     py: Python,
     url: &str,
-    params: Option<IndexMap<String, String, RandomState>>,
-    headers: Option<IndexMap<String, String, RandomState>>,
-    cookies: Option<IndexMap<String, String, RandomState>>,
+    params: Option<IndexMapSSR>,
+    headers: Option<IndexMapSSR>,
+    cookies: Option<IndexMapSSR>,
     content: Option<Vec<u8>>,
     data: Option<&Bound<'_, PyAny>>,
     json: Option<&Bound<'_, PyAny>>,
@@ -957,9 +945,9 @@ fn post(
 fn put(
     py: Python,
     url: &str,
-    params: Option<IndexMap<String, String, RandomState>>,
-    headers: Option<IndexMap<String, String, RandomState>>,
-    cookies: Option<IndexMap<String, String, RandomState>>,
+    params: Option<IndexMapSSR>,
+    headers: Option<IndexMapSSR>,
+    cookies: Option<IndexMapSSR>,
     content: Option<Vec<u8>>,
     data: Option<&Bound<'_, PyAny>>,
     json: Option<&Bound<'_, PyAny>>,
@@ -1012,9 +1000,9 @@ fn put(
 fn patch(
     py: Python,
     url: &str,
-    params: Option<IndexMap<String, String, RandomState>>,
-    headers: Option<IndexMap<String, String, RandomState>>,
-    cookies: Option<IndexMap<String, String, RandomState>>,
+    params: Option<IndexMapSSR>,
+    headers: Option<IndexMapSSR>,
+    cookies: Option<IndexMapSSR>,
     content: Option<Vec<u8>>,
     data: Option<&Bound<'_, PyAny>>,
     json: Option<&Bound<'_, PyAny>>,

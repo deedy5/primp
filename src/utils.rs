@@ -15,14 +15,12 @@ use rquest::boring::{
 pub fn load_ca_certs() -> Option<&'static X509Store> {
     static CERT_STORE: LazyLock<Result<X509Store, ErrorStack>> = LazyLock::new(|| {
         let mut ca_store = X509StoreBuilder::new()?;
-        if let Some(ca_cert_path) = std::env::var("PRIMP_CA_BUNDLE")
-            .or(std::env::var("CA_CERT_FILE"))
-            .ok()
+        if let Ok(ca_cert_path) = std::env::var("PRIMP_CA_BUNDLE").or(std::env::var("CA_CERT_FILE"))
         {
             // Use CA certificate bundle from env var PRIMP_CA_BUNDLE
             let cert_file = &std::fs::read(ca_cert_path)
                 .expect("Failed to read file from env var PRIMP_CA_BUNDLE");
-            let certs = X509::stack_from_pem(&cert_file)?;
+            let certs = X509::stack_from_pem(cert_file)?;
             for cert in certs {
                 ca_store.add_cert(cert)?;
             }
