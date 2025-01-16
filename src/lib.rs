@@ -178,6 +178,9 @@ impl Client {
         // Redirects
         if follow_redirects.unwrap_or(true) {
             client_builder = client_builder.redirect(Policy::limited(max_redirects.unwrap_or(20)));
+            if proxy.is_some() {
+                client_builder = client_builder.redirect_with_proxy_auth(true);
+            }
         } else {
             client_builder = client_builder.redirect(Policy::none());
         }
