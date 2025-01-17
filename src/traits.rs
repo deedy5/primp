@@ -17,17 +17,18 @@ impl HeadersTraits for IndexMapSSR {
         self.clone()
     }
     fn to_headermap(&self) -> HeaderMap {
-        self.iter()
-            .map(|(k, v)| {
-                (
-                    HeaderName::from_bytes(k.as_bytes())
-                        .unwrap_or_else(|k| panic!("Invalid header name: {k:?}")),
-                    HeaderValue::from_bytes(v.as_bytes())
-                        .unwrap_or_else(|v| panic!("Invalid header value: {v:?}")),
-                )
-            })
-            .collect()
+        let mut header_map = HeaderMap::with_capacity(self.len());
+        for (k, v) in self {
+            header_map.insert(
+                HeaderName::from_bytes(k.as_bytes())
+                    .unwrap_or_else(|k| panic!("Invalid header name: {k:?}")),
+                HeaderValue::from_bytes(v.as_bytes())
+                    .unwrap_or_else(|v| panic!("Invalid header value: {v:?}")),
+            );
+        }
+        header_map
     }
+
     fn insert_key_value(&mut self, key: String, value: String) -> Result<(), Error> {
         self.insert(key.to_string(), value.to_string());
         Ok(())
@@ -36,16 +37,18 @@ impl HeadersTraits for IndexMapSSR {
 
 impl HeadersTraits for HeaderMap {
     fn to_indexmap(&self) -> IndexMapSSR {
-        self.iter()
-            .map(|(k, v)| {
-                (
-                    k.to_string(),
-                    v.to_str()
-                        .unwrap_or_else(|v| panic!("Invalid header value: {v:?}"))
-                        .to_string(),
-                )
-            })
-            .collect()
+        let mut index_map =
+            IndexMapSSR::with_capacity_and_hasher(self.len(), RandomState::default());
+        for (key, value) in self {
+            index_map.insert(
+                key.as_str().to_string(),
+                value
+                    .to_str()
+                    .unwrap_or_else(|v| panic!("Invalid header value: {v:?}"))
+                    .to_string(),
+            );
+        }
+        index_map
     }
 
     fn to_headermap(&self) -> HeaderMap {
@@ -68,9 +71,15 @@ pub trait CookiesTraits {
 
 impl CookiesTraits for IndexMapSSR {
     fn to_string(&self) -> String {
-        self.iter()
-            .map(|(k, v)| format!("{}={}", k, v))
-            .collect::<Vec<String>>()
-            .join("; ")
+        let mut result = String::with_capacity(self.len() * 40);
+        for (k, v) in self {
+            if !result.is_empty() {
+                result.push_str("; ");
+            }
+            result.push_str(k);
+            result.push('=');
+            result.push_str(v);
+        }
+        result
     }
 }
