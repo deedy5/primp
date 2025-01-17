@@ -10,6 +10,7 @@ use rquest::boring::{
         X509,
     },
 };
+use tracing;
 
 /// Loads the CA certificates from venv var PRIMP_CA_BUNDLE or the WebPKI certificate store
 pub fn load_ca_certs() -> Option<&'static X509Store> {
@@ -36,11 +37,11 @@ pub fn load_ca_certs() -> Option<&'static X509Store> {
 
     match CERT_STORE.as_ref() {
         Ok(cert_store) => {
-            log::debug!("Loaded CA certs");
+            tracing::debug!("Loaded CA certs");
             Some(cert_store)
         }
         Err(err) => {
-            log::error!("Failed to load CA certs: {:?}", err);
+            tracing::error!("Failed to load CA certs: {:?}", err);
             None
         }
     }
