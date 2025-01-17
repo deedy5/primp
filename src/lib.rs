@@ -24,6 +24,7 @@ use tokio::{
     runtime::{self, Runtime},
 };
 use tokio_util::codec::{BytesCodec, FramedRead};
+use tracing;
 
 mod response;
 use response::Response;
@@ -405,7 +406,7 @@ impl Client {
             let url = resp.url().to_string();
             let buf = resp.bytes().await?;
 
-            log::info!("response: {} {} {}", url, status_code, buf.len());
+            tracing::info!("response: {} {} {}", url, status_code, buf.len());
             Ok((buf, cookies, headers, status_code, url))
         };
 
