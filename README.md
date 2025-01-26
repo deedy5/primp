@@ -61,6 +61,8 @@ class Client:
             OkHttp: "okhttp_3.9","okhttp_3.11","okhttp_3.13","okhttp_3.14","okhttp_4.9","okhttp_4.10","okhttp_5"
             Edge: "edge_101","edge_122","edge_127","edge_131"
             Firefox: "firefox_109","firefox_117","firefox_128","firefox_133"
+        impersonate_os (str | None): impersonate OS. Example: "windows". Default is "linux".
+            Android: "android", iOS: "ios", Linux: "linux", Mac OS: "macos", Windows: "windows"
         follow_redirects (bool | None): Whether to follow redirects. Default is True.
         max_redirects (int | None): Maximum redirects to follow. Default 20. Applies if `follow_redirects` is True.
         verify (bool | None): Verify SSL certificates. Default is True.
@@ -147,6 +149,8 @@ resp.url
 
 #### Devices
 
+##### Impersonate
+
 - Chrome: `chrome_100`，`chrome_101`，`chrome_104`，`chrome_105`，`chrome_106`，`chrome_107`，`chrome_108`，`chrome_109`，`chrome_114`，`chrome_116`，`chrome_117`，`chrome_118`，`chrome_119`，`chrome_120`，`chrome_123`，`chrome_124`，`chrome_126`，`chrome_127`，`chrome_128`，`chrome_129`，`chrome_130`，`chrome_131`
 
 - Edge: `edge_101`，`edge_122`，`edge_127`, `edge_131`
@@ -157,13 +161,25 @@ resp.url
 
 - Firefox: `firefox_109`, `firefox_117`, `firefox_128`, `firefox_133`
 
+##### Impersonate OS
+
+- Android: `android`
+
+- iOS: `ios`
+
+- Linux: `linux`
+
+- Mac OS: `macos`
+
+- Windows: `windows`
+
 #### Examples
 
 ```python
 import primp
 
 # Impersonate
-client = primp.Client(impersonate="chrome_131")  # chrome_131
+client = primp.Client(impersonate="chrome_131", impersonate_os="windows")  # chrome_131 + windows
 
 # GET request
 resp = client.get("https://tls.peet.ws/api/all")
@@ -224,7 +240,7 @@ print(resp.json())
 # You can also use convenience functions that use a default Client instance under the hood:
 # primp.get() | primp.head() | primp.options() | primp.delete() | primp.post() | primp.patch() | primp.put()
 # These functions can accept the `impersonate` parameter:
-resp = primp.get("https://httpbin.org/anything", impersonate="chrome_131")
+resp = primp.get("https://httpbin.org/anything", impersonate="chrome_131", impersonate_os="android")
 print(r.text)
 ```
 

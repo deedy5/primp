@@ -1,5 +1,4 @@
 #![allow(clippy::too_many_arguments)]
-use std::str::FromStr;
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
@@ -7,7 +6,6 @@ use anyhow::{Error, Result};
 use bytes::Bytes;
 use foldhash::fast::RandomState;
 use indexmap::IndexMap;
-use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use pythonize::depythonize;
@@ -15,8 +13,7 @@ use rquest::{
     header::{HeaderValue, COOKIE},
     multipart,
     redirect::Policy,
-    tls::Impersonate,
-    Body, Method,
+    Body, Impersonate, ImpersonateOS, Method,
 };
 use serde_json::Value;
 use tokio::{
@@ -30,7 +27,7 @@ mod response;
 use response::Response;
 
 mod traits;
-use traits::{CookiesTraits, HeadersTraits};
+use traits::{CookiesTraits, HeadersTraits, ImpersonateFromStr, ImpersonateOSFromStr};
 
 mod utils;
 use utils::load_ca_certs;
@@ -82,6 +79,7 @@ impl Client {
     /// * `proxy` - An optional proxy URL for HTTP requests.
     /// * `timeout` - An optional timeout for HTTP requests in seconds.
     /// * `impersonate` - An optional entity to impersonate. Supported browsers and versions include Chrome, Safari, OkHttp, and Edge.
+    /// * `impersonate_os` - An optional entity to impersonate OS. Supported OS: android, ios, linux, macos, windows.
     /// * `follow_redirects` - A boolean to enable or disable following redirects. Default is `true`.
     /// * `max_redirects` - The maximum number of redirects to follow. Default is 20. Applies if `follow_redirects` is `true`.
     /// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is `true`.
@@ -104,6 +102,7 @@ impl Client {
     ///     proxy="http://127.0.0.1:8080",
     ///     timeout=10,
     ///     impersonate="chrome_123",
+    ///     impersonate_os="windows",
     ///     follow_redirects=True,
     ///     max_redirects=1,
     ///     verify=True,
@@ -114,7 +113,7 @@ impl Client {
     /// ```
     #[new]
     #[pyo3(signature = (auth=None, auth_bearer=None, params=None, headers=None, cookies=None,
-        cookie_store=true, referer=true, proxy=None, timeout=None, impersonate=None, follow_redirects=true,
+        cookie_store=true, referer=true, proxy=None, timeout=None, impersonate=None, impersonate_os=None, follow_redirects=true,
         max_redirects=20, verify=true, ca_cert_file=None, https_only=false, http2_only=false))]
     fn new(
         auth: Option<(String, Option<String>)>,
@@ -127,6 +126,7 @@ impl Client {
         proxy: Option<String>,
         timeout: Option<f64>,
         impersonate: Option<&str>,
+        impersonate_os: Option<&str>,
         follow_redirects: Option<bool>,
         max_redirects: Option<usize>,
         verify: Option<bool>,
@@ -139,9 +139,13 @@ impl Client {
 
         // Impersonate
         if let Some(impersonation_type) = impersonate {
-            let impersonation =
-                Impersonate::from_str(impersonation_type).map_err(PyValueError::new_err)?;
-            client_builder = client_builder.impersonate(impersonation);
+            let impersonation = Impersonate::from_str(impersonation_type)?;
+            let impersonation_os = ImpersonateOS::from_str(impersonate_os.unwrap_or("linux"))?;
+            let impersonate_builder = Impersonate::builder()
+                .impersonate(impersonation)
+                .impersonate_os(impersonation_os)
+                .build();
+            client_builder = client_builder.impersonate(impersonate_builder);
         }
 
         // Headers || Cookies
@@ -193,7 +197,7 @@ impl Client {
 
         // Verify
         if verify.unwrap_or(true) {
-            client_builder = client_builder.root_certs_store(load_ca_certs);
+            client_builder = client_builder.root_cert_store(load_ca_certs);
         } else {
             client_builder = client_builder.danger_accept_invalid_certs(true);
         }
@@ -222,8 +226,8 @@ impl Client {
 
     #[getter]
     pub fn get_headers(&self) -> Result<IndexMapSSR> {
-        let mut client = self.client.lock().unwrap();
-        let mut headers = client.headers_mut().clone();
+        let client = self.client.lock().unwrap();
+        let mut headers = client.headers().clone();
         headers.remove(COOKIE);
         Ok(headers.to_indexmap())
     }
@@ -231,7 +235,8 @@ impl Client {
     #[setter]
     pub fn set_headers(&self, new_headers: Option<IndexMapSSR>) -> Result<()> {
         let mut client = self.client.lock().unwrap();
-        let headers = client.headers_mut();
+        let mut mclient = client.as_mut();
+        let headers = mclient.headers();
         headers.clear();
         if let Some(new_headers) = new_headers {
             for (k, v) in new_headers {
@@ -243,8 +248,8 @@ impl Client {
 
     #[getter]
     pub fn get_cookies(&self) -> Result<IndexMapSSR> {
-        let mut client = self.client.lock().unwrap();
-        let headers = client.headers_mut();
+        let client = self.client.lock().unwrap();
+        let headers = client.headers();
         let mut cookies: IndexMapSSR = IndexMap::with_hasher(RandomState::default());
         if let Some(cookie_header) = headers.get(COOKIE) {
             for part in cookie_header.to_str()?.split(';') {
@@ -259,7 +264,8 @@ impl Client {
     #[setter]
     pub fn set_cookies(&self, cookies: Option<IndexMapSSR>) -> Result<()> {
         let mut client = self.client.lock().unwrap();
-        let headers = client.headers_mut();
+        let mut mclient = client.as_mut();
+        let headers = mclient.headers();
         if let Some(cookies) = cookies {
             headers.insert(COOKIE, HeaderValue::from_str(&cookies.to_string())?);
         }
@@ -275,7 +281,7 @@ impl Client {
     pub fn set_proxy(&mut self, proxy: String) -> Result<()> {
         let mut client = self.client.lock().unwrap();
         let rproxy = rquest::Proxy::all(proxy.clone())?;
-        client.set_proxies(vec![rproxy]);
+        client.as_mut().proxies(vec![rproxy]);
         self.proxy = Some(proxy);
         Ok(())
     }
@@ -648,8 +654,8 @@ impl Client {
 /// Convenience functions that use a default Client instance under the hood
 #[pyfunction]
 #[pyo3(signature = (method, url, params=None, headers=None, cookies=None, content=None, data=None,
-    json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, verify=None,
-    ca_cert_file=None))]
+    json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, impersonate_os=None,
+    verify=None, ca_cert_file=None))]
 fn request(
     py: Python,
     method: &str,
@@ -665,6 +671,7 @@ fn request(
     auth_bearer: Option<String>,
     timeout: Option<f64>,
     impersonate: Option<&str>,
+    impersonate_os: Option<&str>,
     verify: Option<bool>,
     ca_cert_file: Option<String>,
 ) -> Result<Response> {
@@ -679,6 +686,7 @@ fn request(
         None,
         None,
         impersonate,
+        impersonate_os,
         None,
         None,
         verify,
@@ -705,7 +713,7 @@ fn request(
 
 #[pyfunction]
 #[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None,
-    timeout=None, impersonate=None, verify=None, ca_cert_file=None))]
+    timeout=None, impersonate=None, impersonate_os=None, verify=None, ca_cert_file=None))]
 fn get(
     py: Python,
     url: &str,
@@ -716,6 +724,7 @@ fn get(
     auth_bearer: Option<String>,
     timeout: Option<f64>,
     impersonate: Option<&str>,
+    impersonate_os: Option<&str>,
     verify: Option<bool>,
     ca_cert_file: Option<String>,
 ) -> Result<Response> {
@@ -730,6 +739,7 @@ fn get(
         None,
         None,
         impersonate,
+        impersonate_os,
         None,
         None,
         verify,
@@ -751,7 +761,7 @@ fn get(
 
 #[pyfunction]
 #[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None,
-    timeout=None, impersonate=None, verify=None, ca_cert_file=None))]
+    timeout=None, impersonate=None, impersonate_os=None, verify=None, ca_cert_file=None))]
 fn head(
     py: Python,
     url: &str,
@@ -762,6 +772,7 @@ fn head(
     auth_bearer: Option<String>,
     timeout: Option<f64>,
     impersonate: Option<&str>,
+    impersonate_os: Option<&str>,
     verify: Option<bool>,
     ca_cert_file: Option<String>,
 ) -> Result<Response> {
@@ -776,6 +787,7 @@ fn head(
         None,
         None,
         impersonate,
+        impersonate_os,
         None,
         None,
         verify,
@@ -797,7 +809,7 @@ fn head(
 
 #[pyfunction]
 #[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None,
-    timeout=None, impersonate=None, verify=None, ca_cert_file=None))]
+    timeout=None, impersonate=None, impersonate_os=None, verify=None, ca_cert_file=None))]
 fn options(
     py: Python,
     url: &str,
@@ -808,6 +820,7 @@ fn options(
     auth_bearer: Option<String>,
     timeout: Option<f64>,
     impersonate: Option<&str>,
+    impersonate_os: Option<&str>,
     verify: Option<bool>,
     ca_cert_file: Option<String>,
 ) -> Result<Response> {
@@ -822,6 +835,7 @@ fn options(
         None,
         None,
         impersonate,
+        impersonate_os,
         None,
         None,
         verify,
@@ -843,7 +857,7 @@ fn options(
 
 #[pyfunction]
 #[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None,
-    timeout=None, impersonate=None, verify=None, ca_cert_file=None))]
+    timeout=None, impersonate=None, impersonate_os=None, verify=None, ca_cert_file=None))]
 fn delete(
     py: Python,
     url: &str,
@@ -854,6 +868,7 @@ fn delete(
     auth_bearer: Option<String>,
     timeout: Option<f64>,
     impersonate: Option<&str>,
+    impersonate_os: Option<&str>,
     verify: Option<bool>,
     ca_cert_file: Option<String>,
 ) -> Result<Response> {
@@ -868,6 +883,7 @@ fn delete(
         None,
         None,
         impersonate,
+        impersonate_os,
         None,
         None,
         verify,
@@ -889,8 +905,8 @@ fn delete(
 
 #[pyfunction]
 #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None,
-    json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, verify=None,
-    ca_cert_file=None))]
+    json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None,
+    impersonate_os=None, verify=None, ca_cert_file=None))]
 fn post(
     py: Python,
     url: &str,
@@ -905,6 +921,7 @@ fn post(
     auth_bearer: Option<String>,
     timeout: Option<f64>,
     impersonate: Option<&str>,
+    impersonate_os: Option<&str>,
     verify: Option<bool>,
     ca_cert_file: Option<String>,
 ) -> Result<Response> {
@@ -919,6 +936,7 @@ fn post(
         None,
         None,
         impersonate,
+        impersonate_os,
         None,
         None,
         verify,
@@ -944,8 +962,8 @@ fn post(
 
 #[pyfunction]
 #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None,
-    json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, verify=None,
-    ca_cert_file=None))]
+    json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None,
+    impersonate_os=None, verify=None, ca_cert_file=None))]
 fn put(
     py: Python,
     url: &str,
@@ -960,6 +978,7 @@ fn put(
     auth_bearer: Option<String>,
     timeout: Option<f64>,
     impersonate: Option<&str>,
+    impersonate_os: Option<&str>,
     verify: Option<bool>,
     ca_cert_file: Option<String>,
 ) -> Result<Response> {
@@ -974,6 +993,7 @@ fn put(
         None,
         None,
         impersonate,
+        impersonate_os,
         None,
         None,
         verify,
@@ -999,8 +1019,8 @@ fn put(
 
 #[pyfunction]
 #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None,
-    json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, verify=None,
-    ca_cert_file=None))]
+    json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None,
+    impersonate_os=None, verify=None, ca_cert_file=None))]
 fn patch(
     py: Python,
     url: &str,
@@ -1015,6 +1035,7 @@ fn patch(
     auth_bearer: Option<String>,
     timeout: Option<f64>,
     impersonate: Option<&str>,
+    impersonate_os: Option<&str>,
     verify: Option<bool>,
     ca_cert_file: Option<String>,
 ) -> Result<Response> {
@@ -1029,6 +1050,7 @@ fn patch(
         None,
         None,
         impersonate,
+        impersonate_os,
         None,
         None,
         verify,

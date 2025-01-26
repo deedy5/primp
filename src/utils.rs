@@ -3,18 +3,12 @@ use std::sync::LazyLock;
 
 use foldhash::fast::RandomState;
 use indexmap::IndexMap;
-use rquest::boring::{
-    error::ErrorStack,
-    x509::{
-        store::{X509Store, X509StoreBuilder},
-        X509,
-    },
-};
+use rquest::{X509Store, X509StoreBuilder, X509};
 use tracing;
 
 /// Loads the CA certificates from venv var PRIMP_CA_BUNDLE or the WebPKI certificate store
 pub fn load_ca_certs() -> Option<&'static X509Store> {
-    static CERT_STORE: LazyLock<Result<X509Store, ErrorStack>> = LazyLock::new(|| {
+    static CERT_STORE: LazyLock<Result<X509Store, anyhow::Error>> = LazyLock::new(|| {
         let mut ca_store = X509StoreBuilder::new()?;
         if let Ok(ca_cert_path) = std::env::var("PRIMP_CA_BUNDLE").or(std::env::var("CA_CERT_FILE"))
         {
