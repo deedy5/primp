@@ -58,6 +58,14 @@ IMPERSONATE = Literal[
     "firefox_133",
 ]
 
+IMPERSONATE_OS = Literal[
+    "android",
+    "ios",
+    "linux",
+    "macos",
+    "windows",
+]
+
 class Response:
     @property
     def content(self) -> bytes: ...
@@ -94,6 +102,7 @@ class Client:
         referer: bool | None = True,
         proxy: str | None = None,
         impersonate: IMPERSONATE | None = None,
+        impersonate_os: IMPERSONATE_OS | None = None,
         follow_redirects: bool | None = True,
         max_redirects: int | None = 20,
         verify: bool | None = True,

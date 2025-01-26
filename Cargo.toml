@@ -16,7 +16,7 @@ pyo3 = { version = "0.23.4", features = ["extension-module", "abi3-py38", "index
 anyhow = "1.0.95"
 tracing = { version = "0.1.41", features = ["log-always"] }
 pyo3-log = "0.12.1"
-rquest = { version = "1.5.5", features = [
+rquest = { version = "2.0.3", features = [
     "json",
     "cookies",
     "socks",
@@ -26,17 +26,16 @@ rquest = { version = "1.5.5", features = [
     "deflate",
     "multipart",
     "stream",
-    "impersonate_str",
 ] }
 encoding_rs = { version = "0.8.35" }
 foldhash = "0.1.4"
-indexmap = { version = "2.7.0", features = ["serde"] }
+indexmap = { version = "2.7.1", features = ["serde"] }
 tokio = { version = "1.43.0", features = ["full"] }
 tokio-util = { version = "0.7.13", features = ["codec"] }  # for multipart
 html2text = "0.13.6"
 bytes = "1.9.0"
 pythonize = "0.23.0"
-serde_json = "1.0.135"
+serde_json = "1.0.137"
 webpki-root-certs = "0.26.7"
 
 [profile.release]
