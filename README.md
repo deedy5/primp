@@ -244,6 +244,35 @@ resp = primp.get("https://httpbin.org/anything", impersonate="chrome_131", imper
 print(r.text)
 ```
 
+## Development
+```
+# If needed, install rust
+# https://www.rust-lang.org/tools/installation
+# curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# ensure rust tools are in PATH
+source ~/.cargo/env
+
+# setup and source local python virtual environment with uv/pip etc...
+python -m venv ./venv
+source ./venv/bin/activate
+pip install maturin
+
+# Validate the Python virtual environment configuration which PyO3 will use
+PYO3_PRINT_CONFIG=1 cargo build
+
+# Build primp
+cargo build
+
+# Build primp and generate the wheel
+maturin build
+
+# Testing
+# Install wheel into your testing virutal environment
+# Use the full path given by above output e.g.
+pip install /myprojects/primp/target/wheels/primp-0.11.0-cp38-abi3-manylinux_2_34_x86_64.whl
+```
+
 ### II. AsyncClient
 
 TODO
