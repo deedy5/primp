@@ -56,6 +56,10 @@ pub struct RClient {
     proxy: Option<String>,
     #[pyo3(get, set)]
     timeout: Option<f64>,
+    #[pyo3(get)]
+    impersonate: Option<String>,
+    #[pyo3(get)]
+    impersonate_os: Option<String>,
 }
 
 #[pymethods]
@@ -125,8 +129,8 @@ impl RClient {
         referer: Option<bool>,
         proxy: Option<String>,
         timeout: Option<f64>,
-        impersonate: Option<&str>,
-        impersonate_os: Option<&str>,
+        impersonate: Option<String>,
+        impersonate_os: Option<String>,
         follow_redirects: Option<bool>,
         max_redirects: Option<usize>,
         verify: Option<bool>,
@@ -138,12 +142,16 @@ impl RClient {
         let mut client_builder = rquest::Client::builder();
 
         // Impersonate
-        if let Some(impersonation_type) = impersonate {
-            let impersonation = Impersonate::from_str(impersonation_type)?;
-            let impersonation_os = ImpersonateOS::from_str(impersonate_os.unwrap_or("linux"))?;
+        if let Some(impersonate) = &impersonate {
+            let imp = Impersonate::from_str(&impersonate.as_str())?;
+            let imp_os = if let Some(impersonate_os) = &impersonate_os {
+                ImpersonateOS::from_str(&impersonate_os.as_str())?
+            } else {
+                ImpersonateOS::default()
+            };
             let impersonate_builder = Impersonate::builder()
-                .impersonate(impersonation)
-                .impersonate_os(impersonation_os)
+                .impersonate(imp)
+                .impersonate_os(imp_os)
                 .build();
             client_builder = client_builder.impersonate(impersonate_builder);
         }
@@ -221,6 +229,8 @@ impl RClient {
             params,
             proxy,
             timeout,
+            impersonate,
+            impersonate_os,
         })
     }
 
@@ -283,6 +293,38 @@ impl RClient {
         let rproxy = rquest::Proxy::all(proxy.clone())?;
         client.as_mut().proxies(vec![rproxy]);
         self.proxy = Some(proxy);
+        Ok(())
+    }
+
+    #[setter]
+    pub fn set_impersonate(&mut self, impersonate: String) -> Result<()> {
+        let mut client = self.client.lock().unwrap();
+        let imp = Impersonate::from_str(&impersonate.as_str())?;
+        let imp_os = if let Some(impersonate_os) = &self.impersonate_os {
+            ImpersonateOS::from_str(&impersonate_os.as_str())?
+        } else {
+            ImpersonateOS::default()
+        };
+        let impersonate_builder = Impersonate::builder()
+            .impersonate(imp)
+            .impersonate_os(imp_os)
+            .build();
+        client.as_mut().impersonate(impersonate_builder);
+        self.impersonate = Some(impersonate);
+        Ok(())
+    }
+
+    #[setter]
+    pub fn set_impersonate_os(&mut self, impersonate_os: String) -> Result<()> {
+        let mut client = self.client.lock().unwrap();
+        let imp_os = ImpersonateOS::from_str(&impersonate_os.as_str())?;
+        let mut impersonate_builder = Impersonate::builder().impersonate_os(imp_os);
+        if let Some(impersonate) = &self.impersonate {
+            let imp = Impersonate::from_str(&impersonate.as_str())?;
+            impersonate_builder = impersonate_builder.impersonate(imp);
+        }
+        client.as_mut().impersonate(impersonate_builder.build());
+        self.impersonate_os = Some(impersonate_os);
         Ok(())
     }
 
