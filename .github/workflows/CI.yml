@@ -76,7 +76,7 @@ jobs:
           for version in 3.8 3.9 3.10 3.11 3.12 3.13; do
             uv venv --preview --python $version
             source .venv/bin/activate
-            uv pip install certifi pytest
+            uv pip install certifi pytest typing_extensions
             uv pip install primp --no-index --find-links dist --force-reinstall
             pytest
           done
@@ -96,7 +96,7 @@ jobs:
             for version in 3.8 3.9 3.10 3.11 3.12 3.13; do
               uv venv --preview --python $version
               source .venv/bin/activate
-              uv pip install certifi pytest
+              uv pip install certifi pytest typing_extensions
               uv pip install primp --no-index --find-links dist --force-reinstall
               pytest
             done
@@ -114,8 +114,8 @@ jobs:
             set -e
             python3 -m venv .venv
             source .venv/bin/activate
+            pip install certifi pytest typing_extensions
             pip install primp --no-index --find-links dist --force-reinstall
-            pip install certifi pytest
             pytest
 
   musllinux:
@@ -188,7 +188,7 @@ jobs:
             for version in 3.8 3.9 3.10 3.11 3.12 3.13; do
               python$version -m venv .venv
               source .venv/bin/activate
-              pip install certifi pytest
+              pip install certifi pytest typing_extensions
               pip install primp --no-index --find-links dist --force-reinstall
               pytest
             done
@@ -230,7 +230,7 @@ jobs:
           for version in 3.8 3.9 3.10 3.11 3.12 3.13; do
             uv venv --preview --python $version
             source .venv/Scripts/activate
-            uv pip install certifi pytest
+            uv pip install certifi pytest typing_extensions
             uv pip install primp --no-index --find-links dist --force-reinstall
             pytest
           done
@@ -269,7 +269,7 @@ jobs:
           for version in 3.8 3.9 3.10 3.11 3.12 3.13; do
             uv venv --preview --python $version
             source .venv/bin/activate
-            uv pip install certifi pytest
+            uv pip install certifi pytest typing_extensions
             uv pip install primp --no-index --find-links dist --force-reinstall
             pytest
           done
@@ -329,7 +329,7 @@ jobs:
       - name: Download wheels
         uses: actions/download-artifact@v4
         with:
-          name: wheels-linux-x86_64 
+          name: wheels-linux-x86_64
       - name: Install dependencies
         run: |
           pip install -r benchmark/requirements.txt
