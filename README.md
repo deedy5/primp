@@ -246,4 +246,25 @@ print(r.text)
 
 ### II. AsyncClient
 
-TODO
+`primp.AsyncClient()` is an asynchronous wrapper around the `primp.Client` class, offering the same functions, behavior, and input arguments.
+
+```python3
+import asyncio
+import logging
+
+import primp
+
+async def aget_text(url):
+    async with primp.AsyncClient(impersonate="chrome_131") as client:
+        resp = await client.get(url)
+        return resp.text
+
+async def main():
+    urls = ["https://nytimes.com/", "https://cnn.com/", "https://abcnews.go.com/"]
+    tasks = [aget_text(u) for u in urls]
+    results = await asyncio.gather(*tasks)
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    asyncio.run(main())
+```
