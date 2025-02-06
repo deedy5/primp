@@ -1,3 +1,4 @@
+import asyncio
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
@@ -46,6 +47,11 @@ PACKAGES = [
     ("pycurl", PycurlSession),
     ("primp", primp.Client),
 ]
+AsyncPACKAGES = [
+    ("httpx", httpx.AsyncClient),
+    ("curl_cffi", curl_cffi.requests.AsyncSession),
+    ("primp", primp.AsyncClient),
+]
 
 
 def add_package_version(packages):
@@ -72,9 +78,21 @@ def session_get_test(session_class, requests_number):
             s.close()
 
 
-PACKAGES = add_package_version(PACKAGES)
+async def async_session_get_test(session_class, requests_number):
+    async def aget(s, url):
+        resp = await s.get(url)
+        return resp.text
 
-requests_number = 2000
+    async with session_class() as s:
+        tasks = [aget(s, url) for _ in range(requests_number)]
+        await asyncio.gather(*tasks)
+
+
+PACKAGES = add_package_version(PACKAGES)
+AsyncPACKAGES = add_package_version(AsyncPACKAGES)
+requests_number = 400
+
+# Sync
 for session in [False, True]:
     for response_size in ["5k", "50k", "200k"]:
         url = f"http://127.0.0.1:8000/{response_size}"
@@ -99,6 +117,30 @@ for session in [False, True]:
             )
             print(f"    name: {name:<30} time: {dur} cpu_time: {cpu_dur}")
 
+# Async
+for response_size in ["5k", "50k", "200k"]:
+    url = f"http://127.0.0.1:8000/{response_size}"
+    print(f"\nThreads=1, session=Async, {response_size=}, {requests_number=}")
+
+    for name, session_class in AsyncPACKAGES:
+        start = time.perf_counter()
+        cpu_start = time.process_time()
+        asyncio.run(async_session_get_test(session_class, requests_number))
+        dur = round(time.perf_counter() - start, 2)
+        cpu_dur = round(time.process_time() - cpu_start, 2)
+
+        results.append(
+            {
+                "name": name,
+                "session": "Async",
+                "size": response_size,
+                "time": dur,
+                "cpu_time": cpu_dur,
+            }
+        )
+
+        print(f"    name: {name:<30} time: {dur} cpu_time: {cpu_dur}")
+
 df = pd.DataFrame(results)
 pivot_df = df.pivot_table(
     index=["name", "session"],
@@ -114,7 +156,7 @@ pivot_df = pivot_df[
 ]
 print(pivot_df)
 
-for session in [False, True]:
+for session in [False, True, "Async"]:
     session_df = pivot_df[pivot_df["session"] == session]
     print(f"\nThreads=1 {session=}:")
     print(session_df.to_string(index=False))
@@ -123,7 +165,6 @@ for session in [False, True]:
 ########################################################
 # Not for generating image, just to check multithreading working
 # Multiple threads
-requests_number = 2000
 threads_numbers = [5, 32]
 for threads_number in threads_numbers:
     for response_size in ["5k", "50k", "200k"]:
