@@ -89,17 +89,32 @@ class Client(RClient):
             auth: a tuple containing the username and an optional password for basic authentication. Default is None.
             auth_bearer: a string representing the bearer token for bearer token authentication. Default is None.
             params: a map of query parameters to append to the URL. Default is None.
-            headers: an optional map of HTTP headers to send with requests. If `impersonate` is set, this will be ignored.
+            headers: an optional map of HTTP headers to send with requests. Ignored if `impersonate` is set.
             cookies: an optional map of cookies to send with requests as the `Cookie` header.
             cookie_store: enable a persistent cookie store. Received cookies will be preserved and included
                  in additional requests. Default is True.
-            referer: enable or disable automatic setting of the `Referer` header. Default is True.
-            proxy: an optional proxy URL for HTTP requests.
-            timeout: an optional timeout for HTTP requests in seconds.
-            impersonate: an optional entity to impersonate. Supported browsers and versions include Chrome, Safari, OkHttp, and Edge.
-            impersonate_os: an optional entity to impersonate OS. Supported OS: android, ios, linux, macos, windows.
+            referer: automatic setting of the `Referer` header. Default is True.
+            proxy: proxy URL for HTTP requests, example: "socks5://127.0.0.1:9150". Default is None.
+            timeout: timeout for HTTP requests in seconds. Default is 30.
+            impersonate: impersonate browser. Supported browsers:
+                "chrome_100", "chrome_101", "chrome_104", "chrome_105", "chrome_106",
+                "chrome_107", "chrome_108", "chrome_109", "chrome_114", "chrome_116",
+                "chrome_117", "chrome_118", "chrome_119", "chrome_120", "chrome_123",
+                "chrome_124", "chrome_126", "chrome_127", "chrome_128", "chrome_129",
+                "chrome_130", "chrome_131",
+                "safari_15.3", "safari_15.5", "safari_15.6.1", "safari_16",
+                "safari_16.5", "safari_17.0", "safari_17.2.1", "safari_17.4.1",
+                "safari_17.5", "safari_18",  "safari_18.2",
+                "safari_ios_16.5", "safari_ios_17.2", "safari_ios_17.4.1", "safari_ios_18.1.1",
+                "safari_ipad_18",
+                "okhttp_3.9", "okhttp_3.11", "okhttp_3.13", "okhttp_3.14", "okhttp_4.9",
+                "okhttp_4.10", "okhttp_5",
+                "edge_101", "edge_122", "edge_127", "edge_131",
+                "firefox_109", "firefox_117", "firefox_128", "firefox_133". Default is None.
+            impersonate_os: impersonate OS. Supported OS:
+                "android", "ios", "linux", "macos", "windows". Default is None.
             follow_redirects: a boolean to enable or disable following redirects. Default is True.
-            max_redirects: the maximum number of redirects to follow. Default is 20. Applies if `follow_redirects` is True.
+            max_redirects: the maximum number of redirects if `follow_redirects` is True. Default is 20.
             verify: an optional boolean indicating whether to verify SSL certificates. Default is True.
             ca_cert_file: path to CA certificate store. Default is None.
             https_only: restrict the Client to be used with HTTPS only requests. Default is False.
@@ -152,12 +167,8 @@ class AsyncClient(Client):
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, partial(fn, *args, **kwargs))
 
-    async def request(
-        self, method: HttpMethod, url: str, **kwargs: Unpack[RequestParams]
-    ):
-        return await self._run_sync_asyncio(
-            super().request, method=method, url=url, **kwargs
-        )
+    async def request(self, method: HttpMethod, url: str, **kwargs: Unpack[RequestParams]):
+        return await self._run_sync_asyncio(super().request, method=method, url=url, **kwargs)
 
     async def get(self, url: str, **kwargs: Unpack[RequestParams]):
         return await self.request(method="GET", url=url, **kwargs)
@@ -194,8 +205,23 @@ def request(
     Args:
         method: the HTTP method to use (e.g., "GET", "POST").
         url: the URL to which the request will be made.
-        impersonate: an optional entity to impersonate. Supported browsers and versions include Chrome, Safari, OkHttp, and Edge.
-        impersonate_os: an optional entity to impersonate OS. Supported OS: android, ios, linux, macos, windows.
+        impersonate: impersonate browser. Supported browsers:
+            "chrome_100", "chrome_101", "chrome_104", "chrome_105", "chrome_106",
+            "chrome_107", "chrome_108", "chrome_109", "chrome_114", "chrome_116",
+            "chrome_117", "chrome_118", "chrome_119", "chrome_120", "chrome_123",
+            "chrome_124", "chrome_126", "chrome_127", "chrome_128", "chrome_129",
+            "chrome_130", "chrome_131",
+            "safari_15.3", "safari_15.5", "safari_15.6.1", "safari_16",
+            "safari_16.5", "safari_17.0", "safari_17.2.1", "safari_17.4.1",
+            "safari_17.5", "safari_18",  "safari_18.2",
+            "safari_ios_16.5", "safari_ios_17.2", "safari_ios_17.4.1", "safari_ios_18.1.1",
+            "safari_ipad_18",
+            "okhttp_3.9", "okhttp_3.11", "okhttp_3.13", "okhttp_3.14", "okhttp_4.9",
+            "okhttp_4.10", "okhttp_5",
+            "edge_101", "edge_122", "edge_127", "edge_131",
+            "firefox_109", "firefox_117", "firefox_128", "firefox_133". Default is None.
+        impersonate_os: impersonate OS. Supported OS:
+            "android", "ios", "linux", "macos", "windows". Default is None.
         verify: an optional boolean indicating whether to verify SSL certificates. Default is True.
         ca_cert_file: path to CA certificate store. Default is None.
         auth: a tuple containing the username and an optional password for basic authentication. Default is None.
