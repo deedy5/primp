@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import sys
+from functools import partial
 from typing import TYPE_CHECKING, Literal, TypedDict
 
 if sys.version_info <= (3, 11):
@@ -111,6 +113,9 @@ class Client(RClient):
     def __exit__(self, *args):
         del self
 
+    def request(self, method: HttpMethod, url: str, **kwargs: Unpack[RequestParams]):
+        return super().request(method=method, url=url, **kwargs)
+
     def get(self, url: str, **kwargs: Unpack[RequestParams]):
         return self.request(method="GET", url=url, **kwargs)
 
@@ -131,6 +136,49 @@ class Client(RClient):
 
     def patch(self, url: str, **kwargs: Unpack[RequestParams]):
         return self.request(method="PATCH", url=url, **kwargs)
+
+
+class AsyncClient(Client):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        del self
+
+    async def _run_sync_asyncio(self, fn, *args, **kwargs):
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, partial(fn, *args, **kwargs))
+
+    async def request(
+        self, method: HttpMethod, url: str, **kwargs: Unpack[RequestParams]
+    ):
+        return await self._run_sync_asyncio(
+            super().request, method=method, url=url, **kwargs
+        )
+
+    async def get(self, url: str, **kwargs: Unpack[RequestParams]):
+        return await self.request(method="GET", url=url, **kwargs)
+
+    async def head(self, url: str, **kwargs: Unpack[RequestParams]):
+        return await self.request(method="HEAD", url=url, **kwargs)
+
+    async def options(self, url: str, **kwargs: Unpack[RequestParams]):
+        return await self.request(method="OPTIONS", url=url, **kwargs)
+
+    async def delete(self, url: str, **kwargs: Unpack[RequestParams]):
+        return await self.request(method="DELETE", url=url, **kwargs)
+
+    async def post(self, url: str, **kwargs: Unpack[RequestParams]):
+        return await self.request(method="POST", url=url, **kwargs)
+
+    async def put(self, url: str, **kwargs: Unpack[RequestParams]):
+        return await self.request(method="PUT", url=url, **kwargs)
+
+    async def patch(self, url: str, **kwargs: Unpack[RequestParams]):
+        return await self.request(method="PATCH", url=url, **kwargs)
 
 
 def request(
