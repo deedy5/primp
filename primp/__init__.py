@@ -3,53 +3,18 @@ from __future__ import annotations
 import asyncio
 import sys
 from functools import partial
-from typing import TYPE_CHECKING, Literal, TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 if sys.version_info <= (3, 11):
     from typing_extensions import Unpack
 else:
     from typing import Unpack
 
-from .primp import RClient  # type: ignore
+
+from .primp import RClient
 
 if TYPE_CHECKING:
-    HttpMethod = Literal["GET", "HEAD", "OPTIONS", "DELETE", "POST", "PUT", "PATCH"]
-    IMPERSONATE = Literal[
-        "chrome_100", "chrome_101", "chrome_104", "chrome_105", "chrome_106",
-        "chrome_107", "chrome_108", "chrome_109", "chrome_114", "chrome_116",
-        "chrome_117", "chrome_118", "chrome_119", "chrome_120", "chrome_123",
-        "chrome_124", "chrome_126", "chrome_127", "chrome_128", "chrome_129",
-        "chrome_130", "chrome_131",
-        "safari_15.3", "safari_15.5", "safari_15.6.1", "safari_16",
-        "safari_16.5", "safari_17.0", "safari_17.2.1", "safari_17.4.1",
-        "safari_17.5", "safari_18",  "safari_18.2",
-        "safari_ios_16.5", "safari_ios_17.2", "safari_ios_17.4.1", "safari_ios_18.1.1",
-        "safari_ipad_18",
-        "okhttp_3.9", "okhttp_3.11", "okhttp_3.13", "okhttp_3.14", "okhttp_4.9",
-        "okhttp_4.10", "okhttp_5",
-        "edge_101", "edge_122", "edge_127", "edge_131",
-        "firefox_109", "firefox_117", "firefox_128", "firefox_133",
-    ]  # fmt: skip
-    IMPERSONATE_OS = Literal["android", "ios", "linux", "macos", "windows"]
-
-    class RequestParams(TypedDict, total=False):
-        auth: tuple[str, str | None] | None
-        auth_bearer: str | None
-        params: dict[str, str] | None
-        headers: dict[str, str] | None
-        cookies: dict[str, str] | None
-        timeout: float | None
-        content: bytes | None
-        data: dict[str, str] | None
-        json: dict[str, str] | None
-        files: dict[str, str] | None
-
-    class ClientRequestParams(RequestParams):
-        impersonate: IMPERSONATE | None
-        impersonate_os: IMPERSONATE_OS | None
-        verify: bool | None
-        ca_cert_file: str | None
-
+    from .primp import IMPERSONATE, IMPERSONATE_OS, ClientRequestParams, HttpMethod, RequestParams, Response
 else:
 
     class _Unpack:
@@ -122,34 +87,34 @@ class Client(RClient):
         """
         super().__init__()
 
-    def __enter__(self):
+    def __enter__(self) -> Client:
         return self
 
     def __exit__(self, *args):
         del self
 
-    def request(self, method: HttpMethod, url: str, **kwargs: Unpack[RequestParams]):
+    def request(self, method: HttpMethod, url: str, **kwargs: Unpack[RequestParams]) -> Response:
         return super().request(method=method, url=url, **kwargs)
 
-    def get(self, url: str, **kwargs: Unpack[RequestParams]):
+    def get(self, url: str, **kwargs: Unpack[RequestParams]) -> Response:
         return self.request(method="GET", url=url, **kwargs)
 
-    def head(self, url: str, **kwargs: Unpack[RequestParams]):
+    def head(self, url: str, **kwargs: Unpack[RequestParams]) -> Response:
         return self.request(method="HEAD", url=url, **kwargs)
 
-    def options(self, url: str, **kwargs: Unpack[RequestParams]):
+    def options(self, url: str, **kwargs: Unpack[RequestParams]) -> Response:
         return self.request(method="OPTIONS", url=url, **kwargs)
 
-    def delete(self, url: str, **kwargs: Unpack[RequestParams]):
+    def delete(self, url: str, **kwargs: Unpack[RequestParams]) -> Response:
         return self.request(method="DELETE", url=url, **kwargs)
 
-    def post(self, url: str, **kwargs: Unpack[RequestParams]):
+    def post(self, url: str, **kwargs: Unpack[RequestParams]) -> Response:
         return self.request(method="POST", url=url, **kwargs)
 
-    def put(self, url: str, **kwargs: Unpack[RequestParams]):
+    def put(self, url: str, **kwargs: Unpack[RequestParams]) -> Response:
         return self.request(method="PUT", url=url, **kwargs)
 
-    def patch(self, url: str, **kwargs: Unpack[RequestParams]):
+    def patch(self, url: str, **kwargs: Unpack[RequestParams]) -> Response:
         return self.request(method="PATCH", url=url, **kwargs)
 
 
@@ -157,7 +122,7 @@ class AsyncClient(Client):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> AsyncClient:
         return self
 
     async def __aexit__(self, *args):
@@ -167,28 +132,28 @@ class AsyncClient(Client):
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, partial(fn, *args, **kwargs))
 
-    async def request(self, method: HttpMethod, url: str, **kwargs: Unpack[RequestParams]):
+    async def request(self, method: HttpMethod, url: str, **kwargs: Unpack[RequestParams]):  # type: ignore
         return await self._run_sync_asyncio(super().request, method=method, url=url, **kwargs)
 
-    async def get(self, url: str, **kwargs: Unpack[RequestParams]):
+    async def get(self, url: str, **kwargs: Unpack[RequestParams]):  # type: ignore
         return await self.request(method="GET", url=url, **kwargs)
 
-    async def head(self, url: str, **kwargs: Unpack[RequestParams]):
+    async def head(self, url: str, **kwargs: Unpack[RequestParams]):  # type: ignore
         return await self.request(method="HEAD", url=url, **kwargs)
 
-    async def options(self, url: str, **kwargs: Unpack[RequestParams]):
+    async def options(self, url: str, **kwargs: Unpack[RequestParams]):  # type: ignore
         return await self.request(method="OPTIONS", url=url, **kwargs)
 
-    async def delete(self, url: str, **kwargs: Unpack[RequestParams]):
+    async def delete(self, url: str, **kwargs: Unpack[RequestParams]):  # type: ignore
         return await self.request(method="DELETE", url=url, **kwargs)
 
-    async def post(self, url: str, **kwargs: Unpack[RequestParams]):
+    async def post(self, url: str, **kwargs: Unpack[RequestParams]):  # type: ignore
         return await self.request(method="POST", url=url, **kwargs)
 
-    async def put(self, url: str, **kwargs: Unpack[RequestParams]):
+    async def put(self, url: str, **kwargs: Unpack[RequestParams]):  # type: ignore
         return await self.request(method="PUT", url=url, **kwargs)
 
-    async def patch(self, url: str, **kwargs: Unpack[RequestParams]):
+    async def patch(self, url: str, **kwargs: Unpack[RequestParams]):  # type: ignore
         return await self.request(method="PATCH", url=url, **kwargs)
 
 
@@ -230,7 +195,7 @@ def request(
         headers: an optional map of HTTP headers to send with requests. If `impersonate` is set, this will be ignored.
         cookies: an optional map of cookies to send with requests as the `Cookie` header.
         timeout: the timeout for the request in seconds. Default is 30.
-        content: he content to send in the request body as bytes. Default is None.
+        content: the content to send in the request body as bytes. Default is None.
         data: the form data to send in the request body. Default is None.
         json: a JSON serializable object to send in the request body. Default is None.
         files: a map of file fields to file paths to be sent as multipart/form-data. Default is None.
