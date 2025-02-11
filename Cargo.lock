@@ -134,9 +134,9 @@ checksum = "8f68f53c83ab957f72c32642f3868eec03eb974d1fb82e453128456482613d36"
 
 [[package]]
 name = "boring-sys2"
-version = "4.15.0"
+version = "4.15.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "98ffeaab1d9d01485b74c92cebd02c3af06cade87779e82f18ad337624ccebdb"
+checksum = "c515f6a5ac9c049f2e13feaa0f7b5750fe6a79acacaee3a65da144613e581c88"
 dependencies = [
  "autocfg",
  "bindgen",
@@ -147,9 +147,9 @@ dependencies = [
 
 [[package]]
 name = "boring2"
-version = "4.15.0"
+version = "4.15.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d432a042273557ceb6c5a34c8c78d2ea4b757192e8f2b65e32bf274b137bf3b"
+checksum = "273df18d8531ade3030de35554bf58cf961f63e4840d3d2f3c44e96be45daa64"
 dependencies = [
  "bitflags",
  "boring-sys2",
@@ -187,9 +187,9 @@ checksum = "f61dac84819c6588b558454b194026eb1f09c293b9036ae9b159e74e73ab6cf9"
 
 [[package]]
 name = "cc"
-version = "1.2.12"
+version = "1.2.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "755717a7de9ec452bf7f3f1a3099085deabd7f2962b861dae91ecd7a365903d2"
+checksum = "c7777341816418c02e033934a09f20dc0ccaf65a5201ef8a450ae0105a573fda"
 dependencies = [
  "jobserver",
  "libc",
@@ -224,9 +224,9 @@ dependencies = [
 
 [[package]]
 name = "cmake"
-version = "0.1.53"
+version = "0.1.54"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e24a03c8b52922d68a1589ad61032f2c1aa5a8158d2aa0d93c6e9534944bbad6"
+checksum = "e7caa3f9de89ddbe2c607f4101924c5abec803763ae9534e4f4d7d8f84aa81f0"
 dependencies = [
  "cc",
 ]
@@ -484,13 +484,12 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "html2text"
-version = "0.13.6"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1bf7722c2ffdd62628b6e13065b6ab6cf154a236bd476c6e89af1352d745b83e"
+checksum = "eacd0d94e37b02109daef505556923edda7785047f24d9634b84835a8122da7a"
 dependencies = [
  "html5ever",
  "markup5ever",
- "nom",
  "tendril",
  "thiserror 2.0.11",
  "unicode-width",
@@ -958,9 +957,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.20.2"
+version = "1.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1261fe7e33c73b354eab43b1273a57c8f967d0391e80353e51f764ac02cf6775"
+checksum = "945462a4b81e43c4e3ba96bd7b49d834c6f61198356aa858733bc4acf3cbe62e"
 
 [[package]]
 name = "openssl-macros"
@@ -1642,9 +1641,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-boring2"
-version = "4.15.0"
+version = "4.15.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea60feef69e59db28b32a37c6d1ec83e388d73a2594e2f1376552f077661e458"
+checksum = "8ad25ad6cd6454669fb1fde3338f15716579eb93bdcf6cf09dde0dc4bb10c112"
 dependencies = [
  "boring-sys2",
  "boring2",
