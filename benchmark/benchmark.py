@@ -1,16 +1,18 @@
 import asyncio
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from io import BytesIO
 from importlib.metadata import version
+from io import BytesIO
 
-import pandas as pd
-import requests
-import httpx
-import tls_client
-import pycurl
-import primp
+import aiohttp
 import curl_cffi.requests
+import httpx
+import pandas as pd
+import pycurl
+import requests
+import tls_client
+
+import primp
 
 
 class PycurlSession:
@@ -48,6 +50,7 @@ PACKAGES = [
     ("primp", primp.Client),
 ]
 AsyncPACKAGES = [
+    ("aiohttp", aiohttp.ClientSession),
     ("httpx", httpx.AsyncClient),
     ("curl_cffi", curl_cffi.requests.AsyncSession),
     ("primp", primp.AsyncClient),
@@ -80,8 +83,13 @@ def session_get_test(session_class, requests_number):
 
 async def async_session_get_test(session_class, requests_number):
     async def aget(s, url):
-        resp = await s.get(url)
-        return resp.text
+        if session_class.__module__ == "aiohttp.client":
+            async with s.get(url) as resp:
+                text = await resp.text()
+                return text
+        else:
+            resp = await s.get(url)
+            return resp.text
 
     async with session_class() as s:
         tasks = [aget(s, url) for _ in range(requests_number)]
@@ -150,10 +158,7 @@ pivot_df = df.pivot_table(
 )
 pivot_df.reset_index(inplace=True)
 pivot_df.columns = [" ".join(col).strip() for col in pivot_df.columns.values]
-pivot_df = pivot_df[
-    ["name", "session"]
-    + [col for col in pivot_df.columns if col not in ["name", "session"]]
-]
+pivot_df = pivot_df[["name", "session"] + [col for col in pivot_df.columns if col not in ["name", "session"]]]
 print(pivot_df)
 
 for session in [False, True, "Async"]:
@@ -169,9 +174,7 @@ threads_numbers = [5, 32]
 for threads_number in threads_numbers:
     for response_size in ["5k", "50k", "200k"]:
         url = f"http://127.0.0.1:8000/{response_size}"
-        print(
-            f"\nThreads={threads_number}, session=True, {response_size=}, {requests_number=}"
-        )
+        print(f"\nThreads={threads_number}, session=True, {response_size=}, {requests_number=}")
         for name, session_class in PACKAGES:
             start = time.perf_counter()
             cpu_start = time.process_time()
@@ -209,10 +212,7 @@ pivot_df = df.pivot_table(
 )
 pivot_df.reset_index(inplace=True)
 pivot_df.columns = [" ".join(col).strip() for col in pivot_df.columns.values]
-pivot_df = pivot_df[
-    ["name", "threads"]
-    + [col for col in pivot_df.columns if col not in ["name", "threads"]]
-]
+pivot_df = pivot_df[["name", "threads"] + [col for col in pivot_df.columns if col not in ["name", "threads"]]]
 unique_threads = pivot_df["threads"].unique()
 for thread in unique_threads:
     thread_df = pivot_df[pivot_df["threads"] == thread]

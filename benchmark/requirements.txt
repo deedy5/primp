@@ -2,6 +2,7 @@ matplotlib
 pandas
 starlette
 uvicorn
+aiohttp
 requests
 httpx
 tls-client
