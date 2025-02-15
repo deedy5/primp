@@ -1,4 +1,5 @@
 #![allow(clippy::too_many_arguments)]
+use std::any;
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
@@ -439,35 +440,24 @@ impl RClient {
             }
 
             // Send the request and await the response
-            let resp = request_builder.send().await?;
+            let resp: rquest::Response = request_builder.send().await?;
+            let url: String = resp.url().to_string();
 
-            // Response items
-            let cookies: IndexMapSSR = resp
-                .cookies()
-                .map(|cookie| (cookie.name().to_string(), cookie.value().to_string()))
-                .collect();
-            let headers: IndexMapSSR = resp.headers().to_indexmap();
-            let status_code = resp.status().as_u16();
-            let url = resp.url().to_string();
-            let buf = resp.bytes().await?;
-
-            tracing::info!("response: {} {} {}", url, status_code, buf.len());
-            Ok((buf, cookies, headers, status_code, url))
+            Ok((resp, url))
         };
 
         // Execute an async future, releasing the Python GIL for concurrency.
         // Use Tokio global runtime to block on the future.
-        let result: Result<(Bytes, IndexMapSSR, IndexMapSSR, u16, String), Error> =
+        let response: Result<(rquest::Response, String)> =
             py.allow_threads(|| RUNTIME.block_on(future));
-        let (f_buf, f_cookies, f_headers, f_status_code, f_url) = result?;
-
+        let result = response?;
+        let resp = http::Response::from(result.0);
+        let url = result.1;
         Ok(Response {
-            content: PyBytes::new(py, &f_buf).unbind(),
-            cookies: f_cookies,
-            encoding: String::new(),
-            headers: f_headers,
-            status_code: f_status_code,
-            url: f_url,
+            resp,
+            _content: None,
+            _encoding: None,
+            url,
         })
     }
 }
