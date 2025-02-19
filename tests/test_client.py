@@ -39,6 +39,7 @@ def test_client_init_params():
     )
     response = client.get("https://httpbin.org/anything")
     assert response.status_code == 200
+    assert response.headers["content-type"] == "application/json"
     json_data = response.json()
     assert json_data["headers"]["X-Test"] == "test"
     assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
