@@ -1,15 +1,19 @@
-use crate::utils::{get_encoding_from_content, get_encoding_from_headers};
-use anyhow::{anyhow, Result};
-use encoding_rs::Encoding;
-use foldhash::fast::RandomState;
+use anyhow::Result;
+use encoding_rs::{Encoding, UTF_8};
 use html2text::{
     from_read, from_read_with_decorator,
     render::{RichDecorator, TrivialDecorator},
 };
-use indexmap::IndexMap;
-use pyo3::{prelude::*, types::PyBytes};
+use mime::Mime;
+use pyo3::{
+    prelude::*,
+    types::{PyBytes, PyDict},
+};
 use pythonize::pythonize;
 use serde_json::from_slice;
+
+use crate::RUNTIME;
+use http_body_util::BodyExt;
 
 /// A struct representing an HTTP response.
 ///
@@ -17,74 +21,111 @@ use serde_json::from_slice;
 /// It also supports decoding the response body as text or JSON, with the ability to specify the character encoding.
 #[pyclass]
 pub struct Response {
-    #[pyo3(get)]
-    pub content: Py<PyBytes>,
-    #[pyo3(get)]
-    pub cookies: IndexMap<String, String, RandomState>,
-    #[pyo3(get, set)]
-    pub encoding: String,
-    #[pyo3(get)]
-    pub headers: IndexMap<String, String, RandomState>,
-    #[pyo3(get)]
-    pub status_code: u16,
+    pub resp: http::Response<rquest::Body>,
+    pub _content: Option<Py<PyBytes>>,
+    pub _encoding: Option<String>,
     #[pyo3(get)]
     pub url: String,
+    #[pyo3(get)]
+    pub status_code: u16,
 }
 
 #[pymethods]
 impl Response {
     #[getter]
-    fn get_encoding(&mut self, py: Python) -> Result<&String> {
-        if !self.encoding.is_empty() {
-            return Ok(&self.encoding);
+    fn get_content<'rs>(&mut self, py: Python<'rs>) -> Result<Bound<'rs, PyBytes>> {
+        if let Some(content) = &self._content {
+            let cloned = content.clone_ref(py);
+            return Ok(cloned.into_bound(py));
         }
-        self.encoding = get_encoding_from_headers(&self.headers)
-            .or_else(|| get_encoding_from_content(self.content.as_bytes(py)))
-            .unwrap_or_else(|| "utf-8".to_string());
-        Ok(&self.encoding)
+
+        let bytes = py.allow_threads(|| {
+            RUNTIME.block_on(async {
+                BodyExt::collect(self.resp.body_mut())
+                    .await
+                    .map(|buf| buf.to_bytes())
+            })
+        })?;
+
+        let content = PyBytes::new(py, &bytes);
+        self._content = Some(content.clone().unbind());
+        Ok(content)
+    }
+
+    #[getter]
+    fn get_encoding<'rs>(&mut self, py: Python<'rs>) -> Result<String> {
+        if let Some(encoding) = self._encoding.as_ref() {
+            return Ok(encoding.clone());
+        }
+        let encoding = py.allow_threads(|| {
+            self.resp
+                .headers()
+                .get(http::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.parse::<Mime>().ok())
+                .and_then(|mime| mime.get_param("charset").map(|charset| charset.to_string()))
+                .unwrap_or("utf-8".to_string())
+        });
+        self._encoding = Some(encoding.clone());
+        Ok(encoding)
     }
 
     #[getter]
     fn text(&mut self, py: Python) -> Result<String> {
-        // If self.encoding is empty, call get_encoding to populate self.encoding
-        if self.encoding.is_empty() {
-            self.get_encoding(py)?;
-        }
-
-        // Convert Py<PyBytes> to &[u8]
-        let raw_bytes = self.content.as_bytes(py);
-
-        // Release the GIL here because decoding can be CPU-intensive
-        py.allow_threads(|| {
-            let encoding = Encoding::for_label(self.encoding.as_bytes())
-                .ok_or_else(|| anyhow!("Unsupported charset: {}", self.encoding))?;
-            let (decoded_str, detected_encoding, _) = encoding.decode(raw_bytes);
-
-            // Update self.encoding based on the detected encoding
-            if self.encoding != detected_encoding.name() {
-                self.encoding = detected_encoding.name().to_string();
-            }
-
-            Ok(decoded_str.to_string())
-        })
+        let content = self.get_content(py)?.unbind();
+        let encoding = self.get_encoding(py)?;
+        let raw_bytes = content.as_bytes(py);
+        let text = py.allow_threads(|| {
+            let encoding = Encoding::for_label(encoding.as_bytes()).unwrap_or(UTF_8);
+            let (text, _, _) = encoding.decode(raw_bytes);
+            text
+        });
+        Ok(text.to_string())
     }
 
-    fn json(&mut self, py: Python) -> Result<PyObject> {
-        let json_value: serde_json::Value = from_slice(self.content.as_bytes(py))?;
-        let result = pythonize(py, &json_value).unwrap().unbind();
+    fn json<'rs>(&mut self, py: Python<'rs>) -> Result<Bound<'rs, PyAny>> {
+        let content = self.get_content(py)?.unbind();
+        let raw_bytes = content.as_bytes(py);
+        let json_value: serde_json::Value = from_slice(raw_bytes)?;
+        let result = pythonize(py, &json_value)?;
         Ok(result)
     }
 
     #[getter]
+    fn headers<'rs>(&self, py: Python<'rs>) -> Result<Bound<'rs, PyDict>> {
+        let res = PyDict::new(py);
+        for (key, value) in self.resp.headers() {
+            res.set_item(key.as_str(), value.to_str()?)?;
+        }
+        Ok(res)
+    }
+
+    #[getter]
+    fn cookies<'rs>(&self, py: Python<'rs>) -> Result<Bound<'rs, PyDict>> {
+        let cookie_dict = PyDict::new(py);
+        let set_cookies = self.resp.headers().get_all(http::header::SET_COOKIE);
+        for cookie_header in set_cookies.iter() {
+            if let Ok(cookie_str) = cookie_header.to_str() {
+                if let Some((name, value)) = cookie_str.split_once('=') {
+                    cookie_dict.set_item(name.trim(), value.trim())?;
+                }
+            }
+        }
+        Ok(cookie_dict)
+    }
+
+    #[getter]
     fn text_markdown(&mut self, py: Python) -> Result<String> {
-        let raw_bytes = self.content.bind(py).as_bytes();
+        let content = self.get_content(py)?.unbind();
+        let raw_bytes = content.as_bytes(py);
         let text = py.allow_threads(|| from_read(raw_bytes, 100))?;
         Ok(text)
     }
 
     #[getter]
     fn text_plain(&mut self, py: Python) -> Result<String> {
-        let raw_bytes = self.content.bind(py).as_bytes();
+        let content = self.get_content(py)?.unbind();
+        let raw_bytes = content.as_bytes(py);
         let text =
             py.allow_threads(|| from_read_with_decorator(raw_bytes, 100, TrivialDecorator::new()))?;
         Ok(text)
@@ -92,7 +133,8 @@ impl Response {
 
     #[getter]
     fn text_rich(&mut self, py: Python) -> Result<String> {
-        let raw_bytes = self.content.bind(py).as_bytes();
+        let content = self.get_content(py)?.unbind();
+        let raw_bytes = content.as_bytes(py);
         let text =
             py.allow_threads(|| from_read_with_decorator(raw_bytes, 100, RichDecorator::new()))?;
         Ok(text)
