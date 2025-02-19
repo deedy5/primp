@@ -331,9 +331,9 @@ dependencies = [
 
 [[package]]
 name = "equivalent"
-version = "1.0.1"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5443807d6dff69373d433ab9ef5378ad8df50ca6298caf15de6e52e24aaf54d5"
+checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
 name = "flate2"
@@ -1084,7 +1084,10 @@ dependencies = [
  "encoding_rs",
  "foldhash",
  "html2text",
+ "http",
+ "http-body-util",
  "indexmap",
+ "mime",
  "pyo3",
  "pyo3-log",
  "pythonize",
@@ -1093,6 +1096,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "url",
  "webpki-root-certs",
 ]
 
@@ -1426,9 +1430,9 @@ dependencies = [
 
 [[package]]
 name = "smallvec"
-version = "1.13.2"
+version = "1.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
+checksum = "7fcf8323ef1faaee30a44a340193b1ac6814fd9b7b4e88e9d4519a3e4abe1cfd"
 
 [[package]]
 name = "socket2"
