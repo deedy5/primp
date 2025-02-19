@@ -40,6 +40,7 @@ def test_request_get():
         ca_cert_file=certifi.where(),
     )
     assert response.status_code == 200
+    assert response.headers["content-type"] == "application/json"
     json_data = response.json()
     assert json_data["method"] == "GET"
     assert json_data["headers"]["X-Test"] == "test"
