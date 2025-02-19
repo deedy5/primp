@@ -1,8 +1,5 @@
-use std::cmp::min;
 use std::sync::LazyLock;
 
-use foldhash::fast::RandomState;
-use indexmap::IndexMap;
 use rquest::{X509Store, X509StoreBuilder, X509};
 use tracing;
 
@@ -39,56 +36,6 @@ pub fn load_ca_certs() -> Option<&'static X509Store> {
             None
         }
     }
-}
-
-/// Get encoding from the "Content-Type" header
-pub fn get_encoding_from_headers(
-    headers: &IndexMap<String, String, RandomState>,
-) -> Option<String> {
-    headers
-        .iter()
-        .find(|(key, _)| key.eq_ignore_ascii_case("content-type"))
-        .map(|(_, value)| value)
-        .and_then(|content_type| {
-            // Parse the Content-Type header to separate the media type and parameters
-            let mut parts = content_type.split(';');
-            let media_type = parts.next().unwrap_or("").trim();
-            let params = parts.next().unwrap_or("").trim();
-
-            // Check for specific conditions and return the appropriate encoding
-            if let Some(param) = params.to_ascii_lowercase().strip_prefix("charset=") {
-                Some(param.trim_matches('"').to_ascii_lowercase())
-            } else if media_type == "application/json" {
-                Some("utf-8".to_string())
-            } else {
-                None
-            }
-        })
-}
-
-/// Get encoding from the `<meta charset="...">` tag within the first 2048 bytes of HTML content.
-pub fn get_encoding_from_content(raw_bytes: &[u8]) -> Option<String> {
-    let start_sequence: &[u8] = b"charset=";
-    let max_index = min(2048, raw_bytes.len());
-
-    if let Some(start_index) = raw_bytes[..max_index]
-        .windows(start_sequence.len())
-        .position(|window| window == start_sequence)
-    {
-        let remaining_bytes = &raw_bytes[start_index + start_sequence.len()..max_index];
-        if let Some(end_index) = remaining_bytes
-            .iter()
-            .enumerate()
-            .position(|(i, &byte)| matches!(byte, b' ' | b'"' | b'>') && i > 0)
-        {
-            let charset_slice = &remaining_bytes[..end_index];
-            let charset = String::from_utf8_lossy(charset_slice)
-                .trim_matches('"')
-                .to_ascii_lowercase();
-            return Some(charset);
-        }
-    }
-    None
 }
 
 #[cfg(test)]
@@ -136,79 +83,5 @@ Q29uc3VsdGF0aW9uczEiMCAGCSqGSIb3DQEJARYTcGVyc29uYWwtZW1haWwuY29t
 
         // Check the result
         assert!(result.is_some());
-    }
-}
-
-#[cfg(test)]
-mod utils_tests {
-    use super::*;
-    use indexmap::IndexMap;
-
-    #[test]
-    fn test_get_encoding_from_headers() {
-        // Test case: Content-Type header with charset specified
-        let mut headers = IndexMap::default();
-        headers.insert(
-            String::from("Content-Type"),
-            String::from("text/html;charset=UTF-8"),
-        );
-        assert_eq!(
-            get_encoding_from_headers(&headers),
-            Some("utf-8".to_string())
-        );
-
-        // Test case: Content-Type header without charset specified
-        headers.clear();
-        headers.insert(String::from("Content-Type"), String::from("text/plain"));
-        assert_eq!(get_encoding_from_headers(&headers), None);
-
-        // Test case: Missing Content-Type header
-        headers.clear();
-        assert_eq!(get_encoding_from_headers(&headers), None);
-
-        // Test case: Content-Type header with application/json
-        headers.clear();
-        headers.insert(
-            String::from("Content-Type"),
-            String::from("application/json"),
-        );
-        assert_eq!(
-            get_encoding_from_headers(&headers),
-            Some("utf-8".to_string())
-        );
-    }
-
-    #[test]
-    fn test_get_encoding_from_content_present_charset() {
-        let raw_html = b"<html><head><meta charset=windows1252\"></head></html>";
-        assert_eq!(
-            get_encoding_from_content(raw_html),
-            Some("windows1252".to_string())
-        );
-    }
-
-    #[test]
-    fn test_get_encoding_from_content_present_charset2() {
-        let raw_html = b"<html><head><meta charset=\"windows1251\"></head></html>";
-        assert_eq!(
-            get_encoding_from_content(raw_html),
-            Some("windows1251".to_string())
-        );
-    }
-
-    #[test]
-    fn test_get_encoding_from_content_present_charset3() {
-        let raw_html =
-            b"<html><head><meta charset=\"UTF-8\" src=\"https://www.gstatic.com/\" ></head></html>";
-        assert_eq!(
-            get_encoding_from_content(raw_html),
-            Some("utf-8".to_string())
-        );
-    }
-
-    #[test]
-    fn test_get_encoding_from_content_missing_charset() {
-        let raw_html = b"<html><head></head></html>";
-        assert_eq!(get_encoding_from_content(raw_html), None);
     }
 }
