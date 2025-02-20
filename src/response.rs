@@ -107,7 +107,8 @@ impl Response {
         for cookie_header in set_cookies.iter() {
             if let Ok(cookie_str) = cookie_header.to_str() {
                 if let Some((name, value)) = cookie_str.split_once('=') {
-                    cookie_dict.set_item(name.trim(), value.trim())?;
+                    cookie_dict
+                        .set_item(name.trim(), value.split(';').next().unwrap_or("").trim())?;
                 }
             }
         }
