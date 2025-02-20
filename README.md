@@ -188,37 +188,45 @@ print(resp.json())
 # GET request with passing params and setting timeout
 params = {"param1": "value1", "param2": "value2"}
 resp = client.post(url="https://httpbin.org/anything", params=params, timeout=10)
-print(r.text)
+print(resp.text)
+
+# Cookies
+cookies = {"c1_n": "c1_value", "c2_n": "c2_value"}
+client.cookies = cookies # cookies will be added to each Client request
+client.set_cookies(url="https://nytimes.com", cookies) # cookies will only be set for a specific url
+client.get_cookies(url="https://nytimes.com")  # get cookies for a specific url
+resp = client.get(url="https://nytimes.com")
+print(resp.cookies)
 
 # POST Binary Request Data
 content = b"some_data"
 resp = client.post(url="https://httpbin.org/anything", content=content)
-print(r.text)
+print(resp.text)
 
 # POST Form Encoded Data
 data = {"key1": "value1", "key2": "value2"}
 resp = client.post(url="https://httpbin.org/anything", data=data)
-print(r.text)
+print(resp.text)
 
 # POST JSON Encoded Data
 json = {"key1": "value1", "key2": "value2"}
 resp = client.post(url="https://httpbin.org/anything", json=json)
-print(r.text)
+print(resp.text)
 
 # POST Multipart-Encoded Files
 files = {'file1': '/home/root/file1.txt', 'file2': 'home/root/file2.txt'}
-r = client.post("https://httpbin.org/post", files=files)
-print(r.text)
+resp = client.post("https://httpbin.org/post", files=files)
+print(resp.text)
 
 # Authentication using user/password
 auth = ("user", "password")
 resp = client.post(url="https://httpbin.org/anything", auth=auth)
-print(r.text)
+print(resp.text)
 
 # Authentication using auth bearer
 auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
 resp = client.post(url="https://httpbin.org/anything", auth_bearer=auth_bearer)
-print(r.text)
+print(resp.text)
 
 # Using proxy or env var PRIMP_PROXY
 resp = primp.Client(proxy="http://127.0.0.1:8080").get("https://tls.peet.ws/api/all")
@@ -241,7 +249,7 @@ print(resp.json())
 # primp.get() | primp.head() | primp.options() | primp.delete() | primp.post() | primp.patch() | primp.put()
 # These functions can accept the `impersonate` parameter:
 resp = primp.get("https://httpbin.org/anything", impersonate="chrome_131", impersonate_os="android")
-print(r.text)
+print(resp.text)
 ```
 
 ### II. AsyncClient
