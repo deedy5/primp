@@ -50,6 +50,7 @@ pub struct RClient {
     auth_bearer: Option<String>,
     #[pyo3(get, set)]
     params: Option<IndexMapSSR>,
+    cookies: Option<IndexMapSSR>,
     #[pyo3(get, set)]
     proxy: Option<String>,
     #[pyo3(get, set)]
@@ -154,14 +155,9 @@ impl RClient {
             client_builder = client_builder.impersonate(impersonate_builder);
         }
 
-        // Headers || Cookies
-        if headers.is_some() || cookies.is_some() {
-            let headers = headers.unwrap_or_else(|| IndexMap::with_hasher(RandomState::default()));
-            let mut headers_headermap = headers.to_headermap();
-            if let Some(cookies) = cookies {
-                let cookies_str = cookies.to_string();
-                headers_headermap.insert(COOKIE, HeaderValue::from_str(&cookies_str)?);
-            }
+        // Headers
+        if let Some(headers) = headers {
+            let headers_headermap = headers.to_headermap();
             client_builder = client_builder.default_headers(headers_headermap);
         };
 
@@ -222,6 +218,7 @@ impl RClient {
             auth,
             auth_bearer,
             params,
+            cookies,
             proxy,
             timeout,
             impersonate,
@@ -247,32 +244,6 @@ impl RClient {
             for (k, v) in new_headers {
                 headers.insert_key_value(k, v)?
             }
-        }
-        Ok(())
-    }
-
-    #[getter]
-    pub fn get_cookies(&self) -> Result<IndexMapSSR> {
-        let client = self.client.lock().unwrap();
-        let headers = client.headers();
-        let mut cookies: IndexMapSSR = IndexMap::with_hasher(RandomState::default());
-        if let Some(cookie_header) = headers.get(COOKIE) {
-            for part in cookie_header.to_str()?.split(';') {
-                if let Some((key, value)) = part.trim().split_once('=') {
-                    cookies.insert(key.to_string(), value.to_string());
-                }
-            }
-        }
-        Ok(cookies)
-    }
-
-    #[setter]
-    pub fn set_cookies(&self, cookies: Option<IndexMapSSR>) -> Result<()> {
-        let mut client = self.client.lock().unwrap();
-        let mut mclient = client.as_mut();
-        let headers = mclient.headers();
-        if let Some(cookies) = cookies {
-            headers.insert(COOKIE, HeaderValue::from_str(&cookies.to_string())?);
         }
         Ok(())
     }
@@ -323,6 +294,38 @@ impl RClient {
         Ok(())
     }
 
+    #[pyo3(signature = (url))]
+    fn get_cookies(&self, url: &str) -> Result<IndexMapSSR> {
+        let url = rquest::Url::parse(url).expect("Error parsing URL: {:url}");
+        let client = self.client.lock().unwrap();
+        let cookie = client.get_cookies(&url).expect("No cookies found");
+        let cookie_str = cookie.to_str()?;
+        let mut cookie_map = IndexMap::with_capacity_and_hasher(10, RandomState::default());
+        for cookie in cookie_str.split(';') {
+            let mut parts = cookie.splitn(2, '=');
+            if let (Some(key), Some(value)) = (parts.next(), parts.next()) {
+                cookie_map.insert(key.trim().to_string(), value.trim().to_string());
+            }
+        }
+        Ok(cookie_map)
+    }
+
+    #[pyo3(signature = (url, cookies))]
+    fn set_cookies(&self, url: &str, cookies: Option<IndexMapSSR>) -> Result<()> {
+        let url = rquest::Url::parse(url).expect("Error parsing URL: {:url}");
+        if let Some(cookies) = cookies {
+            let header_values: Vec<HeaderValue> = cookies
+                .iter()
+                .filter_map(|(key, value)| {
+                    HeaderValue::from_str(&format!("{}={}", key, value)).ok()
+                })
+                .collect();
+            let client = self.client.lock().unwrap();
+            client.set_cookies(&url, header_values);
+        }
+        Ok(())
+    }
+
     /// Constructs an HTTP request with the given method, URL, and optionally sets a timeout, headers, and query parameters.
     /// Sends the request and returns a `Response` object containing the server's response.
     ///
@@ -370,11 +373,26 @@ impl RClient {
         let method = Method::from_bytes(method.as_bytes())?;
         let is_post_put_patch = matches!(method, Method::POST | Method::PUT | Method::PATCH);
         let params = params.or_else(|| self.params.clone());
+        let cookies = cookies.or_else(|| self.cookies.clone());
         let data_value: Option<Value> = data.map(depythonize).transpose()?;
         let json_value: Option<Value> = json.map(depythonize).transpose()?;
         let auth = auth.or(self.auth.clone());
         let auth_bearer = auth_bearer.or(self.auth_bearer.clone());
         let timeout: Option<f64> = timeout.or(self.timeout);
+
+        // Cookies
+        if let Some(cookies) = cookies {
+            let url = rquest::Url::parse(url)?;
+            let cookie_values: Vec<HeaderValue> = cookies
+                .iter()
+                .filter_map(|(key, value)| {
+                    let cookie_string = format!("{}={}", key, value.to_string());
+                    HeaderValue::from_str(&cookie_string).ok()
+                })
+                .collect();
+            let client = client.lock().unwrap();
+            client.set_cookies(&url, cookie_values);
+        }
 
         let future = async {
             // Create request builder
@@ -388,12 +406,6 @@ impl RClient {
             // Headers
             if let Some(headers) = headers {
                 request_builder = request_builder.headers(headers.to_headermap());
-            }
-
-            // Cookies
-            if let Some(cookies) = cookies {
-                request_builder =
-                    request_builder.header(COOKIE, HeaderValue::from_str(&cookies.to_string())?);
             }
 
             // Only if method POST || PUT || PATCH
