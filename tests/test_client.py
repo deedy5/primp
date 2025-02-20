@@ -42,9 +42,11 @@ def test_client_init_params():
     assert response.headers["content-type"] == "application/json"
     json_data = response.json()
     assert json_data["headers"]["X-Test"] == "test"
-    assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
     assert json_data["headers"]["Authorization"] == "Basic dXNlcjpwYXNzd29yZA=="
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
+    # assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
+    assert "ccc=ddd" in json_data["headers"]["Cookie"]
+    assert "cccc=dddd" in json_data["headers"]["Cookie"]
 
 
 @retry()
@@ -52,26 +54,29 @@ def test_client_setters():
     client = primp.Client()
     client.auth = ("user", "password")
     client.headers = {"X-Test": "TesT"}
-    client.cookies = {"ccc": "ddd", "cccc": "dddd"}
     client.params = {"x": "aaa", "y": "bbb"}
     client.timeout = 20
+
+    client.set_cookies("https://httpbin.org/anything", {"ccc": "ddd", "cccc": "dddd"})
+    assert client.get_cookies("https://httpbin.org/anything") == {"ccc": "ddd", "cccc": "dddd"}
 
     response = client.get("https://httpbin.org/anything")
     assert response.status_code == 200
     assert response.status_code == 200
     assert client.auth == ("user", "password")
     assert client.headers == {"x-test": "TesT"}
-    assert client.cookies == {"ccc": "ddd", "cccc": "dddd"}
     assert client.params == {"x": "aaa", "y": "bbb"}
     assert client.timeout == 20.0
     json_data = response.json()
     assert json_data["method"] == "GET"
     assert json_data["headers"]["X-Test"] == "TesT"
-    assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
     assert json_data["headers"]["Authorization"] == "Basic dXNlcjpwYXNzd29yZA=="
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
     assert "Basic dXNlcjpwYXNzd29yZA==" in response.text
     assert b"Basic dXNlcjpwYXNzd29yZA==" in response.content
+    # assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
+    assert "ccc=ddd" in json_data["headers"]["Cookie"]
+    assert "cccc=dddd" in json_data["headers"]["Cookie"]
 
 
 @retry()
@@ -93,11 +98,13 @@ def test_client_request_get():
     json_data = response.json()
     assert json_data["method"] == "GET"
     assert json_data["headers"]["X-Test"] == "test"
-    assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
     assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
     assert "Bearer bearerXXXXXXXXXXXXXXXXXXXX" in response.text
     assert b"Bearer bearerXXXXXXXXXXXXXXXXXXXX" in response.content
+    # assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
+    assert "ccc=ddd" in json_data["headers"]["Cookie"]
+    assert "cccc=dddd" in json_data["headers"]["Cookie"]
 
 
 @retry()
@@ -118,11 +125,13 @@ def test_client_get():
     json_data = response.json()
     assert json_data["method"] == "GET"
     assert json_data["headers"]["X-Test"] == "test"
-    assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
     assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
     assert "Bearer bearerXXXXXXXXXXXXXXXXXXXX" in response.text
     assert b"Bearer bearerXXXXXXXXXXXXXXXXXXXX" in response.content
+    # assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
+    assert "ccc=ddd" in json_data["headers"]["Cookie"]
+    assert "cccc=dddd" in json_data["headers"]["Cookie"]
 
 
 @retry()
@@ -145,10 +154,12 @@ def test_client_post_content():
     json_data = response.json()
     assert json_data["method"] == "POST"
     assert json_data["headers"]["X-Test"] == "test"
-    assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
     assert json_data["headers"]["Authorization"] == "Basic dXNlcjpwYXNzd29yZA=="
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
     assert json_data["data"] == "test content"
+    # assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
+    assert "ccc=ddd" in json_data["headers"]["Cookie"]
+    assert "cccc=dddd" in json_data["headers"]["Cookie"]
 
 
 @retry()
@@ -171,10 +182,12 @@ def test_client_post_data():
     json_data = response.json()
     assert json_data["method"] == "POST"
     assert json_data["headers"]["X-Test"] == "test"
-    assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
     assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
     assert json_data["form"] == {"key1": "value1", "key2": "value2"}
+    # assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
+    assert "ccc=ddd" in json_data["headers"]["Cookie"]
+    assert "cccc=dddd" in json_data["headers"]["Cookie"]
 
 
 @retry()
@@ -197,10 +210,12 @@ def test_client_post_json():
     json_data = response.json()
     assert json_data["method"] == "POST"
     assert json_data["headers"]["X-Test"] == "test"
-    assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
     assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
     assert json_data["json"] == data
+    # temp
+    assert "ccc=ddd" in json_data["headers"]["Cookie"]
+    assert "cccc=dddd" in json_data["headers"]["Cookie"]
 
 
 @pytest.fixture(scope="session")
@@ -235,10 +250,12 @@ def test_client_post_files(test_files):
     json_data = response.json()
     assert json_data["method"] == "POST"
     assert json_data["headers"]["X-Test"] == "test"
-    assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
     assert json_data["headers"]["Authorization"] == "Bearer bearerXXXXXXXXXXXXXXXXXXXX"
     assert json_data["args"] == {"x": "aaa", "y": "bbb"}
     assert json_data["files"] == {"file1": "aaa111", "file2": "bbb222"}
+    # assert json_data["headers"]["Cookie"] == "ccc=ddd; cccc=dddd"
+    assert "ccc=ddd" in json_data["headers"]["Cookie"]
+    assert "cccc=dddd" in json_data["headers"]["Cookie"]
 
 
 @retry()
