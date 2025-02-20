@@ -20,6 +20,7 @@ Provides precompiled wheels:</br>
     - [Devices](#devices)
     - [Examples](#examples)
   - [II. AsyncClient](#ii-asyncclient)
+- [Disclaimer](#disclaimer)
 
 ## Installation
 
@@ -151,7 +152,7 @@ resp.url
 
 ##### Impersonate
 
-- Chrome: `chrome_100`，`chrome_101`，`chrome_104`，`chrome_105`，`chrome_106`，`chrome_107`，`chrome_108`，`chrome_109`，`chrome_114`，`chrome_116`，`chrome_117`，`chrome_118`，`chrome_119`，`chrome_120`，`chrome_123`，`chrome_124`，`chrome_126`，`chrome_127`，`chrome_128`，`chrome_129`，`chrome_130`，`chrome_131`
+- Chrome: `chrome_100`，`chrome_101`，`chrome_104`，`chrome_105`，`chrome_106`，`chrome_107`，`chrome_108`，`chrome_109`，`chrome_114`，`chrome_116`，`chrome_117`，`chrome_118`，`chrome_119`，`chrome_120`，`chrome_123`，`chrome_124`，`chrome_126`，`chrome_127`，`chrome_128`，`chrome_129`，`chrome_130`，`chrome_131`, `chrome_133`
 
 - Edge: `edge_101`，`edge_122`，`edge_127`, `edge_131`
 
@@ -159,19 +160,11 @@ resp.url
 
 - OkHttp: `okhttp_3.9`，`okhttp_3.11`，`okhttp_3.13`，`okhttp_3.14`，`okhttp_4.9`，`okhttp_4.10`，`okhttp_5`
 
-- Firefox: `firefox_109`, `firefox_117`, `firefox_128`, `firefox_133`
+- Firefox: `firefox_109`, `firefox_117`, `firefox_128`, `firefox_133`, `chrome_135`
 
 ##### Impersonate OS
 
-- Android: `android`
-
-- iOS: `ios`
-
-- Linux: `linux`
-
-- Mac OS: `macos`
-
-- Windows: `windows`
+- `android`, `ios`, `linux`, `macos`, `windows`
 
 #### Examples
 
@@ -276,3 +269,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     asyncio.run(main())
 ```
+
+## Disclaimer
+
+This tool is for educational purposes only. Use it at your own risk.
