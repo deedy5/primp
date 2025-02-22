@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sys
-from typing import Any, Literal, TypedDict
+from typing import Any, Iterator, Literal, TypedDict
 
 if sys.version_info <= (3, 11):
     from typing_extensions import Unpack
@@ -61,6 +61,7 @@ class Response:
     @property
     def text(self) -> str: ...
     def json(self) -> Any: ...
+    def stream(self) -> Iterator[bytes]: ...
     @property
     def text_markdown(self) -> str: ...
     @property

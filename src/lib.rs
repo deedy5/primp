@@ -469,6 +469,8 @@ impl RClient {
             resp,
             _content: None,
             _encoding: None,
+            _headers: None,
+            _cookies: None,
             url,
             status_code,
         })

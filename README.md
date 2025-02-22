@@ -136,6 +136,7 @@ def post(
 #### Response object
 ```python
 resp.content
+resp.stream()  # stream the response body in chunks of bytes
 resp.cookies
 resp.encoding
 resp.headers
@@ -172,7 +173,7 @@ resp.url
 import primp
 
 # Impersonate
-client = primp.Client(impersonate="chrome_131", impersonate_os="windows")  # chrome_131 + windows
+client = primp.Client(impersonate="chrome_131", impersonate_os="windows")
 
 # GET request
 resp = client.get("https://tls.peet.ws/api/all")
@@ -182,6 +183,11 @@ print(resp.json())
 params = {"param1": "value1", "param2": "value2"}
 resp = client.post(url="https://httpbin.org/anything", params=params, timeout=10)
 print(resp.text)
+
+# Stream response
+resp = client.get("https://nytimes")
+for chunk in resp.stream():
+    print(chunk)
 
 # Cookies
 cookies = {"c1_n": "c1_value", "c2_n": "c2_value"}

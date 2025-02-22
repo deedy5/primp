@@ -12,7 +12,7 @@ name = "primp"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = { version = "0.23.4", features = ["extension-module", "abi3-py38", "indexmap", "anyhow"] }
+pyo3 = { version = "0.23.4", features = ["extension-module", "abi3-py38", "indexmap", "anyhow", "multiple-pymethods"] }
 anyhow = "1.0.95"
 tracing = { version = "0.1.41", features = ["log-always"] }
 pyo3-log = "0.12.1"
@@ -38,6 +38,7 @@ pythonize = "0.23.0"
 serde_json = "1.0.138"
 webpki-root-certs = "0.26.8"
 http-body-util = "0.1.2"
+http-body = "1.0.1"
 http = "1.2.0"
 mime = "0.3.17"
 url = "2.5.4"
