@@ -34,9 +34,9 @@ def test_client_init_params():
         auth=auth,
         params=params,
         headers=headers,
-        cookies=cookies,
         ca_cert_file=certifi.where(),
     )
+    client.set_cookies("https://httpbin.org", cookies)
     response = client.get("https://httpbin.org/anything")
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/json"
@@ -57,7 +57,7 @@ def test_client_setters():
     client.params = {"x": "aaa", "y": "bbb"}
     client.timeout = 20
 
-    client.set_cookies("https://httpbin.org/anything", {"ccc": "ddd", "cccc": "dddd"})
+    client.set_cookies("https://httpbin.org", {"ccc": "ddd", "cccc": "dddd"})
     assert client.get_cookies("https://httpbin.org/anything") == {"ccc": "ddd", "cccc": "dddd"}
 
     response = client.get("https://httpbin.org/anything")
@@ -86,12 +86,12 @@ def test_client_request_get():
     headers = {"X-Test": "test"}
     cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
+    client.set_cookies("https://httpbin.org", cookies)
     response = client.request(
         "GET",
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
-        cookies=cookies,
         params=params,
     )
     assert response.status_code == 200
@@ -114,11 +114,11 @@ def test_client_get():
     headers = {"X-Test": "test"}
     cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
+    client.set_cookies("https://httpbin.org", cookies)
     response = client.get(
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
-        cookies=cookies,
         params=params,
     )
     assert response.status_code == 200
@@ -142,11 +142,11 @@ def test_client_post_content():
     cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     content = b"test content"
+    client.set_cookies("https://httpbin.org", cookies)
     response = client.post(
         "https://httpbin.org/anything",
         auth=auth,
         headers=headers,
-        cookies=cookies,
         params=params,
         content=content,
     )
@@ -170,11 +170,11 @@ def test_client_post_data():
     cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     data = {"key1": "value1", "key2": "value2"}
+    client.set_cookies("https://httpbin.org", cookies)
     response = client.post(
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
-        cookies=cookies,
         params=params,
         data=data,
     )
@@ -198,11 +198,11 @@ def test_client_post_json():
     cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     data = {"key1": "value1", "key2": "value2"}
+    client.set_cookies("https://httpbin.org", cookies)
     response = client.post(
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
-        cookies=cookies,
         params=params,
         json=data,
     )
@@ -238,11 +238,11 @@ def test_client_post_files(test_files):
     cookies = {"ccc": "ddd", "cccc": "dddd"}
     params = {"x": "aaa", "y": "bbb"}
     files = {"file1": temp_file1, "file2": temp_file2}
+    client.set_cookies("https://httpbin.org", cookies)
     response = client.post(
         "https://httpbin.org/anything",
         auth_bearer=auth_bearer,
         headers=headers,
-        cookies=cookies,
         params=params,
         files=files,
     )

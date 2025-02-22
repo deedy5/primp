@@ -189,13 +189,14 @@ resp = client.get("https://nytimes")
 for chunk in resp.stream():
     print(chunk)
 
-# Cookies
+# Cookies set
 cookies = {"c1_n": "c1_value", "c2_n": "c2_value"}
-client.cookies = cookies # cookies will be added to each Client request
-client.set_cookies(url="https://nytimes.com", cookies) # cookies will only be set for a specific url
-client.get_cookies(url="https://nytimes.com")  # get cookies for a specific url
-resp = client.get(url="https://nytimes.com")
-print(resp.cookies)
+client.set_cookies(url="https://nytimes.com", cookies) # set cookies for a specific domain
+client.get("https://nytimes.com/", cookies=cookies)  # set cookies in request
+
+# Cookies get
+cookies = client.get_cookies(url="https://nytimes.com")  # get cookies for a specific domain
+cookies = resp.cookies  # get cookies from response
 
 # POST Binary Request Data
 content = b"some_data"
