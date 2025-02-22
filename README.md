@@ -45,7 +45,6 @@ class Client:
         auth_bearer (str | None): Bearer token for authentication. Default is None.
         params (dict[str, str] | None): Default query parameters to include in all requests. Default is None.
         headers (dict[str, str] | None): Default headers to send with requests. If `impersonate` is set, this will be ignored.
-        cookies (dict[str, str] | None): - Map of cookies to send with requests as the `Cookie` header.
         timeout (float | None): HTTP request timeout in seconds. Default is 30.
         cookie_store (bool | None): Enable a persistent cookie store. Received cookies will be preserved and included
             in additional requests. Default is True.
@@ -177,12 +176,10 @@ client = primp.Client(impersonate="chrome_131", impersonate_os="windows")
 
 # GET request
 resp = client.get("https://tls.peet.ws/api/all")
-print(resp.json())
 
 # GET request with passing params and setting timeout
 params = {"param1": "value1", "param2": "value2"}
 resp = client.post(url="https://httpbin.org/anything", params=params, timeout=10)
-print(resp.text)
 
 # Stream response
 resp = client.get("https://nytimes")
@@ -201,55 +198,39 @@ cookies = resp.cookies  # get cookies from response
 # POST Binary Request Data
 content = b"some_data"
 resp = client.post(url="https://httpbin.org/anything", content=content)
-print(resp.text)
 
 # POST Form Encoded Data
 data = {"key1": "value1", "key2": "value2"}
 resp = client.post(url="https://httpbin.org/anything", data=data)
-print(resp.text)
 
 # POST JSON Encoded Data
 json = {"key1": "value1", "key2": "value2"}
 resp = client.post(url="https://httpbin.org/anything", json=json)
-print(resp.text)
 
 # POST Multipart-Encoded Files
 files = {'file1': '/home/root/file1.txt', 'file2': 'home/root/file2.txt'}
 resp = client.post("https://httpbin.org/post", files=files)
-print(resp.text)
 
 # Authentication using user/password
-auth = ("user", "password")
-resp = client.post(url="https://httpbin.org/anything", auth=auth)
-print(resp.text)
+resp = client.post(url="https://httpbin.org/anything", auth=("user", "password"))
 
 # Authentication using auth bearer
-auth_bearer = "bearerXXXXXXXXXXXXXXXXXXXX"
-resp = client.post(url="https://httpbin.org/anything", auth_bearer=auth_bearer)
-print(resp.text)
+resp = client.post(url="https://httpbin.org/anything", auth_bearer="bearerXXXXXXXXXXXXXXXXXXXX")
 
 # Using proxy or env var PRIMP_PROXY
-resp = primp.Client(proxy="http://127.0.0.1:8080").get("https://tls.peet.ws/api/all")
-print(resp.json())
-export PRIMP_PROXY="socks5://127.0.0.1:1080"
-resp = primp.Client().get("https://tls.peet.ws/api/all")
-print(resp.json())
+resp = primp.Client(proxy="http://127.0.0.1:8080")  # set proxy in Client
+export PRIMP_PROXY="socks5://127.0.0.1:1080"  # set proxy as environment variable
 
-# Using custom CA certificate store: env var PRIMP_CA_BUNDLE
-#(Primp built with the Mozilla's latest trusted root certificates, so maybe it's not necessary)
-resp = primp.Client(ca_cert_file="/cert/cacert.pem").get("https://tls.peet.ws/api/all")
-print(resp.json())
-resp = primp.Client(ca_cert_file=certifi.where()).get("https://tls.peet.ws/api/all")
-print(resp.json())
-export PRIMP_CA_BUNDLE="/home/user/Downloads/cert.pem"
-resp = primp.Client().get("https://tls.peet.ws/api/all")
-print(resp.json())
+# Using custom CA certificate store:
+#(!!!Primp already built with the Mozilla's latest trusted root certificates)
+resp = primp.Client(ca_cert_file="/cert/cacert.pem")
+resp = primp.Client(ca_cert_file=certifi.where())
+export PRIMP_CA_BUNDLE="/home/user/Downloads/cert.pem"  # set as environment variable
 
 # You can also use convenience functions that use a default Client instance under the hood:
 # primp.get() | primp.head() | primp.options() | primp.delete() | primp.post() | primp.patch() | primp.put()
 # These functions can accept the `impersonate` parameter:
 resp = primp.get("https://httpbin.org/anything", impersonate="chrome_131", impersonate_os="android")
-print(resp.text)
 ```
 
 ### II. AsyncClient
