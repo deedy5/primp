@@ -13,10 +13,10 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyo3 = { version = "0.23.4", features = ["extension-module", "abi3-py38", "indexmap", "anyhow", "multiple-pymethods"] }
-anyhow = "1.0.95"
+anyhow = "1.0.96"
 tracing = { version = "0.1.41", features = ["log-always"] }
 pyo3-log = "0.12.1"
-rquest = { version = "2.1.0", features = [
+rquest = { version = "2.1.5", features = [
     "json",
     "cookies",
     "socks",
@@ -35,7 +35,7 @@ tokio-util = { version = "0.7.13", features = ["codec"] }  # for multipart
 html2text = "0.14.0"
 bytes = "1.10.0"
 pythonize = "0.23.0"
-serde_json = "1.0.138"
+serde_json = "1.0.139"
 webpki-root-certs = "0.26.8"
 http-body-util = "0.1.2"
 http-body = "1.0.1"
