@@ -34,9 +34,9 @@ async def test_asyncclient_init():
         auth=auth,
         params=params,
         headers=headers,
-        cookies=cookies,
         ca_cert_file=certifi.where(),
     )
+    client.set_cookies("https://httpbin.org", cookies)
     response = await client.get("https://httpbin.org/anything")
     assert response.status_code == 200
     json_data = response.json()

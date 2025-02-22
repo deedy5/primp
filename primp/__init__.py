@@ -35,7 +35,6 @@ class Client(RClient):
         auth_bearer: str | None = None,
         params: dict[str, str] | None = None,
         headers: dict[str, str] | None = None,
-        cookies: dict[str, str] | None = None,
         cookie_store: bool | None = True,
         referer: bool | None = True,
         proxy: str | None = None,
@@ -55,7 +54,6 @@ class Client(RClient):
             auth_bearer: a string representing the bearer token for bearer token authentication. Default is None.
             params: a map of query parameters to append to the URL. Default is None.
             headers: an optional map of HTTP headers to send with requests. Ignored if `impersonate` is set.
-            cookies: an optional map of cookies to send with requests as the `Cookie` header.
             cookie_store: enable a persistent cookie store. Received cookies will be preserved and included
                  in additional requests. Default is True.
             referer: automatic setting of the `Referer` header. Default is True.

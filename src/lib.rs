@@ -50,7 +50,6 @@ pub struct RClient {
     auth_bearer: Option<String>,
     #[pyo3(get, set)]
     params: Option<IndexMapSSR>,
-    cookies: Option<IndexMapSSR>,
     #[pyo3(get, set)]
     proxy: Option<String>,
     #[pyo3(get, set)]
@@ -75,7 +74,6 @@ impl RClient {
     /// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
     /// * `params` - A map of query parameters to append to the URL. Default is None.
     /// * `headers` - An optional map of HTTP headers to send with requests. If `impersonate` is set, this will be ignored.
-    /// * `cookies` - An optional map of cookies to send with requests as the `Cookie` header.
     /// * `cookie_store` - Enable a persistent cookie store. Received cookies will be preserved and included
     ///         in additional requests. Default is `true`.
     /// * `referer` - Enable or disable automatic setting of the `Referer` header. Default is `true`.
@@ -99,7 +97,6 @@ impl RClient {
     ///     auth=("name", "password"),
     ///     params={"p1k": "p1v", "p2k": "p2v"},
     ///     headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.150 Safari/537.36"},
-    ///     cookies={"ck1": "cv1", "ck2": "cv2"},
     ///     cookie_store=False,
     ///     referer=False,
     ///     proxy="http://127.0.0.1:8080",
@@ -115,15 +112,14 @@ impl RClient {
     /// )
     /// ```
     #[new]
-    #[pyo3(signature = (auth=None, auth_bearer=None, params=None, headers=None, cookies=None,
-        cookie_store=true, referer=true, proxy=None, timeout=None, impersonate=None, impersonate_os=None, follow_redirects=true,
+    #[pyo3(signature = (auth=None, auth_bearer=None, params=None, headers=None, cookie_store=true,
+        referer=true, proxy=None, timeout=None, impersonate=None, impersonate_os=None, follow_redirects=true,
         max_redirects=20, verify=true, ca_cert_file=None, https_only=false, http2_only=false))]
     fn new(
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         params: Option<IndexMapSSR>,
         headers: Option<IndexMapSSR>,
-        cookies: Option<IndexMapSSR>,
         cookie_store: Option<bool>,
         referer: Option<bool>,
         proxy: Option<String>,
@@ -218,7 +214,6 @@ impl RClient {
             auth,
             auth_bearer,
             params,
-            cookies,
             proxy,
             timeout,
             impersonate,
@@ -373,7 +368,6 @@ impl RClient {
         let method = Method::from_bytes(method.as_bytes())?;
         let is_post_put_patch = matches!(method, Method::POST | Method::PUT | Method::PATCH);
         let params = params.or_else(|| self.params.clone());
-        let cookies = cookies.or_else(|| self.cookies.clone());
         let data_value: Option<Value> = data.map(depythonize).transpose()?;
         let json_value: Option<Value> = json.map(depythonize).transpose()?;
         let auth = auth.or(self.auth.clone());
