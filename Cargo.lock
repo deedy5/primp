@@ -134,9 +134,9 @@ checksum = "8f68f53c83ab957f72c32642f3868eec03eb974d1fb82e453128456482613d36"
 
 [[package]]
 name = "boring-sys2"
-version = "4.15.6"
+version = "4.15.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f98a134b63dbb00502d1b0d2b1f6471ca02a4a95dff2a3305054850da51b5f4a"
+checksum = "2663e9dda6e17fd7e3726f9fe7981a247afa56f9503082197535c2d17867a0c5"
 dependencies = [
  "autocfg",
  "bindgen",
@@ -147,9 +147,9 @@ dependencies = [
 
 [[package]]
 name = "boring2"
-version = "4.15.6"
+version = "4.15.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d2bbc8b35f7aece1d82e05e4e065d839c8a2be6326e058c4a36a589bf4961ad"
+checksum = "db2f491848ad7eada5b067817c0340fd12db82e2b225eb7c9054048371c9f61f"
 dependencies = [
  "bitflags",
  "boring-sys2",
@@ -316,9 +316,9 @@ dependencies = [
 
 [[package]]
 name = "either"
-version = "1.13.0"
+version = "1.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "60b1af1c220855b6ceac025d3f6ecdd2b7c4894bfe9cd9bda4fbb4bc7c0d4cf0"
+checksum = "b7914353092ddf589ad78f25c5c1c21b7f80b0ff8621e7c814c3485b5306da9d"
 
 [[package]]
 name = "encoding_rs"
@@ -782,9 +782,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.169"
+version = "0.2.170"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5aba8db14291edd000dfcc4d620c7ebfb122c613afb886ca8803fa4e128a20a"
+checksum = "875b3680cb2f8f71bdcf9a30f38d48282f5d3c95cbf9b3fa57269bb5d5c06828"
 
 [[package]]
 name = "libloading"
@@ -1286,9 +1286,9 @@ checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 
 [[package]]
 name = "rquest"
-version = "2.1.5"
+version = "2.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8df20749ded49dc195f885e7464f7a93f1c2cb89ddbebd951fcda439d9beb476"
+checksum = "a9d38f0762bbdc03bbfd9613b82ebe129f00087842a53b4838d6a1846ef947e0"
 dependencies = [
  "antidote",
  "async-compression",
@@ -1662,9 +1662,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-boring2"
-version = "4.15.6"
+version = "4.15.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "136c1e2294f03fb795f33529ebf7c8b7037605cc97131e448587565d4aad2421"
+checksum = "ebb7cdf7af56d0dfd83229930e8cf28bcd16721c382b8cfd7fd5b9946ec1b112"
 dependencies = [
  "boring-sys2",
  "boring2",

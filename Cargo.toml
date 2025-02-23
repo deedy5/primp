@@ -16,7 +16,7 @@ pyo3 = { version = "0.23.4", features = ["extension-module", "abi3-py38", "index
 anyhow = "1.0.96"
 tracing = { version = "0.1.41", features = ["log-always"] }
 pyo3-log = "0.12.1"
-rquest = { version = "2.1.5", features = [
+rquest = { version = "2.1.6", features = [
     "json",
     "cookies",
     "socks",
