@@ -1089,12 +1089,10 @@ name = "primp"
 version = "0.14.0"
 dependencies = [
  "anyhow",
- "bytes",
  "encoding_rs",
  "foldhash",
  "html2text",
  "http",
- "http-body",
  "http-body-util",
  "indexmap",
  "mime",
@@ -1106,7 +1104,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
- "url",
  "webpki-root-certs",
 ]
 
