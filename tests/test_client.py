@@ -264,8 +264,8 @@ def test_client_impersonate_chrome131():
         impersonate="chrome_131",
         impersonate_os="windows",
     )
-    # response = client.get("https://tls.peet.ws/api/all")
-    response = client.get("https://tls.http.rw/api/all")
+    response = client.get("https://tls.peet.ws/api/all")
+    #response = client.get("https://tls.http.rw/api/all")
     assert response.status_code == 200
     json_data = response.json()
     assert (
@@ -275,6 +275,6 @@ def test_client_impersonate_chrome131():
     assert json_data["tls"]["ja4"] == "t13d1516h2_8daaf6152771_b1ff8ab2d16f"
     assert (
         json_data["http2"]["akamai_fingerprint_hash"]
-        == "90224459f8bf70b7d0a8797eb916dbc9"
+        == "52d84b11737d980aef856699f885ca86"
     )
     assert json_data["tls"]["peetprint_hash"] == "7466733991096b3f4e6c0e79b0083559"

@@ -307,8 +307,8 @@ def test_put():
 @retry()
 def test_get_impersonate_firefox133():
     response = primp.get(
-        # "https://tls.peet.ws/api/clean",
-        "https://tls.http.rw/api/all",
+        "https://tls.peet.ws/api/all",
+        #"https://tls.http.rw/api/all",
         impersonate="firefox_133",
         impersonate_os="linux",
     )
@@ -321,6 +321,6 @@ def test_get_impersonate_firefox133():
     assert json_data["tls"]["ja4"] == "t13d1716h2_5b57614c22b0_bed828528d07"
     assert (
         json_data["http2"]["akamai_fingerprint_hash"]
-        == "87a68d774464f75f8b88395030c79a80"
+        == "6ea73faa8fc5aac76bded7bd238f6433"
     )
     assert json_data["tls"]["peetprint_hash"] == "199f9cf4a47bfc51995a9f3942190094"
