@@ -24,8 +24,9 @@ IMPERSONATE = Literal[
         "okhttp_4.10", "okhttp_5",
         "edge_101", "edge_122", "edge_127", "edge_131",
         "firefox_109", "firefox_117", "firefox_128", "firefox_133", "firefox_135",
+        "random",
     ]  # fmt: skip
-IMPERSONATE_OS = Literal["android", "ios", "linux", "macos", "windows"]
+IMPERSONATE_OS = Literal["android", "ios", "linux", "macos", "windows", "random"]
 
 class RequestParams(TypedDict, total=False):
     auth: tuple[str, str | None] | None
