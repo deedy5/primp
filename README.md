@@ -61,8 +61,10 @@ class Client:
             OkHttp: "okhttp_3.9","okhttp_3.11","okhttp_3.13","okhttp_3.14","okhttp_4.9","okhttp_4.10","okhttp_5"
             Edge: "edge_101","edge_122","edge_127","edge_131"
             Firefox: "firefox_109","firefox_117","firefox_128","firefox_133","firefox_135"
+            Select random: "random"
         impersonate_os (str | None): impersonate OS. Example: "windows". Default is "linux".
             Android: "android", iOS: "ios", Linux: "linux", Mac OS: "macos", Windows: "windows"
+            Select random: "random"
         follow_redirects (bool | None): Whether to follow redirects. Default is True.
         max_redirects (int | None): Maximum redirects to follow. Default 20. Applies if `follow_redirects` is True.
         verify (bool | None): Verify SSL certificates. Default is True.
