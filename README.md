@@ -174,6 +174,10 @@ import primp
 # Impersonate
 client = primp.Client(impersonate="chrome_131", impersonate_os="windows")
 
+# Update headers
+headers = {"Referer": "https://cnn.com/"}
+client.headers_update(headers)
+
 # GET request
 resp = client.get("https://tls.peet.ws/api/all")
 
