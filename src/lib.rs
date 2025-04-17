@@ -21,11 +21,13 @@ use tokio::{
 use tokio_util::codec::{BytesCodec, FramedRead};
 use tracing;
 
+mod impersonate;
+use impersonate::{ImpersonateFromStr, ImpersonateOSFromStr};
 mod response;
 use response::Response;
 
 mod traits;
-use traits::{CookiesTraits, HeadersTraits, ImpersonateFromStr, ImpersonateOSFromStr};
+use traits::HeadersTraits;
 
 mod utils;
 use utils::load_ca_certs;
