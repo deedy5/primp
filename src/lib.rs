@@ -245,6 +245,18 @@ impl RClient {
         Ok(())
     }
 
+    pub fn headers_update(&self, new_headers: Option<IndexMapSSR>) -> Result<()> {
+        let mut client = self.client.lock().unwrap();
+        let mut mclient = client.as_mut();
+        let headers = mclient.headers();
+        if let Some(new_headers) = new_headers {
+            for (k, v) in new_headers {
+                headers.insert_key_value(k, v)?
+            }
+        }
+        Ok(())
+    }
+
     #[getter]
     pub fn get_proxy(&self) -> Result<Option<String>> {
         Ok(self.proxy.to_owned())
