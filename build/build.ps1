@@ -1,4 +1,4 @@
-# RNET Test Runner Build Script
+# PRIMP Test Runner Build Script
 param(
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Release",
@@ -12,7 +12,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "RNET Test Runner Build Script" -ForegroundColor Green
+Write-Host "PRIMP Test Runner Build Script" -ForegroundColor Green
 Write-Host "Configuration: $Configuration" -ForegroundColor Cyan
 Write-Host "Platform: $Platform" -ForegroundColor Cyan
 
@@ -29,7 +29,7 @@ Write-Host "Virtual Environment: $VenvPath" -ForegroundColor Gray
 $CargoToml = Join-Path $ProjectRoot "Cargo.toml"
 if (-not (Test-Path $CargoToml)) {
     Write-Host "Error: Cargo.toml not found at $CargoToml" -ForegroundColor Red
-    Write-Host "Please run this script from the build/ directory of a valid RNET project" -ForegroundColor Red
+    Write-Host "Please run this script from the build/ directory of a valid PRIMP project" -ForegroundColor Red
     exit 1
 }
 
@@ -140,11 +140,11 @@ function Setup-RustEnvironment {
 # Setup Rust environment
 Setup-RustEnvironment
 
-# Environment setup for rnet
+# Environment setup for PRIMP
 $env:RUSTFLAGS = "-C target-cpu=native"
 $env:RUST_BACKTRACE = if ($Verbose) { "full" } else { "1" }
 
-Write-Host "Environment configured for rnet build:" -ForegroundColor Cyan
+Write-Host "Environment configured for PRIMP build:" -ForegroundColor Cyan
 Write-Host "  RUSTFLAGS: $env:RUSTFLAGS" -ForegroundColor White
 
 # Clean if requested
@@ -252,7 +252,7 @@ finally {
 }
 
 # Install the built wheel
-Write-Host "Installing RNET wheel..." -ForegroundColor Yellow
+Write-Host "Installing PRIMP wheel..." -ForegroundColor Yellow
 
 Push-Location $ProjectRoot
 try {
@@ -266,36 +266,36 @@ try {
 
     & $PythonExe -m pip install $latestWheel.FullName --force-reinstall --quiet
     if ($LASTEXITCODE -ne 0) {
-        throw "Failed to install RNET wheel"
+        throw "Failed to install PRIMP wheel"
     }
     
-    Write-Host "RNET wheel installed successfully!" -ForegroundColor Green
+    Write-Host "PRIMP wheel installed successfully!" -ForegroundColor Green
 }
 finally {
     Pop-Location
 }
 
 # Verify installation
-Write-Host "Verifying RNET installation..." -ForegroundColor Yellow
+Write-Host "Verifying PRIMP installation..." -ForegroundColor Yellow
 Push-Location $ProjectRoot
 try {
-    & $PythonExe -c "import rnet; print('RNET imported successfully')"
+    & $PythonExe -c "import PRIMP; print('PRIMP imported successfully')"
     if ($LASTEXITCODE -eq 0) {
-        Write-Host "RNET verification passed!" -ForegroundColor Green
+        Write-Host "PRIMP verification passed!" -ForegroundColor Green
     }
     else {
-        Write-Host "Warning: RNET import test failed" -ForegroundColor Yellow
+        Write-Host "Warning: PRIMP import test failed" -ForegroundColor Yellow
     }
 }
 catch {
-    Write-Host "Warning: Could not verify RNET installation: $_" -ForegroundColor Yellow
+    Write-Host "Warning: Could not verify PRIMP installation: $_" -ForegroundColor Yellow
 }
 finally {
     Pop-Location
 }
 
 # Run the tests
-Write-Host "Running RNET tests..." -ForegroundColor Yellow
+Write-Host "Running PRIMP tests..." -ForegroundColor Yellow
 
 Push-Location $ProjectRoot
 try {
@@ -307,12 +307,10 @@ try {
     }
     
     $testFiles = @(
-        "header_test.py",
-        "redirect_test.py", 
-        "request_test.py",
-        "response_test.py",
-        "tls_test.py",
-        "cookie_test.py"
+        "test_asyncclient.py",
+        "test_client.py", 
+        "test_defs.py",
+        "test_response.py"
     )
     
     $testsRun = 0
@@ -358,4 +356,4 @@ finally {
 }
 
 Write-Host ""
-Write-Host "RNET build and test process completed!" -ForegroundColor Green
+Write-Host "PRIMP build and test process completed!" -ForegroundColor Green

@@ -13,7 +13,7 @@ use wreq::{
     redirect::Policy,
     Body, Method,
 };
-use wreq_util::Emulation;
+use wreq_util::{Emulation, EmulationOS, EmulationOption};
 use serde_json::Value;
 use tokio::{
     fs::File,
@@ -23,7 +23,7 @@ use tokio_util::codec::{BytesCodec, FramedRead};
 use tracing;
 
 mod impersonate;
-use impersonate::{EmulationFromStr};
+use impersonate::{EmulationFromStr, EmulationOSFromStr};
 mod response;
 use response::Response;
 
@@ -45,7 +45,7 @@ static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
 
 #[pyclass(subclass)]
 /// HTTP client that can impersonate web browsers.
-pub struct RClient {
+pub struct Client {
     client: Arc<Mutex<wreq::Client>>,
     #[pyo3(get, set)]
     auth: Option<(String, Option<String>)>,
@@ -59,6 +59,8 @@ pub struct RClient {
     timeout: Option<f64>,
     #[pyo3(get)]
     impersonate: Option<String>,
+    #[pyo3(get)]
+    impersonate_os: Option<String>,
     // Store builder options to recreate client when needed
     headers: Option<IndexMapSSR>,
     cookie_store: bool,
@@ -72,11 +74,43 @@ pub struct RClient {
 }
 
 #[pymethods]
-impl RClient {
+impl Client {
     #[new]
     #[pyo3(signature = (auth=None, auth_bearer=None, params=None, headers=None, cookie_store=true,
-        referer=true, proxy=None, timeout=None, impersonate=None, follow_redirects=true,
+        referer=true, proxy=None, timeout=None, impersonate=None, impersonate_os=None, follow_redirects=true,
         max_redirects=20, verify=true, ca_cert_file=None, https_only=false, http2_only=false))]
+    /// HTTP client that can impersonate web browsers.
+    ///
+    /// Args:
+    ///     auth (tuple[str, str] | None): Basic authentication credentials (username, password). Default is None.
+    ///     auth_bearer (str | None): Bearer token for authentication. Default is None.
+    ///     params (dict | None): Default query parameters to include in all requests. Default is None.
+    ///     headers (dict | None): Default headers to include in all requests. Default is None.
+    ///     cookie_store (bool): Enable automatic cookie storage and management. Default is True.
+    ///     referer (bool): Automatically set referer header. Default is True.
+    ///     proxy (str | None): Proxy URL (http/https/socks5). Default is None.
+    ///     timeout (float | None): Request timeout in seconds. Default is None.
+    ///     impersonate (str | None): Browser to impersonate. Example: "chrome_131". Default is None.
+    ///         Chrome: "chrome_100", "chrome_101", "chrome_104", "chrome_105", "chrome_106", "chrome_107", 
+    ///         "chrome_108", "chrome_109", "chrome_114", "chrome_116", "chrome_117", "chrome_118", 
+    ///         "chrome_119", "chrome_120", "chrome_123", "chrome_124", "chrome_126", "chrome_127", 
+    ///         "chrome_128", "chrome_129", "chrome_130", "chrome_131", "chrome_133", "chrome_137"
+    ///         Safari: "safari_15.3", "safari_15.5", "safari_15.6.1", "safari_16", "safari_16.5", 
+    ///         "safari_17.0", "safari_17.2.1", "safari_17.4.1", "safari_17.5", "safari_18", "safari_18.2"
+    ///         Safari iOS: "safari_ios_16.5", "safari_ios_17.2", "safari_ios_17.4.1", "safari_ios_18.1.1", "safari_ipad_18"
+    ///         Edge: "edge_101", "edge_122", "edge_127", "edge_131"
+    ///         Firefox: "firefox_109", "firefox_117", "firefox_128", "firefox_133", "firefox_135", "firefox_136"
+    ///         OkHttp: "okhttp_3.13", "okhttp_3.14", "okhttp_4.9", "okhttp_4.10", "okhttp_5"
+    ///         Select random: "random"
+    ///     impersonate_os (str | None): impersonate OS. Example: "windows". Default is "linux".
+    ///         Android: "android", iOS: "ios", Linux: "linux", Mac OS: "macos", Windows: "windows"
+    ///         Select random: "random"
+    ///     follow_redirects (bool): Follow HTTP redirects automatically. Default is True.
+    ///     max_redirects (int): Maximum number of redirects to follow. Default is 20.
+    ///     verify (bool): Verify SSL certificates. Default is True.
+    ///     ca_cert_file (str | None): Path to custom CA certificate file. Default is None.
+    ///     https_only (bool): Only allow HTTPS connections. Default is False.
+    ///     http2_only (bool): Force HTTP/2 only. Default is False.
     fn new(
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
@@ -87,6 +121,7 @@ impl RClient {
         proxy: Option<String>,
         timeout: Option<f64>,
         impersonate: Option<String>,
+        impersonate_os: Option<String>,
         follow_redirects: Option<bool>,
         max_redirects: Option<usize>,
         verify: Option<bool>,
@@ -101,6 +136,9 @@ impl RClient {
         let verify = verify.unwrap_or(true);
         let https_only = https_only.unwrap_or(false);
         let http2_only = http2_only.unwrap_or(false);
+        
+        // Set default impersonate_os to "linux" if not provided
+        let impersonate_os = impersonate_os.unwrap_or_else(|| "linux".to_string());
 
         let client = Self::build_client(
             &headers,
@@ -109,6 +147,7 @@ impl RClient {
             &proxy,
             timeout,
             &impersonate,
+            &Some(impersonate_os.clone()),
             follow_redirects,
             max_redirects,
             verify,
@@ -117,7 +156,7 @@ impl RClient {
             http2_only,
         )?;
 
-        Ok(RClient {
+        Ok(Client {
             client: Arc::new(Mutex::new(client)),
             auth,
             auth_bearer,
@@ -125,6 +164,7 @@ impl RClient {
             proxy,
             timeout,
             impersonate,
+            impersonate_os: Some(impersonate_os),
             headers,
             cookie_store,
             referer,
@@ -179,6 +219,13 @@ impl RClient {
     #[setter]
     pub fn set_impersonate(&mut self, impersonate: String) -> Result<()> {
         self.impersonate = Some(impersonate);
+        self.rebuild_client()?;
+        Ok(())
+    }
+
+    #[setter]
+    pub fn set_impersonate_os(&mut self, impersonate_os: String) -> Result<()> {
+        self.impersonate_os = Some(impersonate_os);
         self.rebuild_client()?;
         Ok(())
     }
@@ -340,7 +387,7 @@ impl RClient {
     }
 }
 
-impl RClient {
+impl Client {
     fn build_client(
         headers: &Option<IndexMapSSR>,
         cookie_store: bool,
@@ -348,6 +395,7 @@ impl RClient {
         proxy: &Option<String>,
         timeout: Option<f64>,
         impersonate: &Option<String>,
+        impersonate_os: &Option<String>,
         follow_redirects: bool,
         max_redirects: usize,
         verify: bool,
@@ -358,10 +406,50 @@ impl RClient {
         // Client builder
         let mut client_builder = wreq::Client::builder();
 
-        // Impersonate using wreq_util::Emulation
-        if let Some(impersonate) = impersonate {
-            let emulation = Emulation::from_str(&impersonate)?;
-            client_builder = client_builder.emulation(emulation);
+        // Emulation and EmulationOS using EmulationOption
+        match (impersonate, impersonate_os) {
+            (Some(imp), Some(os)) => {
+                let emulation = Emulation::from_str(imp)?;
+                let emulation_os = EmulationOS::from_str(os)?;
+                
+                let emulation_option = EmulationOption::builder()
+                    .emulation(emulation)
+                    .emulation_os(emulation_os)
+                    .build();
+                
+                client_builder = client_builder.emulation(emulation_option);
+            }
+            (Some(imp), None) => {
+                let emulation = Emulation::from_str(imp)?;
+                // Use default "linux" OS
+                let emulation_os = EmulationOS::from_str("linux")?;
+                
+                let emulation_option = EmulationOption::builder()
+                    .emulation(emulation)
+                    .emulation_os(emulation_os)
+                    .build();
+                
+                client_builder = client_builder.emulation(emulation_option);
+            }
+            (None, Some(os)) => {
+                let emulation_os = EmulationOS::from_str(os)?;
+                
+                let emulation_option = EmulationOption::builder()
+                    .emulation_os(emulation_os)
+                    .build();
+                
+                client_builder = client_builder.emulation(emulation_option);
+            }
+            (None, None) => {
+                // Default to linux OS only
+                let emulation_os = EmulationOS::from_str("linux")?;
+                
+                let emulation_option = EmulationOption::builder()
+                    .emulation_os(emulation_os)
+                    .build();
+                
+                client_builder = client_builder.emulation(emulation_option);
+            }
         }
 
         // Headers
@@ -432,6 +520,7 @@ impl RClient {
             &self.proxy,
             self.timeout,
             &self.impersonate,
+            &self.impersonate_os,
             self.follow_redirects,
             self.max_redirects,
             self.verify,
@@ -449,6 +538,6 @@ impl RClient {
 fn primp(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     pyo3_log::init();
 
-    m.add_class::<RClient>()?;
+    m.add_class::<Client>()?;
     Ok(())
 }

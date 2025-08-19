@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use rand::prelude::*;
-use wreq_util::Emulation;
+use wreq_util::{Emulation, EmulationOS, EmulationOption};
 
 pub const EMULATION_LIST: &[Emulation] = &[
     Emulation::Chrome100,
@@ -58,6 +58,14 @@ pub const EMULATION_LIST: &[Emulation] = &[
     Emulation::Firefox133,
     Emulation::Firefox135,
     Emulation::Firefox136,
+];
+
+pub const EMULATION_OS_LIST: &[EmulationOS] = &[
+    EmulationOS::Android,
+    EmulationOS::IOS,
+    EmulationOS::Linux,
+    EmulationOS::MacOS,
+    EmulationOS::Windows,
 ];
 
 pub fn get_random_element<T>(input_vec: &[T]) -> &T {
@@ -128,6 +136,24 @@ impl EmulationFromStr for Emulation {
             "firefox_136" => Ok(Emulation::Firefox136),
             "random" => Ok(*get_random_element(EMULATION_LIST)),
             _ => Err(anyhow!("Invalid emulation: {:?}", s)),
+        }
+    }
+}
+
+pub trait EmulationOSFromStr {
+    fn from_str(s: &str) -> Result<EmulationOS>;
+}
+
+impl EmulationOSFromStr for EmulationOS {
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "android" => Ok(EmulationOS::Android),
+            "ios" => Ok(EmulationOS::IOS),
+            "linux" => Ok(EmulationOS::Linux),
+            "macos" => Ok(EmulationOS::MacOS),
+            "windows" => Ok(EmulationOS::Windows),
+            "random" => Ok(*get_random_element(EMULATION_OS_LIST)),
+            _ => Err(anyhow!("Invalid emulation_os: {:?}", s)),
         }
     }
 }

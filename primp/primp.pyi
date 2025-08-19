@@ -14,16 +14,15 @@ IMPERSONATE = Literal[
         "chrome_107", "chrome_108", "chrome_109", "chrome_114", "chrome_116",
         "chrome_117", "chrome_118", "chrome_119", "chrome_120", "chrome_123",
         "chrome_124", "chrome_126", "chrome_127", "chrome_128", "chrome_129",
-        "chrome_130", "chrome_131", "chrome_133",
+        "chrome_130", "chrome_131", "chrome_133", "chrome_137",
         "safari_15.3", "safari_15.5", "safari_15.6.1", "safari_16",
         "safari_16.5", "safari_17.0", "safari_17.2.1", "safari_17.4.1",
-        "safari_17.5", "safari_18",  "safari_18.2",
+        "safari_17.5", "safari_18", "safari_18.2",
         "safari_ios_16.5", "safari_ios_17.2", "safari_ios_17.4.1", "safari_ios_18.1.1",
         "safari_ipad_18",
-        "okhttp_3.9", "okhttp_3.11", "okhttp_3.13", "okhttp_3.14", "okhttp_4.9",
-        "okhttp_4.10", "okhttp_5",
+        "okhttp_3.13", "okhttp_3.14", "okhttp_4.9", "okhttp_4.10", "okhttp_5",
         "edge_101", "edge_122", "edge_127", "edge_131",
-        "firefox_109", "firefox_117", "firefox_128", "firefox_133", "firefox_135",
+        "firefox_109", "firefox_117", "firefox_128", "firefox_133", "firefox_135", "firefox_136",
         "random",
     ]  # fmt: skip
 IMPERSONATE_OS = Literal["android", "ios", "linux", "macos", "windows", "random"]
@@ -36,7 +35,7 @@ class RequestParams(TypedDict, total=False):
     cookies: dict[str, str] | None
     timeout: float | None
     content: bytes | None
-    data: dict[str, Any] | None
+    data: Any | None
     json: Any | None
     files: dict[str, str] | None
 
@@ -61,6 +60,8 @@ class Response:
     def encoding(self) -> str: ...
     @property
     def text(self) -> str: ...
+    @encoding.setter
+    def encoding(self, encoding: str | None) -> None: ...
     def json(self) -> Any: ...
     def stream(self) -> Iterator[bytes]: ...
     @property
@@ -70,46 +71,87 @@ class Response:
     @property
     def text_rich(self) -> str: ...
 
-class RClient:
+class Client:
     def __init__(
         self,
         auth: tuple[str, str | None] | None = None,
         auth_bearer: str | None = None,
         params: dict[str, str] | None = None,
         headers: dict[str, str] | None = None,
-        timeout: float | None = None,
-        cookie_store: bool | None = True,
-        referer: bool | None = True,
+        cookie_store: bool = True,
+        referer: bool = True,
         proxy: str | None = None,
+        timeout: float | None = None,
         impersonate: IMPERSONATE | None = None,
         impersonate_os: IMPERSONATE_OS | None = None,
-        follow_redirects: bool | None = True,
-        max_redirects: int | None = 20,
-        verify: bool | None = True,
+        follow_redirects: bool = True,
+        max_redirects: int = 20,
+        verify: bool = True,
         ca_cert_file: str | None = None,
-        https_only: bool | None = False,
-        http2_only: bool | None = False,
+        https_only: bool = False,
+        http2_only: bool = False,
     ): ...
+    
     @property
-    def headers(self) -> dict[str, str]: ...
-    @headers.setter
-    def headers(self, headers: dict[str, str]) -> None: ...
-    def headers_update(self, headers: dict[str, str]) -> None: ...
-    def get_cookies(self, url: str) -> dict[str, str]: ...
-    def set_cookies(self, url: str, cookies: dict[str, str]) -> None: ...
+    def auth(self) -> tuple[str, str | None] | None: ...
+    @auth.setter
+    def auth(self, auth: tuple[str, str | None] | None) -> None: ...
+    
+    @property
+    def auth_bearer(self) -> str | None: ...
+    @auth_bearer.setter  
+    def auth_bearer(self, auth_bearer: str | None) -> None: ...
+    
+    @property
+    def params(self) -> dict[str, str] | None: ...
+    @params.setter
+    def params(self, params: dict[str, str] | None) -> None: ...
+    
     @property
     def proxy(self) -> str | None: ...
     @proxy.setter
     def proxy(self, proxy: str) -> None: ...
+    
+    @property
+    def timeout(self) -> float | None: ...
+    @timeout.setter
+    def timeout(self, timeout: float | None) -> None: ...
+    
     @property
     def impersonate(self) -> str | None: ...
     @impersonate.setter
-    def impersonate(self, impersonate: IMPERSONATE) -> None: ...
+    def impersonate(self, impersonate: str) -> None: ...
+    
     @property
     def impersonate_os(self) -> str | None: ...
     @impersonate_os.setter
-    def impersonate_os(self, impersonate: IMPERSONATE_OS) -> None: ...
-    def request(self, method: HttpMethod, url: str, **kwargs: Unpack[RequestParams]) -> Response: ...
+    def impersonate_os(self, impersonate_os: str) -> None: ...
+    
+    @property
+    def headers(self) -> dict[str, str]: ...
+    @headers.setter
+    def headers(self, headers: dict[str, str] | None) -> None: ...
+    
+    def headers_update(self, headers: dict[str, str] | None) -> None: ...
+    def get_cookies(self, url: str) -> dict[str, str]: ...
+    def set_cookies(self, url: str, cookies: dict[str, str] | None) -> None: ...
+    
+    def request(
+        self, 
+        method: HttpMethod, 
+        url: str, 
+        params: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
+        cookies: dict[str, str] | None = None,
+        content: bytes | None = None,
+        data: Any | None = None,
+        json: Any | None = None,
+        files: dict[str, str] | None = None,
+        auth: tuple[str, str | None] | None = None,
+        auth_bearer: str | None = None,
+        timeout: float | None = None,
+    ) -> Response: ...
+    
     def get(self, url: str, **kwargs: Unpack[RequestParams]) -> Response: ...
     def head(self, url: str, **kwargs: Unpack[RequestParams]) -> Response: ...
     def options(self, url: str, **kwargs: Unpack[RequestParams]) -> Response: ...
@@ -117,6 +159,98 @@ class RClient:
     def post(self, url: str, **kwargs: Unpack[RequestParams]) -> Response: ...
     def put(self, url: str, **kwargs: Unpack[RequestParams]) -> Response: ...
     def patch(self, url: str, **kwargs: Unpack[RequestParams]) -> Response: ...
+
+class AsyncClient:
+    def __init__(
+        self,
+        auth: tuple[str, str | None] | None = None,
+        auth_bearer: str | None = None,
+        params: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
+        cookie_store: bool = True,
+        referer: bool = True,
+        proxy: str | None = None,
+        timeout: float | None = None,
+        impersonate: IMPERSONATE | None = None,
+        impersonate_os: IMPERSONATE_OS | None = None,
+        follow_redirects: bool = True,
+        max_redirects: int = 20,
+        verify: bool = True,
+        ca_cert_file: str | None = None,
+        https_only: bool = False,
+        http2_only: bool = False,
+    ): ...
+    
+    async def __aenter__(self) -> AsyncClient: ...
+    async def __aexit__(self, *args: Any) -> None: ...
+    
+    @property
+    def auth(self) -> tuple[str, str | None] | None: ...
+    @auth.setter
+    def auth(self, auth: tuple[str, str | None] | None) -> None: ...
+    
+    @property
+    def auth_bearer(self) -> str | None: ...
+    @auth_bearer.setter  
+    def auth_bearer(self, auth_bearer: str | None) -> None: ...
+    
+    @property
+    def params(self) -> dict[str, str] | None: ...
+    @params.setter
+    def params(self, params: dict[str, str] | None) -> None: ...
+    
+    @property
+    def proxy(self) -> str | None: ...
+    @proxy.setter
+    def proxy(self, proxy: str) -> None: ...
+    
+    @property
+    def timeout(self) -> float | None: ...
+    @timeout.setter
+    def timeout(self, timeout: float | None) -> None: ...
+    
+    @property
+    def impersonate(self) -> str | None: ...
+    @impersonate.setter
+    def impersonate(self, impersonate: str) -> None: ...
+    
+    @property
+    def impersonate_os(self) -> str | None: ...
+    @impersonate_os.setter
+    def impersonate_os(self, impersonate_os: str) -> None: ...
+    
+    @property
+    def headers(self) -> dict[str, str]: ...
+    @headers.setter
+    def headers(self, headers: dict[str, str] | None) -> None: ...
+    
+    def headers_update(self, headers: dict[str, str] | None) -> None: ...
+    def get_cookies(self, url: str) -> dict[str, str]: ...
+    def set_cookies(self, url: str, cookies: dict[str, str] | None) -> None: ...
+    
+    async def request(
+        self, 
+        method: HttpMethod, 
+        url: str,
+        params: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
+        cookies: dict[str, str] | None = None,
+        content: bytes | None = None,
+        data: Any | None = None,
+        json: Any | None = None,
+        files: dict[str, str] | None = None,
+        auth: tuple[str, str | None] | None = None,
+        auth_bearer: str | None = None,
+        timeout: float | None = None,
+    ) -> Response: ...
+    
+    async def get(self, url: str, **kwargs: Unpack[RequestParams]) -> Response: ...
+    async def head(self, url: str, **kwargs: Unpack[RequestParams]) -> Response: ...
+    async def options(self, url: str, **kwargs: Unpack[RequestParams]) -> Response: ...
+    async def delete(self, url: str, **kwargs: Unpack[RequestParams]) -> Response: ...
+    async def post(self, url: str, **kwargs: Unpack[RequestParams]) -> Response: ...
+    async def put(self, url: str, **kwargs: Unpack[RequestParams]) -> Response: ...
+    async def patch(self, url: str, **kwargs: Unpack[RequestParams]) -> Response: ...
 
 def request(method: HttpMethod, url: str, **kwargs: Unpack[ClientRequestParams]) -> Response: ...
 def get(url: str, **kwargs: Unpack[ClientRequestParams]) -> Response: ...
