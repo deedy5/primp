@@ -2,7 +2,7 @@ use anyhow::{Error, Ok, Result};
 use foldhash::fast::RandomState;
 use indexmap::IndexMap;
 
-use rquest::header::{HeaderMap, HeaderName, HeaderValue};
+use wreq::header::{HeaderMap, HeaderName, HeaderValue};
 
 type IndexMapSSR = IndexMap<String, String, RandomState>;
 

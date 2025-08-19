@@ -25,7 +25,7 @@ use crate::RUNTIME;
 /// It also supports decoding the response body as text or JSON, with the ability to specify the character encoding.
 #[pyclass]
 pub struct Response {
-    pub resp: http::Response<rquest::Body>,
+    pub resp: http::Response<wreq::Body>,
     pub _content: Option<Py<PyBytes>>,
     pub _encoding: Option<String>,
     pub _headers: Option<Py<PyDict>>,
@@ -168,7 +168,7 @@ impl Response {
 
 #[pyclass]
 struct ResponseStream {
-    resp: Arc<TMutex<http::Response<rquest::Body>>>,
+    resp: Arc<TMutex<http::Response<wreq::Body>>>,
 }
 
 #[pymethods]
