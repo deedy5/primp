@@ -71,6 +71,8 @@ pub struct Client {
     ca_cert_file: Option<String>,
     https_only: bool,
     http2_only: bool,
+    skip_http2: bool,
+    skip_headers: bool,
 }
 
 #[pymethods]
@@ -78,7 +80,8 @@ impl Client {
     #[new]
     #[pyo3(signature = (auth=None, auth_bearer=None, params=None, headers=None, cookie_store=true,
         referer=true, proxy=None, timeout=None, impersonate=None, impersonate_os=None, follow_redirects=true,
-        max_redirects=20, verify=true, ca_cert_file=None, https_only=false, http2_only=false))]
+        max_redirects=20, verify=true, ca_cert_file=None, https_only=false, http2_only=false, 
+        skip_http2=false, skip_headers=false))]
     /// HTTP client that can impersonate web browsers.
     ///
     /// Args:
@@ -111,6 +114,8 @@ impl Client {
     ///     ca_cert_file (str | None): Path to custom CA certificate file. Default is None.
     ///     https_only (bool): Only allow HTTPS connections. Default is False.
     ///     http2_only (bool): Force HTTP/2 only. Default is False.
+    ///     skip_http2 (bool): Skip HTTP/2 support in browser emulation. Default is False.
+    ///     skip_headers (bool): Skip adding default headers in browser emulation. Default is False.
     fn new(
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
@@ -128,6 +133,8 @@ impl Client {
         ca_cert_file: Option<String>,
         https_only: Option<bool>,
         http2_only: Option<bool>,
+        skip_http2: Option<bool>,
+        skip_headers: Option<bool>,
     ) -> Result<Self> {
         let cookie_store = cookie_store.unwrap_or(true);
         let referer = referer.unwrap_or(true);
@@ -136,6 +143,8 @@ impl Client {
         let verify = verify.unwrap_or(true);
         let https_only = https_only.unwrap_or(false);
         let http2_only = http2_only.unwrap_or(false);
+        let skip_http2 = skip_http2.unwrap_or(false);
+        let skip_headers = skip_headers.unwrap_or(false);
         
         // Set default impersonate_os to "linux" if not provided
         let impersonate_os = impersonate_os.unwrap_or_else(|| "linux".to_string());
@@ -154,6 +163,8 @@ impl Client {
             &ca_cert_file,
             https_only,
             http2_only,
+            skip_http2,
+            skip_headers,
         )?;
 
         Ok(Client {
@@ -174,6 +185,8 @@ impl Client {
             ca_cert_file,
             https_only,
             http2_only,
+            skip_http2,
+            skip_headers,
         })
     }
 
@@ -226,6 +239,30 @@ impl Client {
     #[setter]
     pub fn set_impersonate_os(&mut self, impersonate_os: String) -> Result<()> {
         self.impersonate_os = Some(impersonate_os);
+        self.rebuild_client()?;
+        Ok(())
+    }
+
+    #[getter]
+    pub fn get_skip_http2(&self) -> bool {
+        self.skip_http2
+    }
+
+    #[setter]
+    pub fn set_skip_http2(&mut self, skip_http2: bool) -> Result<()> {
+        self.skip_http2 = skip_http2;
+        self.rebuild_client()?;
+        Ok(())
+    }
+
+    #[getter]
+    pub fn get_skip_headers(&self) -> bool {
+        self.skip_headers
+    }
+
+    #[setter]
+    pub fn set_skip_headers(&mut self, skip_headers: bool) -> Result<()> {
+        self.skip_headers = skip_headers;
         self.rebuild_client()?;
         Ok(())
     }
@@ -388,7 +425,7 @@ impl Client {
 }
 
 impl Client {
-    fn build_client(
+    pub fn build_client(
         headers: &Option<IndexMapSSR>,
         cookie_store: bool,
         referer: bool,
@@ -402,6 +439,8 @@ impl Client {
         ca_cert_file: &Option<String>,
         https_only: bool,
         http2_only: bool,
+        skip_http2: bool,
+        skip_headers: bool,
     ) -> Result<wreq::Client> {
         // Client builder
         let mut client_builder = wreq::Client::builder();
@@ -415,6 +454,8 @@ impl Client {
                 let emulation_option = EmulationOption::builder()
                     .emulation(emulation)
                     .emulation_os(emulation_os)
+                    .skip_http2(skip_http2)
+                    .skip_headers(skip_headers)
                     .build();
                 
                 client_builder = client_builder.emulation(emulation_option);
@@ -427,6 +468,8 @@ impl Client {
                 let emulation_option = EmulationOption::builder()
                     .emulation(emulation)
                     .emulation_os(emulation_os)
+                    .skip_http2(skip_http2)
+                    .skip_headers(skip_headers)
                     .build();
                 
                 client_builder = client_builder.emulation(emulation_option);
@@ -436,6 +479,8 @@ impl Client {
                 
                 let emulation_option = EmulationOption::builder()
                     .emulation_os(emulation_os)
+                    .skip_http2(skip_http2)
+                    .skip_headers(skip_headers)
                     .build();
                 
                 client_builder = client_builder.emulation(emulation_option);
@@ -446,6 +491,8 @@ impl Client {
                 
                 let emulation_option = EmulationOption::builder()
                     .emulation_os(emulation_os)
+                    .skip_http2(skip_http2)
+                    .skip_headers(skip_headers)
                     .build();
                 
                 client_builder = client_builder.emulation(emulation_option);
@@ -527,6 +574,525 @@ impl Client {
             &self.ca_cert_file,
             self.https_only,
             self.http2_only,
+            self.skip_http2,
+            self.skip_headers,
+        )?;
+        
+        *self.client.lock().unwrap() = new_client;
+        Ok(())
+    }
+}
+
+#[pyclass(subclass)]
+/// Async HTTP client that can impersonate web browsers.
+pub struct AsyncClient {
+    client: Arc<Mutex<wreq::Client>>,
+    #[pyo3(get, set)]
+    auth: Option<(String, Option<String>)>,
+    #[pyo3(get, set)]
+    auth_bearer: Option<String>,
+    #[pyo3(get, set)]
+    params: Option<IndexMapSSR>,
+    #[pyo3(get, set)]
+    proxy: Option<String>,
+    #[pyo3(get, set)]
+    timeout: Option<f64>,
+    #[pyo3(get)]
+    impersonate: Option<String>,
+    #[pyo3(get)]
+    impersonate_os: Option<String>,
+    // Store builder options to recreate client when needed
+    headers: Option<IndexMapSSR>,
+    cookie_store: bool,
+    referer: bool,
+    follow_redirects: bool,
+    max_redirects: usize,
+    verify: bool,
+    ca_cert_file: Option<String>,
+    https_only: bool,
+    http2_only: bool,
+    skip_http2: bool,
+    skip_headers: bool,
+}
+
+#[pymethods]
+impl AsyncClient {
+    #[new]
+    #[pyo3(signature = (auth=None, auth_bearer=None, params=None, headers=None, cookie_store=true,
+        referer=true, proxy=None, timeout=None, impersonate=None, impersonate_os=None, follow_redirects=true,
+        max_redirects=20, verify=true, ca_cert_file=None, https_only=false, http2_only=false,
+        skip_http2=false, skip_headers=false))]
+    /// Async HTTP client that can impersonate web browsers.
+    ///
+    /// Args:
+    ///     auth (tuple[str, str] | None): Basic authentication credentials (username, password). Default is None.
+    ///     auth_bearer (str | None): Bearer token for authentication. Default is None.
+    ///     params (dict | None): Default query parameters to include in all requests. Default is None.
+    ///     headers (dict | None): Default headers to include in all requests. Default is None.
+    ///     cookie_store (bool): Enable automatic cookie storage and management. Default is True.
+    ///     referer (bool): Automatically set referer header. Default is True.
+    ///     proxy (str | None): Proxy URL (http/https/socks5). Default is None.
+    ///     timeout (float | None): Request timeout in seconds. Default is None.
+    ///     impersonate (str | None): Browser to impersonate. Example: "chrome_131". Default is None.
+    ///         Chrome: "chrome_100", "chrome_101", "chrome_104", "chrome_105", "chrome_106", "chrome_107", 
+    ///         "chrome_108", "chrome_109", "chrome_114", "chrome_116", "chrome_117", "chrome_118", 
+    ///         "chrome_119", "chrome_120", "chrome_123", "chrome_124", "chrome_126", "chrome_127", 
+    ///         "chrome_128", "chrome_129", "chrome_130", "chrome_131", "chrome_133", "chrome_137"
+    ///         Safari: "safari_15.3", "safari_15.5", "safari_15.6.1", "safari_16", "safari_16.5", 
+    ///         "safari_17.0", "safari_17.2.1", "safari_17.4.1", "safari_17.5", "safari_18", "safari_18.2"
+    ///         Safari iOS: "safari_ios_16.5", "safari_ios_17.2", "safari_ios_17.4.1", "safari_ios_18.1.1", "safari_ipad_18"
+    ///         Edge: "edge_101", "edge_122", "edge_127", "edge_131"
+    ///         Firefox: "firefox_109", "firefox_117", "firefox_128", "firefox_133", "firefox_135", "firefox_136"
+    ///         OkHttp: "okhttp_3.13", "okhttp_3.14", "okhttp_4.9", "okhttp_4.10", "okhttp_5"
+    ///         Select random: "random"
+    ///     impersonate_os (str | None): impersonate OS. Example: "windows". Default is "linux".
+    ///         Android: "android", iOS: "ios", Linux: "linux", Mac OS: "macos", Windows: "windows"
+    ///         Select random: "random"
+    ///     follow_redirects (bool): Follow HTTP redirects automatically. Default is True.
+    ///     max_redirects (int): Maximum number of redirects to follow. Default is 20.
+    ///     verify (bool): Verify SSL certificates. Default is True.
+    ///     ca_cert_file (str | None): Path to custom CA certificate file. Default is None.
+    ///     https_only (bool): Only allow HTTPS connections. Default is False.
+    ///     http2_only (bool): Force HTTP/2 only. Default is False.
+    ///     skip_http2 (bool): Skip HTTP/2 support in browser emulation. Default is False.
+    ///     skip_headers (bool): Skip adding default headers in browser emulation. Default is False.
+    fn new(
+        auth: Option<(String, Option<String>)>,
+        auth_bearer: Option<String>,
+        params: Option<IndexMapSSR>,
+        headers: Option<IndexMapSSR>,
+        cookie_store: Option<bool>,
+        referer: Option<bool>,
+        proxy: Option<String>,
+        timeout: Option<f64>,
+        impersonate: Option<String>,
+        impersonate_os: Option<String>,
+        follow_redirects: Option<bool>,
+        max_redirects: Option<usize>,
+        verify: Option<bool>,
+        ca_cert_file: Option<String>,
+        https_only: Option<bool>,
+        http2_only: Option<bool>,
+        skip_http2: Option<bool>,
+        skip_headers: Option<bool>,
+    ) -> Result<Self> {
+        let cookie_store = cookie_store.unwrap_or(true);
+        let referer = referer.unwrap_or(true);
+        let follow_redirects = follow_redirects.unwrap_or(true);
+        let max_redirects = max_redirects.unwrap_or(20);
+        let verify = verify.unwrap_or(true);
+        let https_only = https_only.unwrap_or(false);
+        let http2_only = http2_only.unwrap_or(false);
+        let skip_http2 = skip_http2.unwrap_or(false);
+        let skip_headers = skip_headers.unwrap_or(false);
+        
+        let impersonate_os = impersonate_os.unwrap_or_else(|| "linux".to_string());
+
+        let client = Client::build_client(
+            &headers,
+            cookie_store,
+            referer,
+            &proxy,
+            timeout,
+            &impersonate,
+            &Some(impersonate_os.clone()),
+            follow_redirects,
+            max_redirects,
+            verify,
+            &ca_cert_file,
+            https_only,
+            http2_only,
+            skip_http2,
+            skip_headers,
+        )?;
+
+        Ok(AsyncClient {
+            client: Arc::new(Mutex::new(client)),
+            auth,
+            auth_bearer,
+            params,
+            proxy,
+            timeout,
+            impersonate,
+            impersonate_os: Some(impersonate_os),
+            headers,
+            cookie_store,
+            referer,
+            follow_redirects,
+            max_redirects,
+            verify,
+            ca_cert_file,
+            https_only,
+            http2_only,
+            skip_http2,
+            skip_headers,
+        })
+    }
+
+    #[getter]
+    pub fn get_headers(&self) -> Result<IndexMapSSR> {
+        let client = self.client.lock().unwrap();
+        let mut headers = client.headers().clone();
+        headers.remove(COOKIE);
+        Ok(headers.to_indexmap())
+    }
+
+    #[setter]
+    pub fn set_headers(&mut self, new_headers: Option<IndexMapSSR>) -> Result<()> {
+        self.headers = new_headers;
+        self.rebuild_client()?;
+        Ok(())
+    }
+
+    pub fn headers_update(&mut self, new_headers: Option<IndexMapSSR>) -> Result<()> {
+        if let Some(new_headers) = new_headers {
+            if let Some(ref mut existing_headers) = self.headers {
+                existing_headers.extend(new_headers);
+            } else {
+                self.headers = Some(new_headers);
+            }
+        }
+        self.rebuild_client()?;
+        Ok(())
+    }
+
+    #[getter]
+    pub fn get_proxy(&self) -> Result<Option<String>> {
+        Ok(self.proxy.to_owned())
+    }
+
+    #[setter]
+    pub fn set_proxy(&mut self, proxy: String) -> Result<()> {
+        self.proxy = Some(proxy);
+        self.rebuild_client()?;
+        Ok(())
+    }
+
+    #[setter]
+    pub fn set_impersonate(&mut self, impersonate: String) -> Result<()> {
+        self.impersonate = Some(impersonate);
+        self.rebuild_client()?;
+        Ok(())
+    }
+
+    #[setter]
+    pub fn set_impersonate_os(&mut self, impersonate_os: String) -> Result<()> {
+        self.impersonate_os = Some(impersonate_os);
+        self.rebuild_client()?;
+        Ok(())
+    }
+
+    #[getter]
+    pub fn get_skip_http2(&self) -> bool {
+        self.skip_http2
+    }
+
+    #[setter]
+    pub fn set_skip_http2(&mut self, skip_http2: bool) -> Result<()> {
+        self.skip_http2 = skip_http2;
+        self.rebuild_client()?;
+        Ok(())
+    }
+
+    #[getter]
+    pub fn get_skip_headers(&self) -> bool {
+        self.skip_headers
+    }
+
+    #[setter]
+    pub fn set_skip_headers(&mut self, skip_headers: bool) -> Result<()> {
+        self.skip_headers = skip_headers;
+        self.rebuild_client()?;
+        Ok(())
+    }
+
+    #[pyo3(signature = (url))]
+    fn get_cookies(&self, url: &str) -> Result<IndexMapSSR> {
+        let url = wreq::Url::parse(url).expect("Error parsing URL");
+        let client = self.client.lock().unwrap();
+        let cookie = client.get_cookies(&url).expect("No cookies found");
+        let cookie_str = cookie.to_str()?;
+        let mut cookie_map = IndexMap::with_capacity_and_hasher(10, RandomState::default());
+        for cookie in cookie_str.split(';') {
+            let mut parts = cookie.splitn(2, '=');
+            if let (Some(key), Some(value)) = (parts.next(), parts.next()) {
+                cookie_map.insert(key.trim().to_string(), value.trim().to_string());
+            }
+        }
+        Ok(cookie_map)
+    }
+
+    #[pyo3(signature = (url, cookies))]
+    fn set_cookies(&self, url: &str, cookies: Option<IndexMapSSR>) -> Result<()> {
+        let url = wreq::Url::parse(url).expect("Error parsing URL");
+        if let Some(cookies) = cookies {
+            let header_values: Vec<HeaderValue> = cookies
+                .iter()
+                .filter_map(|(key, value)| {
+                    HeaderValue::from_str(&format!("{}={}", key, value)).ok()
+                })
+                .collect();
+            let client = self.client.lock().unwrap();
+            client.set_cookies(&url, header_values);
+        }
+        Ok(())
+    }
+
+    #[pyo3(signature = (method, url, params=None, headers=None, cookies=None, content=None,
+        data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None))]
+    fn request<'py>(
+        &self,
+        py: Python<'py>,
+        method: &str,
+        url: &str,
+        params: Option<IndexMapSSR>,
+        headers: Option<IndexMapSSR>,
+        cookies: Option<IndexMapSSR>,
+        content: Option<Vec<u8>>,
+        data: Option<&Bound<'_, PyAny>>,
+        json: Option<&Bound<'_, PyAny>>,
+        files: Option<IndexMap<String, String>>,
+        auth: Option<(String, Option<String>)>,
+        auth_bearer: Option<String>,
+        timeout: Option<f64>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let client = Arc::clone(&self.client);
+        let method = Method::from_bytes(method.as_bytes())
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid method: {}", e)))?;
+        let is_post_put_patch = matches!(method, Method::POST | Method::PUT | Method::PATCH);
+        let params = params.or_else(|| self.params.clone());
+        let data_value: Option<Value> = data.map(depythonize).transpose()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid data: {}", e)))?;
+        let json_value: Option<Value> = json.map(depythonize).transpose()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid json: {}", e)))?;
+        let auth = auth.or(self.auth.clone());
+        let auth_bearer = auth_bearer.or(self.auth_bearer.clone());
+        let timeout: Option<f64> = timeout.or(self.timeout);
+        let url = url.to_string();
+
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            // Handle cookies if provided
+            if let Some(cookies) = cookies {
+                let url_parsed = wreq::Url::parse(&url)
+                    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid URL: {}", e)))?;
+                let cookie_values: Vec<HeaderValue> = cookies
+                    .iter()
+                    .filter_map(|(key, value)| {
+                        let cookie_string = format!("{}={}", key, value);
+                        HeaderValue::from_str(&cookie_string).ok()
+                    })
+                    .collect();
+                let client_guard = client.lock().unwrap();
+                client_guard.set_cookies(&url_parsed, cookie_values);
+            }
+
+            // Create request builder
+            let mut request_builder = client.lock().unwrap().request(method, &url);
+
+            // Add params
+            if let Some(params) = params {
+                request_builder = request_builder.query(&params);
+            }
+
+            // Add headers
+            if let Some(headers) = headers {
+                request_builder = request_builder.headers(headers.to_headermap());
+            }
+
+            // Handle body for POST/PUT/PATCH
+            if is_post_put_patch {
+                if let Some(content) = content {
+                    request_builder = request_builder.body(content);
+                } else if let Some(form_data) = data_value {
+                    request_builder = request_builder.form(&form_data);
+                } else if let Some(json_data) = json_value {
+                    request_builder = request_builder.json(&json_data);
+                } else if let Some(files) = files {
+                    let mut form = multipart::Form::new();
+                    for (file_name, file_path) in files {
+                        let file = File::open(file_path).await
+                            .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to open file: {}", e)))?;
+                        let stream = FramedRead::new(file, BytesCodec::new());
+                        let file_body = Body::wrap_stream(stream);
+                        let part = multipart::Part::stream(file_body).file_name(file_name.clone());
+                        form = form.part(file_name, part);
+                    }
+                    request_builder = request_builder.multipart(form);
+                }
+            }
+
+            // Add auth
+            if let Some((username, password)) = auth {
+                request_builder = request_builder.basic_auth(username, password);
+            } else if let Some(token) = auth_bearer {
+                request_builder = request_builder.bearer_auth(token);
+            }
+
+            // Add timeout
+            if let Some(seconds) = timeout {
+                request_builder = request_builder.timeout(Duration::from_secs_f64(seconds));
+            }
+
+            // Send request
+            let resp: wreq::Response = request_builder.send().await
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Request failed: {}", e)))?;
+            let url: String = resp.url().to_string();
+            let status_code = resp.status().as_u16();
+
+            tracing::info!("async response: {} {}", url, status_code);
+            
+            let resp = http::Response::from(resp);
+            let response = Response {
+                resp,
+                _content: None,
+                _encoding: None,
+                _headers: None,
+                _cookies: None,
+                url,
+                status_code,
+            };
+            
+            Ok(response)
+        })
+    }
+
+    // Async convenience methods
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, timeout=None))]
+    fn get<'py>(
+        &self,
+        py: Python<'py>,
+        url: &str,
+        params: Option<IndexMapSSR>,
+        headers: Option<IndexMapSSR>,
+        cookies: Option<IndexMapSSR>,
+        auth: Option<(String, Option<String>)>,
+        auth_bearer: Option<String>,
+        timeout: Option<f64>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        self.request(py, "GET", url, params, headers, cookies, None, None, None, None, auth, auth_bearer, timeout)
+    }
+
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None))]
+    fn post<'py>(
+        &self,
+        py: Python<'py>,
+        url: &str,
+        params: Option<IndexMapSSR>,
+        headers: Option<IndexMapSSR>,
+        cookies: Option<IndexMapSSR>,
+        content: Option<Vec<u8>>,
+        data: Option<&Bound<'_, PyAny>>,
+        json: Option<&Bound<'_, PyAny>>,
+        files: Option<IndexMap<String, String>>,
+        auth: Option<(String, Option<String>)>,
+        auth_bearer: Option<String>,
+        timeout: Option<f64>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        self.request(py, "POST", url, params, headers, cookies, content, data, json, files, auth, auth_bearer, timeout)
+    }
+
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None))]
+    fn put<'py>(
+        &self,
+        py: Python<'py>,
+        url: &str,
+        params: Option<IndexMapSSR>,
+        headers: Option<IndexMapSSR>,
+        cookies: Option<IndexMapSSR>,
+        content: Option<Vec<u8>>,
+        data: Option<&Bound<'_, PyAny>>,
+        json: Option<&Bound<'_, PyAny>>,
+        files: Option<IndexMap<String, String>>,
+        auth: Option<(String, Option<String>)>,
+        auth_bearer: Option<String>,
+        timeout: Option<f64>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        self.request(py, "PUT", url, params, headers, cookies, content, data, json, files, auth, auth_bearer, timeout)
+    }
+
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None))]
+    fn patch<'py>(
+        &self,
+        py: Python<'py>,
+        url: &str,
+        params: Option<IndexMapSSR>,
+        headers: Option<IndexMapSSR>,
+        cookies: Option<IndexMapSSR>,
+        content: Option<Vec<u8>>,
+        data: Option<&Bound<'_, PyAny>>,
+        json: Option<&Bound<'_, PyAny>>,
+        files: Option<IndexMap<String, String>>,
+        auth: Option<(String, Option<String>)>,
+        auth_bearer: Option<String>,
+        timeout: Option<f64>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        self.request(py, "PATCH", url, params, headers, cookies, content, data, json, files, auth, auth_bearer, timeout)
+    }
+
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, timeout=None))]
+    fn delete<'py>(
+        &self,
+        py: Python<'py>,
+        url: &str,
+        params: Option<IndexMapSSR>,
+        headers: Option<IndexMapSSR>,
+        cookies: Option<IndexMapSSR>,
+        auth: Option<(String, Option<String>)>,
+        auth_bearer: Option<String>,
+        timeout: Option<f64>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        self.request(py, "DELETE", url, params, headers, cookies, None, None, None, None, auth, auth_bearer, timeout)
+    }
+
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, timeout=None))]
+    fn head<'py>(
+        &self,
+        py: Python<'py>,
+        url: &str,
+        params: Option<IndexMapSSR>,
+        headers: Option<IndexMapSSR>,
+        cookies: Option<IndexMapSSR>,
+        auth: Option<(String, Option<String>)>,
+        auth_bearer: Option<String>,
+        timeout: Option<f64>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        self.request(py, "HEAD", url, params, headers, cookies, None, None, None, None, auth, auth_bearer, timeout)
+    }
+
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, timeout=None))]
+    fn options<'py>(
+        &self,
+        py: Python<'py>,
+        url: &str,
+        params: Option<IndexMapSSR>,
+        headers: Option<IndexMapSSR>,
+        cookies: Option<IndexMapSSR>,
+        auth: Option<(String, Option<String>)>,
+        auth_bearer: Option<String>,
+        timeout: Option<f64>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        self.request(py, "OPTIONS", url, params, headers, cookies, None, None, None, None, auth, auth_bearer, timeout)
+    }
+}
+
+impl AsyncClient {
+    fn rebuild_client(&mut self) -> Result<()> {
+        let new_client = Client::build_client(
+            &self.headers,
+            self.cookie_store,
+            self.referer,
+            &self.proxy,
+            self.timeout,
+            &self.impersonate,
+            &self.impersonate_os,
+            self.follow_redirects,
+            self.max_redirects,
+            self.verify,
+            &self.ca_cert_file,
+            self.https_only,
+            self.http2_only,
+            self.skip_http2,
+            self.skip_headers,
         )?;
         
         *self.client.lock().unwrap() = new_client;
@@ -539,5 +1105,7 @@ fn primp(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     pyo3_log::init();
 
     m.add_class::<Client>()?;
+    m.add_class::<AsyncClient>()?;
+    
     Ok(())
 }

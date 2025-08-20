@@ -11,7 +11,8 @@ name = "primp"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = { version = "0.24.1", features = ["extension-module", "abi3-py38", "indexmap", "anyhow", "multiple-pymethods"] }
+pyo3 = { version = "0.24.1", features = ["extension-module", "abi3-py38", "indexmap", "anyhow", "multiple-pymethods", "experimental-async"] }
+pyo3-async-runtimes = { version = "0.24", features = ["tokio-runtime"] }
 anyhow = "1.0.98"
 tracing = { version = "0.1.41", features = ["log-always"] }
 pyo3-log = "0.12.3"

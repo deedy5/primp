@@ -190,9 +190,9 @@ try {
         }
     }
 
-    # Install dependencies
+    # Install core dependencies including certifi and other test requirements
     Write-Host "Installing Python dependencies..." -ForegroundColor Gray
-    & $PythonExe -m pip install --upgrade pip setuptools wheel maturin pytest pytest-asyncio pytest-rerunfailures --quiet
+    & $PythonExe -m pip install --upgrade pip setuptools wheel maturin pytest pytest-asyncio pytest-rerunfailures certifi requests urllib3 --quiet
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to install Python dependencies"
     }
@@ -279,7 +279,7 @@ finally {
 Write-Host "Verifying PRIMP installation..." -ForegroundColor Yellow
 Push-Location $ProjectRoot
 try {
-    & $PythonExe -c "import PRIMP; print('PRIMP imported successfully')"
+    & $PythonExe -c "import primp; print('PRIMP imported successfully')"
     if ($LASTEXITCODE -eq 0) {
         Write-Host "PRIMP verification passed!" -ForegroundColor Green
     }
@@ -289,6 +289,31 @@ try {
 }
 catch {
     Write-Host "Warning: Could not verify PRIMP installation: $_" -ForegroundColor Yellow
+}
+finally {
+    Pop-Location
+}
+
+# Install test dependencies from file if it exists, otherwise skip
+Push-Location $ProjectRoot
+try {
+    $testReqFile = "test-requirements.txt"
+    if (Test-Path $testReqFile) {
+        Write-Host "Installing test dependencies from $testReqFile..." -ForegroundColor Yellow
+        & $PythonExe -m pip install -r $testReqFile --quiet
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Warning: Failed to install some test dependencies" -ForegroundColor Yellow
+        }
+        else {
+            Write-Host "Test dependencies installed successfully!" -ForegroundColor Green
+        }
+    }
+    else {
+        Write-Host "No test-requirements.txt found, using basic dependencies" -ForegroundColor Gray
+    }
+}
+catch {
+    Write-Host "Warning: Error installing test dependencies: $_" -ForegroundColor Yellow
 }
 finally {
     Pop-Location
