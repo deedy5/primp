@@ -1,0 +1,32 @@
+[package]
+name = "h2"
+version = "0.4.13"
+license = "MIT"
+authors = [
+  "Carl Lerche <me@carllerche.com>",
+  "Sean McArthur <sean@seanmonstar.com>",
+]
+description = "A fork of the HTTP/2 client and server library from hyperium"
+edition = "2021"
+rust-version = "1.63"
+
+[features]
+unstable = []
+stream = []
+
+[dependencies]
+atomic-waker = "1.0.0"
+bytes = "1"
+futures-core = { version = "0.3", default-features = false }
+futures-sink = { version = "0.3", default-features = false }
+http = "1"
+indexmap = { version = "2", features = ["std"] }
+slab = "0.4.2"
+smallvec = "1.11"
+tokio = { version = "1", features = ["io-util"] }
+tokio-util = { version = "0.7.1", features = ["codec", "io"] }
+tracing = { version = "0.1.35", default-features = false, features = ["std"] }
+fnv = "1.0.5"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(fuzzing)"] }

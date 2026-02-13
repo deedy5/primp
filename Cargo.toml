@@ -1,0 +1,65 @@
+[package]
+name = "primp"
+version = "1.0.0"
+edition = "2021"
+description = "HTTP client that can impersonate web browsers"
+authors = ["deedy5"]
+
+[lib]
+name = "primp"
+path = "src/lib.rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.27.2", features = ["extension-module", "abi3-py310", "indexmap", "anyhow", "multiple-pymethods"] }
+pyo3-async-runtimes = { version = "0.27", features = ["tokio-runtime"] }
+anyhow = "1.0.98"
+tracing = { version = "0.1.41", features = ["log-always"] }
+pyo3-log = "0.13.2"
+reqwest = { path = "crates/primp-reqwest", features = [
+    "default-tls", 
+    "charset", 
+    "cookies", 
+    "http2", 
+    "query", 
+    "form", 
+    "json", 
+    "multipart", 
+    "stream", 
+    "socks", 
+    "system-proxy", 
+    "gzip", 
+    "brotli", 
+    "deflate", 
+    "zstd", 
+    "impersonate"
+] }
+bytes = "1"
+encoding_rs = { version = "0.8.35" }
+foldhash = "0.2.0"
+h2 = { path = "crates/primp-reqwest/crates/primp-h2", default-features = false, features = ["unstable"] }
+indexmap = { version = "2.13.0", features = ["serde"] }
+tokio = { version = "1.49.0", features = ["full"] }
+tokio-util = { version = "0.7.18", features = ["codec"] }  # for multipart
+html2text = "0.16.6"
+pythonize = "0.27.0"
+serde_json = "1.0.149"
+webpki-root-certs = "1.0.5"
+http = "1.4"
+mime = "0.3.17"
+rand = "0.10"
+typed-builder = "0.23.2"
+once_cell = "1.21"
+url = "2.5"
+
+[patch.crates-io]
+hyper = { path = "crates/primp-reqwest/crates/primp-hyper" }
+hyper-util = { path = "crates/primp-reqwest/crates/primp-hyper-util" }
+rustls = { path = "crates/primp-reqwest/crates/primp-rustls" }
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+opt-level = 3
+panic = "abort"
+strip = "symbols"
