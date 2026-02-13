@@ -1,0 +1,135 @@
+[package]
+name = "rustls"
+version = "0.23.36"
+edition = "2021"
+rust-version = "1.71"
+license = "Apache-2.0 OR ISC OR MIT"
+readme = "README.md"
+description = "A fork of the original rustls crate."
+categories = ["network-programming", "cryptography"]
+autobenches = false
+autotests = false
+exclude = ["src/testdata", "tests/**"]
+build = "build.rs"
+
+[features]
+default = ["ring", "logging", "std", "tls12"]
+
+aws-lc-rs = ["aws_lc_rs"] # Alias because Cargo features commonly use `-`
+aws_lc_rs = ["dep:aws-lc-rs", "webpki/aws-lc-rs", "aws-lc-rs/aws-lc-sys", "aws-lc-rs/prebuilt-nasm", "prefer-post-quantum"]
+brotli = ["dep:brotli", "dep:brotli-decompressor", "std"]
+custom-provider = []
+fips = []
+impersonate = ["aws_lc_rs", "brotli"]  # Enable browser TLS fingerprinting emulation features with aws-lc-rs for post-quantum support
+logging = ["log"]
+prefer-post-quantum = []
+read_buf = ["rustversion", "std"]
+ring = ["dep:ring", "webpki/ring"]
+std = ["webpki/std", "pki-types/std", "once_cell/std"]
+tls12 = []
+# Dummy webpki feature for backward compatibility - webpki is always included
+webpki = []
+zlib = ["dep:zlib-rs"]
+
+[build-dependencies]
+rustversion = { version = "1.0.6", optional = true }
+
+[dependencies]
+aws-lc-rs = { version = "1.8", optional = true, features = ["aws-lc-sys", "prebuilt-nasm"] }
+brotli = { version = "8", optional = true }
+brotli-decompressor = { version = "5", optional = true }
+hashbrown = { version = "0.15", optional = true }
+log = { version = "0.4", optional = true }
+# only required for no-std
+once_cell = { version = "1" }
+ring = { version = "0.17", optional = true }
+subtle = { version = "2" }
+webpki = { package = "rustls-webpki", version = "0.103.5", features = ["alloc", "std"], default-features = false }
+pki-types = { package = "rustls-pki-types", version = "1", features = ["alloc"] }
+zeroize = { version = "1", features = ["zeroize_derive"] }
+zlib-rs = { version = "0.2", optional = true }
+
+[dev-dependencies]
+base64 = "0.22"
+bencher = "0.1"
+env_logger = "0.10"
+hex = "0.4"
+log = "0.4"
+macro_rules_attribute = "0.2"
+num-bigint = "0.4"
+rcgen = "0.13"
+serde = "1"
+serde_json = "1"
+time = "0.3"
+webpki-roots = "1"
+x509-parser = "0.16"
+
+[[bench]]
+name = "benchmarks"
+path = "benches/benchmarks.rs"
+harness = false
+required-features = ["ring"]
+
+[[example]]
+name = "test_ca"
+path = "examples/internal/test_ca.rs"
+
+[[test]]
+name = "api"
+path = "tests/runners/api.rs"
+
+[[test]]
+name = "api_ffdhe"
+path = "tests/runners/api_ffdhe.rs"
+required-features = ["tls12"]
+
+[[test]]
+name = "bogo"
+path = "tests/bogo.rs"
+
+[[test]]
+name = "client_cert_verifier"
+path = "tests/runners/client_cert_verifier.rs"
+
+[[test]]
+name = "ech"
+path = "tests/ech.rs"
+
+[[test]]
+name = "key_log_file_env"
+path = "tests/runners/key_log_file_env.rs"
+
+[[test]]
+name = "process_provider"
+path = "tests/process_provider.rs"
+
+[[test]]
+name = "server_cert_verifier"
+path = "tests/runners/server_cert_verifier.rs"
+
+[[test]]
+name = "unbuffered"
+path = "tests/runners/unbuffered.rs"
+
+[package.metadata.docs.rs]
+# all non-default features except fips (cannot build on docs.rs environment)
+features = ["read_buf", "ring"]
+rustdoc-args = ["--cfg", "rustls_docsrs"]
+
+[package.metadata.cargo_check_external_types]
+allowed_external_types = [
+  # ---
+  "rustls_pki_types",
+  "rustls_pki_types::*",
+]
+
+[package.metadata.cargo-semver-checks.lints]
+enum_no_repr_variant_discriminant_changed = "warn"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+  "cfg(bench)",
+  "cfg(coverage_nightly)",
+  "cfg(read_buf)",
+  "cfg(rustls_docsrs)",
+] }
