@@ -1,0 +1,46 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/primp",
+    "crates/primp-hyper",
+    "crates/primp-hyper-util",
+    "crates/primp-rustls/rustls",
+    "crates/primp-h2",
+    "crates/primp-python",
+]
+
+[workspace.package]
+version = "1.1.0"
+edition = "2021"
+rust-version = "1.70"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/deedy5/primp"
+authors = ["deedy5"]
+
+[workspace.dependencies]
+# Internal crates
+primp = { path = "crates/primp" }
+primp-hyper = { path = "crates/primp-hyper" }
+primp-hyper-util = { path = "crates/primp-hyper-util" }
+primp-rustls = { path = "crates/primp-rustls/rustls" }
+primp-h2 = { path = "crates/primp-h2" }
+
+# Shared external dependencies
+tokio = { version = "1.0", default-features = false, features = ["net", "time"] }
+bytes = "1.2"
+http = "1.1"
+url = "2.4"
+
+# Patch crates-io dependencies to use local forks
+[patch.crates-io]
+hyper = { path = "crates/primp-hyper" }
+hyper-util = { path = "crates/primp-hyper-util" }
+rustls = { path = "crates/primp-rustls/rustls" }
+h2 = { path = "crates/primp-h2" }
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+opt-level = 3
+panic = "abort"
+strip = "symbols"

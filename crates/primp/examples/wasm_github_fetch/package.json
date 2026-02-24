@@ -1,0 +1,14 @@
+{
+    "scripts": {
+        "build": "webpack",
+        "serve": "webpack-dev-server"
+    },
+    "devDependencies": {
+        "@wasm-tool/wasm-pack-plugin": "^1.7.0",
+        "text-encoding": "^0.7.0",
+        "html-webpack-plugin": "^5.6.0",
+        "webpack": "^5.90.0",
+        "webpack-cli": "^5.1.0",
+        "webpack-dev-server": "^5.0.0"
+    }
+}
