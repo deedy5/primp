@@ -38,7 +38,7 @@ rustversion = { version = "1.0.6", optional = true }
 aws-lc-rs = { version = "1.8", optional = true, features = ["aws-lc-sys", "prebuilt-nasm"] }
 brotli = { version = "8", optional = true }
 brotli-decompressor = { version = "5", optional = true }
-hashbrown = { version = "0.15", optional = true }
+hashbrown = { version = "0.16", optional = true }
 log = { version = "0.4", optional = true }
 # only required for no-std
 once_cell = { version = "1" }
@@ -47,7 +47,7 @@ subtle = { version = "2" }
 webpki = { package = "rustls-webpki", version = "0.103.5", features = ["alloc", "std"], default-features = false }
 pki-types = { package = "rustls-pki-types", version = "1", features = ["alloc"] }
 zeroize = { version = "1", features = ["zeroize_derive"] }
-zlib-rs = { version = "0.2", optional = true }
+zlib-rs = { version = "0.6", optional = true }
 
 [dev-dependencies]
 base64 = "0.22"
