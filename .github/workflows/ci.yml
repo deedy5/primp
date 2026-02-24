@@ -363,3 +363,4 @@ jobs:
         with:
           commit_message: Update python benchmark image
           file_pattern: crates/primp-python/benchmark/benchmark.jpg
+          branch: main
