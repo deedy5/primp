@@ -1036,32 +1036,6 @@ mod tests {
         assert_eq!(err.msg, super::INVALID_NOT_HTTP);
     }
 
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
-    fn get_local_ips() -> (Option<std::net::Ipv4Addr>, Option<std::net::Ipv6Addr>) {
-        use std::net::{IpAddr, TcpListener};
-
-        let mut ip_v4 = None;
-        let mut ip_v6 = None;
-
-        let ips = pnet_datalink::interfaces()
-            .into_iter()
-            .flat_map(|i| i.ips.into_iter().map(|n| n.ip()));
-
-        for ip in ips {
-            match ip {
-                IpAddr::V4(ip) if TcpListener::bind((ip, 0)).is_ok() => ip_v4 = Some(ip),
-                IpAddr::V6(ip) if TcpListener::bind((ip, 0)).is_ok() => ip_v6 = Some(ip),
-                _ => (),
-            }
-
-            if ip_v4.is_some() && ip_v6.is_some() {
-                break;
-            }
-        }
-
-        (ip_v4, ip_v6)
-    }
-
     #[cfg(any(target_os = "android", target_os = "fuchsia", target_os = "linux"))]
     fn default_interface() -> Option<String> {
         pnet_datalink::interfaces()
@@ -1085,15 +1059,17 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn local_address() {
-        use std::net::{IpAddr, TcpListener};
+        use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, TcpListener};
 
-        let (bind_ip_v4, bind_ip_v6) = get_local_ips();
+        // For localhost connections, we must use loopback IPs as bind addresses.
+        // Linux routing for localhost connections uses the loopback interface,
+        // so binding to a non-loopback IP won't affect the source IP.
+        let bind_ip_v4: Option<Ipv4Addr> = Some(Ipv4Addr::new(127, 0, 0, 1));
+        let bind_ip_v6: Option<Ipv6Addr> = Some(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1));
+
         let server4 = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = server4.local_addr().unwrap().port();
-        // Only bind to IPv6 if we have an IPv6 address available
-        let server6 = bind_ip_v6
-            .as_ref()
-            .and_then(|_| TcpListener::bind(format!("[::1]:{port}")).ok());
+        let server6 = TcpListener::bind(format!("[::1]:{port}")).ok();
 
         let assert_client_ip = |dst: String, server: TcpListener, expected_ip: IpAddr| async move {
             let mut connector = HttpConnector::new();
