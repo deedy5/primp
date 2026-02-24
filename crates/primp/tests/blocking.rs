@@ -324,7 +324,7 @@ fn test_allowed_methods_blocking() {
         .https_only(true)
         .build()
         .expect("client builder")
-        .get("https://google.com")
+        .get("https://www.google.com")
         .send();
 
     assert_eq!(resp.is_err(), false);
@@ -347,7 +347,7 @@ fn test_body_from_bytes() {
     let request = primp::blocking::Client::builder()
         .build()
         .expect("Could not build the client")
-        .put("https://google.com")
+        .put("https://www.google.com")
         .body(bytes::Bytes::from(body))
         .build()
         .expect("Invalid body");
@@ -364,7 +364,7 @@ fn blocking_add_json_default_content_type_if_not_set_manually() {
     map.insert("body", "json");
     let content_type = HeaderValue::from_static("application/vnd.api+json");
     let req = primp::blocking::Client::new()
-        .post("https://google.com/")
+        .post("https://www.google.com/")
         .header(CONTENT_TYPE, &content_type)
         .json(&map)
         .build()
@@ -379,7 +379,7 @@ fn blocking_update_json_content_type_if_set_manually() {
     let mut map = HashMap::new();
     map.insert("body", "json");
     let req = primp::blocking::Client::new()
-        .post("https://google.com/")
+        .post("https://www.google.com/")
         .json(&map)
         .build()
         .expect("request is not valid");

@@ -400,7 +400,7 @@ async fn test_allowed_methods() {
         .https_only(true)
         .build()
         .expect("client builder")
-        .get("https://google.com")
+        .get("https://www.google.com")
         .send()
         .await;
 
@@ -424,7 +424,7 @@ fn add_json_default_content_type_if_not_set_manually() {
     map.insert("body", "json");
     let content_type = http::HeaderValue::from_static("application/vnd.api+json");
     let req = Client::new()
-        .post("https://google.com/")
+        .post("https://www.google.com/")
         .header(CONTENT_TYPE, &content_type)
         .json(&map)
         .build()
@@ -439,7 +439,7 @@ fn update_json_content_type_if_set_manually() {
     let mut map = HashMap::new();
     map.insert("body", "json");
     let req = Client::new()
-        .post("https://google.com/")
+        .post("https://www.google.com/")
         .json(&map)
         .build()
         .expect("request is not valid");
@@ -454,7 +454,7 @@ async fn test_tls_info() {
         .tls_info(true)
         .build()
         .expect("client builder")
-        .get("https://google.com")
+        .get("https://www.google.com")
         .send()
         .await
         .expect("response");
@@ -469,7 +469,7 @@ async fn test_tls_info() {
     let resp = primp::Client::builder()
         .build()
         .expect("client builder")
-        .get("https://google.com")
+        .get("https://www.google.com")
         .send()
         .await
         .expect("response");
