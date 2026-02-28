@@ -76,6 +76,11 @@ use tower_http::follow_redirect::FollowRedirect;
 #[cfg(feature = "impersonate")]
 static ECH_GREASE_CONFIG: OnceLock<rustls::client::EchGreaseConfig> = OnceLock::new();
 
+/// Cached default TLS versions to avoid allocation on every client build.
+/// This is used when no min/max TLS version filtering is needed.
+#[cfg(feature = "__rustls")]
+static DEFAULT_TLS_VERSIONS: OnceLock<Vec<&'static rustls::SupportedProtocolVersion>> = OnceLock::new();
+
 /// Returns a reference to the cached ECH GREASE configuration.
 /// Creates it lazily on first access.
 #[cfg(feature = "impersonate")]
@@ -762,28 +767,25 @@ impl ClientBuilder {
                 TlsBackend::Rustls => {
                     use crate::tls::{IgnoreHostname, NoVerifier};
 
-                    // Set TLS versions.
-                    let mut versions = rustls::ALL_VERSIONS.to_vec();
-
-                    if let Some(min_tls_version) = config.min_tls_version {
-                        versions.retain(|&supported_version| {
-                            match tls::Version::from_rustls(supported_version.version) {
-                                Some(version) => version >= min_tls_version,
-                                // Assume it's so new we don't know about it, allow it
-                                // (as of writing this is unreachable)
-                                None => true,
+                    // Set TLS versions (use cached defaults when no filtering needed).
+                    let mut filtered;
+                    let versions: &[&'static rustls::SupportedProtocolVersion] =
+                        if config.min_tls_version.is_none() && config.max_tls_version.is_none() {
+                            DEFAULT_TLS_VERSIONS.get_or_init(|| rustls::ALL_VERSIONS.to_vec())
+                        } else {
+                            filtered = rustls::ALL_VERSIONS.to_vec();
+                            if let Some(min) = config.min_tls_version {
+                                filtered.retain(|v| {
+                                    tls::Version::from_rustls(v.version).is_some_and(|ver| ver >= min)
+                                });
                             }
-                        });
-                    }
-
-                    if let Some(max_tls_version) = config.max_tls_version {
-                        versions.retain(|&supported_version| {
-                            match tls::Version::from_rustls(supported_version.version) {
-                                Some(version) => version <= max_tls_version,
-                                None => false,
+                            if let Some(max) = config.max_tls_version {
+                                filtered.retain(|v| {
+                                    tls::Version::from_rustls(v.version).is_some_and(|ver| ver <= max)
+                                });
                             }
-                        });
-                    }
+                            &filtered
+                        };
 
                     if versions.is_empty() {
                         return Err(crate::error::builder("empty supported tls versions"));
@@ -824,14 +826,14 @@ impl ClientBuilder {
                                 .expect("ECH GREASE config should be valid")
                         } else {
                             config_builder
-                                .with_protocol_versions(&versions)
+                                .with_protocol_versions(versions)
                                 .map_err(|_| crate::error::builder("invalid TLS versions"))?
                         };
                     
                     #[cfg(not(feature = "impersonate"))]
                     let config_builder: rustls::ConfigBuilder<rustls::ClientConfig, rustls::WantsVerifier> =
                         config_builder
-                            .with_protocol_versions(&versions)
+                            .with_protocol_versions(versions)
                             .map_err(|_| crate::error::builder("invalid TLS versions"))?;
                     
                     let config_builder = if !config.certs_verification {
