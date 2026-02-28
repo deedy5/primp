@@ -1,35 +1,36 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use bytes::Bytes;
 use encoding_rs::{Encoding, UTF_8};
 use html2text::{
     from_read, from_read_with_decorator,
     render::{RichDecorator, TrivialDecorator},
 };
-use mime::Mime;
 use pyo3::{
     prelude::*,
     types::{PyBytes, PyDict, PyString},
-    IntoPyObjectExt,
+    IntoPyObjectExt, PyErr,
 };
 use pythonize::pythonize;
 use serde_json::from_slice;
 use tokio::sync::Mutex as TMutex;
 
-use crate::error::{convert_reqwest_error, PrimpErrorEnum};
+use crate::error::{body_collection_error, convert_reqwest_error, BodyError, PrimpErrorEnum};
+use crate::utils::extract_encoding;
 use crate::RUNTIME;
 
-/// Extract encoding from Content-Type header.
-///
-/// Returns the encoding specified in the charset parameter, or UTF-8 as fallback.
-fn extract_encoding(headers: &::primp::header::HeaderMap) -> &'static Encoding {
-    headers
-        .get(::primp::header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.parse::<Mime>().ok())
-        .and_then(|mime| mime.get_param("charset").map(|c| c.as_str().to_string()))
-        .and_then(|name| Encoding::for_label(name.as_bytes()))
-        .unwrap_or(UTF_8)
+/// Collect body bytes from a response using a pre-allocated buffer.
+/// Uses `Vec::with_capacity(8 * 1024)` for efficient buffer allocation.
+async fn collect_body_bytes(resp: &mut ::primp::Response) -> Result<Bytes, PyErr> {
+    let mut buf = Vec::with_capacity(8 * 1024);
+    loop {
+        match resp.chunk().await {
+            Ok(Some(chunk)) => buf.extend_from_slice(&chunk),
+            Ok(None) => break Ok(Bytes::from(buf)),
+            Err(e) => return Err(body_collection_error(&e.to_string())),
+        }
+    }
 }
 
 /// A struct representing an async HTTP response.
@@ -71,21 +72,15 @@ impl AsyncResponse {
         }
 
         let resp = Arc::clone(&self.resp);
-        let bytes = py.detach(|| {
+        let bytes: Bytes = py.detach(|| {
             RUNTIME.block_on(async {
-                let mut all_chunks = Vec::with_capacity(8 * 1024);
-                loop {
-                    let mut resp_guard = resp.lock().await;
-                    match resp_guard.as_mut() {
-                        Some(r) => match r.chunk().await {
-                            Ok(Some(chunk)) => all_chunks.extend_from_slice(&chunk),
-                            Ok(None) => break,
-                            Err(e) => return Err(convert_reqwest_error(e)),
-                        },
-                        None => break,
-                    }
+                let mut resp_guard = resp.lock().await;
+                match resp_guard.as_mut() {
+                    Some(r) => collect_body_bytes(r).await,
+                    None => Err(BodyError::new_err(
+                        "Response body already consumed or moved",
+                    )),
                 }
-                Ok::<Vec<u8>, PyErr>(all_chunks)
             })
         })?;
 
@@ -96,22 +91,20 @@ impl AsyncResponse {
 
     /// Get character encoding (sync)
     #[getter]
-    fn get_encoding<'rs>(&mut self, py: Python<'rs>) -> PyResult<String> {
+    fn get_encoding<'rs>(&mut self, _py: Python<'rs>) -> PyResult<String> {
         if let Some(encoding) = self._encoding.as_ref() {
             return Ok(encoding.clone());
         }
 
         let resp = Arc::clone(&self.resp);
-        let encoding = py.detach(|| {
-            RUNTIME.block_on(async {
-                let resp_guard = resp.lock().await;
-                match resp_guard.as_ref() {
-                    Some(r) => {
-                        Ok::<String, PyErr>(extract_encoding(r.headers()).name().to_string())
-                    }
-                    None => Ok("utf-8".to_string()),
-                }
-            })
+        let encoding = RUNTIME.block_on(async {
+            let resp_guard = resp.lock().await;
+            match resp_guard.as_ref() {
+                Some(r) => Ok::<String, PyErr>(extract_encoding(r.headers()).name().to_string()),
+                None => Err(BodyError::new_err(
+                    "Response body already consumed or moved",
+                )),
+            }
         })?;
 
         self._encoding = Some(encoding.clone());
@@ -133,11 +126,8 @@ impl AsyncResponse {
         let content = self.get_content(py)?.unbind();
         let encoding = self.get_encoding(py)?;
         let raw_bytes = content.as_bytes(py);
-        let text = py.detach(|| {
-            let encoding = Encoding::for_label(encoding.as_bytes()).unwrap_or(UTF_8);
-            let (text, _, _) = encoding.decode(raw_bytes);
-            text
-        });
+        let encoding = Encoding::for_label(encoding.as_bytes()).unwrap_or(UTF_8);
+        let (text, _, _) = encoding.decode(raw_bytes);
         text.into_pyobject_or_pyerr(py)
     }
 
@@ -148,32 +138,36 @@ impl AsyncResponse {
             return Ok(headers.clone_ref(py).into_bound(py));
         }
 
+        let new_headers = PyDict::new(py);
         let resp = Arc::clone(&self.resp);
-        let headers_map = py.detach(|| {
-            RUNTIME.block_on(async {
-                let resp_guard = resp.lock().await;
-                match resp_guard.as_ref() {
-                    Some(r) => {
-                        let mut headers = std::collections::HashMap::new();
-                        for (key, value) in r.headers() {
-                            headers
-                                .insert(key.to_string(), value.to_str().unwrap_or("").to_string());
-                        }
-                        Ok::<Option<std::collections::HashMap<String, String>>, PyErr>(Some(
-                            headers,
-                        ))
-                    }
-                    None => Ok(None),
+        let headers = RUNTIME.block_on(async {
+            let resp_guard = resp.lock().await;
+            match resp_guard.as_ref() {
+                Some(r) => {
+                    let headers_vec: Vec<(String, String)> = r
+                        .headers()
+                        .iter()
+                        .filter_map(|(key, value)| {
+                            value
+                                .to_str()
+                                .ok()
+                                .map(|v| (key.to_string(), v.to_string()))
+                        })
+                        .collect();
+                    Ok::<Option<Vec<(String, String)>>, PyErr>(Some(headers_vec))
                 }
-            })
+                None => Err(BodyError::new_err(
+                    "Response body already consumed or moved",
+                )),
+            }
         })?;
 
-        let new_headers = PyDict::new(py);
-        if let Some(headers) = headers_map {
+        if let Some(headers) = headers {
             for (key, value) in headers {
-                new_headers.set_item(key, value)?;
+                new_headers.set_item(key, value).ok();
             }
         }
+
         self._headers = Some(new_headers.clone().unbind());
         Ok(new_headers)
     }
@@ -185,39 +179,40 @@ impl AsyncResponse {
             return Ok(cookies.clone_ref(py).into_bound(py));
         }
 
+        let new_cookies = PyDict::new(py);
         let resp = Arc::clone(&self.resp);
-        let cookies_map = py.detach(|| {
-            RUNTIME.block_on(async {
-                let resp_guard = resp.lock().await;
-                match resp_guard.as_ref() {
-                    Some(r) => {
-                        let mut cookies = std::collections::HashMap::new();
-                        let set_cookie_header = r.headers().get_all(::primp::header::SET_COOKIE);
-                        for cookie_header in set_cookie_header.iter() {
-                            if let Ok(cookie_str) = cookie_header.to_str() {
-                                if let Some((name, value)) = cookie_str.split_once('=') {
-                                    cookies.insert(
+        let cookies = RUNTIME.block_on(async {
+            let resp_guard = resp.lock().await;
+            match resp_guard.as_ref() {
+                Some(r) => {
+                    let set_cookie_header = r.headers().get_all(::primp::header::SET_COOKIE);
+                    let cookies_vec: Vec<(String, String)> = set_cookie_header
+                        .iter()
+                        .filter_map(|cookie_header| {
+                            cookie_header.to_str().ok().and_then(|cookie_str| {
+                                cookie_str.split_once('=').map(|(name, value)| {
+                                    (
                                         name.trim().to_string(),
                                         value.split(';').next().unwrap_or("").trim().to_string(),
-                                    );
-                                }
-                            }
-                        }
-                        Ok::<Option<std::collections::HashMap<String, String>>, PyErr>(Some(
-                            cookies,
-                        ))
-                    }
-                    None => Ok(None),
+                                    )
+                                })
+                            })
+                        })
+                        .collect();
+                    Ok::<Option<Vec<(String, String)>>, PyErr>(Some(cookies_vec))
                 }
-            })
+                None => Err(BodyError::new_err(
+                    "Response body already consumed or moved",
+                )),
+            }
         })?;
 
-        let new_cookies = PyDict::new(py);
-        if let Some(cookies) = cookies_map {
+        if let Some(cookies) = cookies {
             for (key, value) in cookies {
-                new_cookies.set_item(key, value)?;
+                new_cookies.set_item(key, value).ok();
             }
         }
+
         self._cookies = Some(new_cookies.clone().unbind());
         Ok(new_cookies)
     }
@@ -367,19 +362,15 @@ impl AsyncStreamResponse {
 
         let resp = Arc::clone(&self.resp);
         let future = async move {
-            let mut all_chunks = Vec::with_capacity(8 * 1024);
-            loop {
-                let mut resp_guard = resp.lock().await;
-                match resp_guard.as_mut() {
-                    Some(r) => match r.chunk().await {
-                        Ok(Some(chunk)) => all_chunks.extend_from_slice(&chunk),
-                        Ok(None) => break,
-                        Err(e) => return Err(convert_reqwest_error(e)),
-                    },
-                    None => break,
-                }
-            }
-            Ok::<Vec<u8>, PyErr>(all_chunks)
+            let mut resp_guard = resp.lock().await;
+            let bytes = match resp_guard.as_mut() {
+                Some(r) => match collect_body_bytes(r).await {
+                    Ok(buf) => buf,
+                    Err(e) => return Err(e),
+                },
+                None => Bytes::new(),
+            };
+            Ok::<Vec<u8>, PyErr>(bytes.to_vec())
         };
 
         future_into_py(py, future)
@@ -399,20 +390,16 @@ impl AsyncStreamResponse {
         let resp = Arc::clone(&self.resp);
         let encoding = self.encoding.clone();
         let future = async move {
-            let mut all_chunks = Vec::with_capacity(8 * 1024);
-            loop {
-                let mut resp_guard = resp.lock().await;
-                match resp_guard.as_mut() {
-                    Some(r) => match r.chunk().await {
-                        Ok(Some(chunk)) => all_chunks.extend_from_slice(&chunk),
-                        Ok(None) => break,
-                        Err(e) => return Err(convert_reqwest_error(e)),
-                    },
-                    None => break,
-                }
-            }
+            let mut resp_guard = resp.lock().await;
+            let bytes = match resp_guard.as_mut() {
+                Some(r) => match collect_body_bytes(r).await {
+                    Ok(buf) => buf,
+                    Err(e) => return Err(e),
+                },
+                None => Bytes::new(),
+            };
             let encoding = Encoding::for_label(encoding.as_bytes()).unwrap_or(UTF_8);
-            let (text, _, _) = encoding.decode(&all_chunks);
+            let (text, _, _) = encoding.decode(&bytes);
             Ok::<String, PyErr>(text.to_string())
         };
 

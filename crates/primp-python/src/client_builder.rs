@@ -66,8 +66,8 @@ pub fn configure_client_builder(
     referer: Option<bool>,
     proxy: Option<String>,
     timeout: Option<f64>,
-    impersonate: Option<String>,
-    impersonate_os: Option<String>,
+    impersonate: Option<&str>,
+    impersonate_os: Option<&str>,
     follow_redirects: Option<bool>,
     max_redirects: Option<usize>,
     verify: Option<bool>,
@@ -76,18 +76,18 @@ pub fn configure_client_builder(
     http2_only: Option<bool>,
 ) -> PrimpResult<(ClientBuilder, Option<String>)> {
     // Impersonate
-    if let Some(imp) = &impersonate {
-        let imp_val = parse_impersonate_with_fallback(imp.as_str());
-        let imp_os = if let Some(os) = &impersonate_os {
-            parse_impersonate_os_with_fallback(os.as_str())
+    if let Some(imp) = impersonate {
+        let imp_val = parse_impersonate_with_fallback(imp);
+        let imp_os = if let Some(os) = impersonate_os {
+            parse_impersonate_os_with_fallback(os)
         } else {
             *get_random_element(IMPERSONATEOS_LIST)
         };
         // IMPORTANT: Call impersonate_os BEFORE impersonate, because impersonate reads os_type from config
         builder = builder.impersonate_os(imp_os);
         builder = builder.impersonate(imp_val);
-    } else if let Some(os) = &impersonate_os {
-        let imp_os = parse_impersonate_os_with_fallback(os.as_str());
+    } else if let Some(os) = impersonate_os {
+        let imp_os = parse_impersonate_os_with_fallback(os);
         builder = builder.impersonate_os(imp_os);
     }
 
@@ -150,11 +150,18 @@ pub fn configure_client_builder(
 
 /// Extracts cookies from a cookie header string into an IndexMap.
 pub fn parse_cookies_from_header(cookie_str: &str) -> IndexMapSSR {
-    let mut cookie_map = IndexMap::with_capacity_and_hasher(10, RandomState::default());
+    // Estimate capacity by counting semicolons (usually n cookies = n-1 semicolons)
+    // This avoids reallocations during cookie parsing
+    let estimated_count = cookie_str.bytes().filter(|&b| b == b';').count() + 1;
+    let mut cookie_map =
+        IndexMap::with_capacity_and_hasher(estimated_count.max(2), RandomState::default());
+
     for cookie in cookie_str.split(';') {
         let mut parts = cookie.splitn(2, '=');
         if let (Some(key), Some(value)) = (parts.next(), parts.next()) {
-            cookie_map.insert(key.trim().to_string(), value.trim().to_string());
+            let key = key.trim();
+            let value = value.trim();
+            cookie_map.insert(key.to_string(), value.to_string());
         }
     }
     cookie_map
