@@ -7,7 +7,6 @@ use html2text::{
     from_read, from_read_with_decorator,
     render::{RichDecorator, TrivialDecorator},
 };
-use mime::Mime;
 use pyo3::{
     prelude::*,
     types::{PyBytes, PyDict, PyString},
@@ -17,20 +16,21 @@ use pythonize::pythonize;
 use serde_json::from_slice;
 use tokio::sync::Mutex as TMutex;
 
-use crate::error::{convert_reqwest_error, PrimpErrorEnum};
+use crate::error::{body_collection_error, convert_reqwest_error, BodyError, PrimpErrorEnum};
+use crate::utils::extract_encoding;
 use crate::RUNTIME;
 
-/// Extract encoding from Content-Type header.
-///
-/// Returns the encoding specified in the charset parameter, or UTF-8 as fallback.
-fn extract_encoding(headers: &::primp::header::HeaderMap) -> &'static Encoding {
-    headers
-        .get(::primp::header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.parse::<Mime>().ok())
-        .and_then(|mime| mime.get_param("charset").map(|c| c.as_str().to_string()))
-        .and_then(|name| Encoding::for_label(name.as_bytes()))
-        .unwrap_or(UTF_8)
+/// Collect body bytes from a response using a pre-allocated buffer.
+/// Uses `Vec::with_capacity(8 * 1024)` for efficient buffer allocation.
+async fn collect_body_bytes(resp: &mut ::primp::Response) -> Result<Bytes, PyErr> {
+    let mut buf = Vec::with_capacity(8 * 1024);
+    loop {
+        match resp.chunk().await {
+            Ok(Some(chunk)) => buf.extend_from_slice(&chunk),
+            Ok(None) => break Ok(Bytes::from(buf)),
+            Err(e) => return Err(body_collection_error(&e.to_string())),
+        }
+    }
 }
 
 /// A struct representing an HTTP response.
@@ -50,6 +50,27 @@ pub struct Response {
     pub status_code: u16,
 }
 
+impl Response {
+    pub fn new(
+        resp: ::primp::Response,
+        url: String,
+        status_code: u16,
+        headers: Py<PyDict>,
+        cookies: Py<PyDict>,
+        encoding: String,
+    ) -> Self {
+        Response {
+            resp: Some(resp),
+            _content: None,
+            _encoding: Some(encoding),
+            _headers: Some(headers),
+            _cookies: Some(cookies),
+            url,
+            status_code,
+        }
+    }
+}
+
 #[pymethods]
 impl Response {
     #[getter]
@@ -60,25 +81,12 @@ impl Response {
         }
         let bytes: Bytes = py.detach(|| {
             RUNTIME.block_on(async {
-                // Collect all chunks using chunk() which takes &mut self
-                // Pre-allocate with 8KB initial capacity to reduce reallocations
-                let mut all_chunks = Vec::with_capacity(8 * 1024);
-                loop {
-                    match self
-                        .resp
-                        .as_mut()
-                        .expect("Response was moved for streaming")
-                        .chunk()
-                        .await
-                    {
-                        Ok(Some(chunk)) => all_chunks.extend_from_slice(&chunk),
-                        Ok(None) => break,
-                        Err(e) => {
-                            return Err(convert_reqwest_error(e));
-                        }
-                    }
+                match self.resp.as_mut() {
+                    Some(r) => collect_body_bytes(r).await,
+                    None => Err(BodyError::new_err(
+                        "Response body already consumed or moved",
+                    )),
                 }
-                Ok(Bytes::from(all_chunks))
             })
         })?;
 
@@ -88,17 +96,17 @@ impl Response {
     }
 
     #[getter]
-    fn get_encoding<'rs>(&mut self, py: Python<'rs>) -> Result<String> {
+    fn get_encoding<'rs>(&mut self, _py: Python<'rs>) -> Result<String> {
         if let Some(encoding) = self._encoding.as_ref() {
             return Ok(encoding.clone());
         }
-        let encoding = py.detach(|| {
-            let resp = self
-                .resp
-                .as_ref()
-                .expect("Response was moved for streaming");
-            extract_encoding(resp.headers()).name().to_string()
-        });
+
+        let encoding = match self.resp.as_ref() {
+            Some(r) => extract_encoding(r.headers()).name().to_string(),
+            None => {
+                return Err(BodyError::new_err("Response body already consumed or moved").into())
+            }
+        };
         self._encoding = Some(encoding.clone());
         Ok(encoding)
     }
@@ -116,11 +124,8 @@ impl Response {
         let content = self.get_content(py)?.unbind();
         let encoding = self.get_encoding(py)?;
         let raw_bytes = content.as_bytes(py);
-        let text = py.detach(|| {
-            let encoding = Encoding::for_label(encoding.as_bytes()).unwrap_or(UTF_8);
-            let (text, _, _) = encoding.decode(raw_bytes);
-            text
-        });
+        let encoding = Encoding::for_label(encoding.as_bytes()).unwrap_or(UTF_8);
+        let (text, _, _) = encoding.decode(raw_bytes);
         Ok(text.into_pyobject_or_pyerr(py)?)
     }
 
@@ -149,13 +154,16 @@ impl Response {
         }
 
         let new_headers = PyDict::new(py);
-        for (key, value) in self
-            .resp
-            .as_ref()
-            .expect("Response was moved for streaming")
-            .headers()
-        {
-            new_headers.set_item(key.as_str(), value.to_str()?)?;
+        let resp_ref = self.resp.as_ref();
+        match resp_ref {
+            Some(r) => {
+                for (key, value) in r.headers() {
+                    new_headers.set_item(key.as_str(), value.to_str()?)?;
+                }
+            }
+            None => {
+                return Err(BodyError::new_err("Response body already consumed or moved").into())
+            }
         }
         self._headers = Some(new_headers.clone().unbind());
         Ok(new_headers)
@@ -168,18 +176,23 @@ impl Response {
         }
 
         let new_cookies = PyDict::new(py);
-        let set_cookie_header = self
-            .resp
-            .as_ref()
-            .expect("Response was moved for streaming")
-            .headers()
-            .get_all(::primp::header::SET_COOKIE);
-        for cookie_header in set_cookie_header.iter() {
-            if let Ok(cookie_str) = cookie_header.to_str() {
-                if let Some((name, value)) = cookie_str.split_once('=') {
-                    new_cookies
-                        .set_item(name.trim(), value.split(';').next().unwrap_or("").trim())?;
+        let resp_ref = self.resp.as_ref();
+        match resp_ref {
+            Some(r) => {
+                let set_cookie_header = r.headers().get_all(::primp::header::SET_COOKIE);
+                for cookie_header in set_cookie_header.iter() {
+                    if let Ok(cookie_str) = cookie_header.to_str() {
+                        if let Some((name, value)) = cookie_str.split_once('=') {
+                            new_cookies.set_item(
+                                name.trim(),
+                                value.split(';').next().unwrap_or("").trim(),
+                            )?;
+                        }
+                    }
                 }
+            }
+            None => {
+                return Err(BodyError::new_err("Response body already consumed or moved").into())
             }
         }
         self._cookies = Some(new_cookies.clone().unbind());
@@ -305,21 +318,15 @@ impl StreamResponse {
     /// Read remaining content into memory and return as bytes
     fn read<'rs>(&mut self, py: Python<'rs>) -> PyResult<Bound<'rs, PyBytes>> {
         let resp = Arc::clone(&self.resp);
-        let bytes = py.detach(|| {
+        let bytes: Bytes = py.detach(|| {
             RUNTIME.block_on(async {
-                let mut all_chunks = Vec::with_capacity(8 * 1024);
-                loop {
-                    let mut resp_guard = resp.lock().await;
-                    match resp_guard.as_mut() {
-                        Some(r) => match r.chunk().await {
-                            Ok(Some(chunk)) => all_chunks.extend_from_slice(&chunk),
-                            Ok(None) => break,
-                            Err(e) => return Err(convert_reqwest_error(e)),
-                        },
-                        None => break,
-                    }
+                let mut resp_guard = resp.lock().await;
+                match resp_guard.as_mut() {
+                    Some(r) => collect_body_bytes(r).await,
+                    None => Err(BodyError::new_err(
+                        "Response body already consumed or moved",
+                    )),
                 }
-                Ok::<Vec<u8>, PyErr>(all_chunks)
             })
         })?;
 

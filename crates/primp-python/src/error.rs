@@ -252,14 +252,14 @@ pub(crate) fn convert_reqwest_error(err: ::primp::Error) -> PyErr {
         return RequestError::new_err((message, url));
     }
 
-    // Body errors
-    if err.is_body() {
-        return BodyError::new_err((message, url));
-    }
-
     // Decode errors
     if err.is_decode() {
         return DecodeError::new_err((message, url));
+    }
+
+    // Body errors
+    if err.is_body() {
+        return BodyError::new_err((message, url));
     }
 
     // Upgrade errors
@@ -298,5 +298,34 @@ pub fn convert_primp_error(err: PrimpErrorEnum) -> PyErr {
             pyo3::exceptions::PyStopAsyncIteration::new_err("The iterator is exhausted")
         }
         PrimpErrorEnum::InvalidURL(msg) => BuilderError::new_err(format!("URL error: {}", msg)),
+    }
+}
+
+/// Check if an error message indicates a decode/decompression error.
+///
+/// This is used for body collection errors where we only have the error message
+/// string and not a proper reqwest::Error with `is_decode()` method.
+/// Decompression errors contain keywords like "gzip", "deflate", "decompression", etc.
+pub fn is_decode_error_message(error_msg: &str) -> bool {
+    let lower = error_msg.to_lowercase();
+    lower.contains("gzip")
+        || lower.contains("deflate")
+        || lower.contains("decompression")
+        || lower.contains("decoding")
+        || lower.contains("invalid header")
+        || lower.contains("corrupt")
+        || lower.contains("truncated")
+        || lower.contains("incorrect header check")
+}
+
+/// Create the appropriate Python exception for a body collection error.
+///
+/// This checks if the error message indicates a decompression error and
+/// returns DecodeError for those cases, otherwise returns BodyError.
+pub fn body_collection_error(error_msg: &str) -> PyErr {
+    if is_decode_error_message(error_msg) {
+        DecodeError::new_err(format!("Body collection error: {}", error_msg))
+    } else {
+        BodyError::new_err(format!("Body collection error: {}", error_msg))
     }
 }

@@ -45,7 +45,7 @@ impl HeadersTraits for IndexMapSSR {
 
     fn to_headermap(&self) -> Result<HeaderMap, PrimpErrorEnum> {
         let mut header_map = HeaderMap::with_capacity(self.len());
-        for (k, v) in self {
+        for (k, v) in self.iter() {
             let (name, value) = try_make_header(k, v)?;
             header_map.insert(name, value);
         }

@@ -5,8 +5,6 @@ use std::time::Duration;
 use ::primp::{
     header, multipart, Body, Client as PrimpClient, Method, Proxy, Response as PrimpResponse, Url,
 };
-use encoding_rs::UTF_8;
-use mime::Mime;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use pythonize::depythonize;
@@ -36,6 +34,7 @@ mod traits;
 use traits::{HeaderMapExt, HeadersTraits};
 
 mod utils;
+use utils::extract_encoding;
 
 // Tokio global one-thread runtime
 static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
@@ -44,19 +43,6 @@ static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
         .build()
         .expect("Failed to create Tokio runtime")
 });
-
-/// Extract encoding from Content-Type header.
-///
-/// Returns the encoding specified in the charset parameter, or UTF-8 as fallback.
-fn extract_encoding(headers: &header::HeaderMap) -> &'static encoding_rs::Encoding {
-    headers
-        .get(header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.parse::<Mime>().ok())
-        .and_then(|mime| mime.get_param("charset").map(|c| c.as_str().to_string()))
-        .and_then(|name| encoding_rs::Encoding::for_label(name.as_bytes()))
-        .unwrap_or(UTF_8)
-}
 
 #[pyclass(subclass)]
 /// HTTP client that can impersonate web browsers.
@@ -158,8 +144,8 @@ impl Client {
             referer,
             proxy,
             timeout,
-            impersonate.clone(),
-            impersonate_os.clone(),
+            impersonate.as_deref(),
+            impersonate_os.as_deref(),
             follow_redirects,
             max_redirects,
             verify,
@@ -297,7 +283,6 @@ impl Client {
         let client = Arc::clone(&self.client);
         let method = Method::from_bytes(method.as_bytes()).map_err(Into::<PrimpErrorEnum>::into)?;
         let is_post_put_patch = matches!(method, Method::POST | Method::PUT | Method::PATCH);
-        let params = params.or_else(|| self.params.clone());
         let data_value: Option<Value> = data
             .map(depythonize)
             .transpose()
@@ -306,28 +291,48 @@ impl Client {
             .map(depythonize)
             .transpose()
             .map_err(Into::<PrimpErrorEnum>::into)?;
-        let auth = auth.or(self.auth.clone());
-        let auth_bearer = auth_bearer.or(self.auth_bearer.clone());
         let timeout: Option<f64> = timeout.or(self.timeout);
 
-        // Cookies
-        if let Some(cookies) = cookies {
+        // Cookies - process outside async block only if cookies provided and non-empty
+        if let Some(cookies) = cookies.filter(|c| !c.is_empty()) {
             let url = Url::parse(url).map_err(Into::<PrimpErrorEnum>::into)?;
             let cookie_values = cookies_to_header_values(&cookies);
             let client = client.read().expect("client lock was poisoned");
             client.set_cookies(&url, cookie_values);
         }
 
-        let future = async {
-            // Create request builder
-            let mut request_builder = client
-                .read()
-                .expect("client lock was poisoned")
-                .request(method, url);
+        // Clone the inner client to avoid holding the RwLock across await points
+        let client_clone = client.read().expect("client lock was poisoned").clone();
+
+        let self_params = params
+            .as_ref()
+            .is_none()
+            .then_some(self.params.as_ref())
+            .flatten();
+        let self_auth = auth
+            .as_ref()
+            .is_none()
+            .then_some(self.auth.as_ref())
+            .flatten();
+        let self_auth_bearer = auth_bearer
+            .as_ref()
+            .is_none()
+            .then_some(self.auth_bearer.as_ref())
+            .flatten();
+
+        let future = async move {
+            // Create request builder using the cloned client
+            let mut request_builder = client_clone.request(method, url);
 
             // Params
-            if let Some(params) = params {
-                request_builder = request_builder.query(&params);
+            match (&params, self_params) {
+                (Some(p), _) => {
+                    request_builder = request_builder.query(p);
+                }
+                (None, Some(sp)) => {
+                    request_builder = request_builder.query(sp);
+                }
+                (None, None) => {}
             }
 
             // Headers
@@ -366,10 +371,25 @@ impl Client {
             }
 
             // Auth
-            if let Some((username, password)) = auth {
-                request_builder = request_builder.basic_auth(username, password);
-            } else if let Some(token) = auth_bearer {
-                request_builder = request_builder.bearer_auth(token);
+            match (&auth, self_auth) {
+                (Some((u, p)), _) => {
+                    request_builder = request_builder.basic_auth(u, p.as_deref());
+                }
+                (None, Some((u, p))) => {
+                    request_builder = request_builder.basic_auth(u, p.as_deref());
+                }
+                (None, None) => {
+                    // Try bearer auth if no basic auth
+                    match (&auth_bearer, self_auth_bearer) {
+                        (Some(t), _) => {
+                            request_builder = request_builder.bearer_auth(t);
+                        }
+                        (None, Some(t)) => {
+                            request_builder = request_builder.bearer_auth(t);
+                        }
+                        (None, None) => {}
+                    }
+                }
             }
 
             // Timeout
@@ -428,19 +448,34 @@ impl Client {
             );
             Ok(stream_response.into_pyobject(py)?.into_any().unbind())
         } else {
-            // Return regular Response
-            Ok(Response {
-                resp: Some(resp),
-                _content: None,
-                _encoding: None,
-                _headers: None,
-                _cookies: None,
+            // Return regular Response with pre-computed headers and cookies
+            let headers = PyDict::new(py);
+            for (key, value) in resp.headers() {
+                headers.set_item(key.as_str(), value.to_str().unwrap_or(""))?;
+            }
+
+            let cookies = PyDict::new(py);
+            let set_cookie_header = resp.headers().get_all(header::SET_COOKIE);
+            for cookie_header in set_cookie_header.iter() {
+                if let Ok(cookie_str) = cookie_header.to_str() {
+                    if let Some((name, value)) = cookie_str.split_once('=') {
+                        cookies
+                            .set_item(name.trim(), value.split(';').next().unwrap_or("").trim())?;
+                    }
+                }
+            }
+
+            let encoding = extract_encoding(resp.headers()).name().to_string();
+
+            let response = Response::new(
+                resp,
                 url,
                 status_code,
-            }
-            .into_pyobject(py)?
-            .into_any()
-            .unbind())
+                headers.unbind(),
+                cookies.unbind(),
+                encoding,
+            );
+            Ok(response.into_pyobject(py)?.into_any().unbind())
         }
     }
 

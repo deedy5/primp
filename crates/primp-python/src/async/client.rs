@@ -4,8 +4,6 @@ use std::time::Duration;
 use ::primp::{
     header, multipart, Body, Client as PrimpClient, Method, Proxy, Response as PrimpResponse, Url,
 };
-use encoding_rs::UTF_8;
-use mime::Mime;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use pythonize::depythonize;
@@ -19,19 +17,7 @@ use crate::client_builder::{
 };
 use crate::error::{PrimpErrorEnum, PrimpResult};
 use crate::traits::{HeaderMapExt, HeadersTraits};
-
-/// Extract encoding from Content-Type header.
-///
-/// Returns the encoding specified in the charset parameter, or UTF-8 as fallback.
-fn extract_encoding(headers: &header::HeaderMap) -> &'static encoding_rs::Encoding {
-    headers
-        .get(header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.parse::<Mime>().ok())
-        .and_then(|mime| mime.get_param("charset").map(|c| c.as_str().to_string()))
-        .and_then(|name| encoding_rs::Encoding::for_label(name.as_bytes()))
-        .unwrap_or(UTF_8)
-}
+use crate::utils::extract_encoding;
 
 /// Async HTTP client that can impersonate web browsers.
 #[pyclass(subclass)]
@@ -85,8 +71,8 @@ impl AsyncClient {
             referer,
             proxy,
             timeout,
-            impersonate.clone(),
-            impersonate_os.clone(),
+            impersonate.as_deref(),
+            impersonate_os.as_deref(),
             follow_redirects,
             max_redirects,
             verify,

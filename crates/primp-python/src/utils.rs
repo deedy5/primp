@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use ::primp::Certificate;
+use mime::Mime;
 use once_cell::sync::Lazy;
 
 /// Thread-safe cache for CA certificates, keyed by file path
@@ -70,6 +71,22 @@ pub fn load_ca_certs(ca_cert_file: &Option<String>) -> Option<Vec<Certificate>> 
 
     // Try to load from environment variables
     load_ca_certs_from_env()
+}
+
+/// Extract encoding from Content-Type header.
+///
+/// Returns the encoding specified in the charset parameter, or UTF-8 as fallback.
+pub fn extract_encoding(headers: &::primp::header::HeaderMap) -> &'static encoding_rs::Encoding {
+    headers
+        .get(::primp::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| {
+            s.parse::<Mime>().ok().and_then(|mime| {
+                mime.get_param("charset")
+                    .and_then(|c| encoding_rs::Encoding::for_label(c.as_str().as_bytes()))
+            })
+        })
+        .unwrap_or(encoding_rs::UTF_8)
 }
 
 #[cfg(test)]
