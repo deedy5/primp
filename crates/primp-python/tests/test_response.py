@@ -24,9 +24,9 @@ import primp
 class TestResponseUrl:
     """Tests for Response.url property."""
     
-    def test_sync_client_response_url(self, test_server_dynamic_port: str) -> None:
+    def test_sync_client_response_url(self, test_server: str) -> None:
         """Test response URL property on sync Client."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         response = client.get(f"{base_url}/get")
@@ -35,9 +35,9 @@ class TestResponseUrl:
         assert "/get" in response.url
     
     @pytest.mark.asyncio
-    async def test_async_client_response_url(self, test_server_dynamic_port: str) -> None:
+    async def test_async_client_response_url(self, test_server: str) -> None:
         """Test response URL property on AsyncClient."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         response = await client.get(f"{base_url}/get")
@@ -49,9 +49,9 @@ class TestResponseUrl:
 class TestResponseStatusCode:
     """Tests for Response.status_code property."""
     
-    def test_sync_client_response_status_code(self, test_server_dynamic_port: str) -> None:
+    def test_sync_client_response_status_code(self, test_server: str) -> None:
         """Test response status_code property on sync Client."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         response = client.get(f"{base_url}/get")
@@ -60,9 +60,9 @@ class TestResponseStatusCode:
         assert isinstance(response.status_code, int)
     
     @pytest.mark.asyncio
-    async def test_async_client_response_status_code(self, test_server_dynamic_port: str) -> None:
+    async def test_async_client_response_status_code(self, test_server: str) -> None:
         """Test response status_code property on AsyncClient."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         response = await client.get(f"{base_url}/get")
@@ -70,9 +70,9 @@ class TestResponseStatusCode:
         assert response.status_code == 200
         assert isinstance(response.status_code, int)
     
-    def test_sync_client_response_status_code_404(self, test_server_dynamic_port: str) -> None:
+    def test_sync_client_response_status_code_404(self, test_server: str) -> None:
         """Test response status_code for 404 on sync Client."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         response = client.get(f"{base_url}/status/404")
@@ -80,9 +80,9 @@ class TestResponseStatusCode:
         assert response.status_code == 404
     
     @pytest.mark.asyncio
-    async def test_async_client_response_status_code_404(self, test_server_dynamic_port: str) -> None:
+    async def test_async_client_response_status_code_404(self, test_server: str) -> None:
         """Test response status_code for 404 on AsyncClient."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         response = await client.get(f"{base_url}/status/404")
@@ -93,9 +93,9 @@ class TestResponseStatusCode:
 class TestResponseContent:
     """Tests for Response.content property."""
     
-    def test_sync_client_response_content(self, test_server_dynamic_port: str) -> None:
+    def test_sync_client_response_content(self, test_server: str) -> None:
         """Test response content property on sync Client."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         response = client.get(f"{base_url}/get")
@@ -105,9 +105,9 @@ class TestResponseContent:
         assert len(response.content) > 0
     
     @pytest.mark.asyncio
-    async def test_async_client_response_content(self, test_server_dynamic_port: str) -> None:
+    async def test_async_client_response_content(self, test_server: str) -> None:
         """Test response content property on AsyncClient."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         response = await client.get(f"{base_url}/get")
@@ -120,9 +120,9 @@ class TestResponseContent:
 class TestResponseEncoding:
     """Tests for Response.encoding property."""
     
-    def test_sync_client_response_encoding(self, test_server_dynamic_port: str) -> None:
+    def test_sync_client_response_encoding(self, test_server: str) -> None:
         """Test response encoding property on sync Client."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         response = client.get(f"{base_url}/get")
@@ -132,9 +132,9 @@ class TestResponseEncoding:
             assert isinstance(response.encoding, str)
     
     @pytest.mark.asyncio
-    async def test_async_client_response_encoding(self, test_server_dynamic_port: str) -> None:
+    async def test_async_client_response_encoding(self, test_server: str) -> None:
         """Test response encoding property on AsyncClient."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         response = await client.get(f"{base_url}/get")
@@ -146,9 +146,9 @@ class TestResponseEncoding:
 class TestResponseText:
     """Tests for Response.text property."""
     
-    def test_sync_client_response_text(self, test_server_dynamic_port: str) -> None:
+    def test_sync_client_response_text(self, test_server: str) -> None:
         """Test response text property on sync Client."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         response = client.get(f"{base_url}/get")
@@ -158,9 +158,9 @@ class TestResponseText:
         assert len(response.text) > 0
     
     @pytest.mark.asyncio
-    async def test_async_client_response_text(self, test_server_dynamic_port: str) -> None:
+    async def test_async_client_response_text(self, test_server: str) -> None:
         """Test response text property on AsyncClient."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         response = await client.get(f"{base_url}/get")
@@ -169,9 +169,9 @@ class TestResponseText:
         assert isinstance(response.text, str)
         assert len(response.text) > 0
     
-    def test_sync_client_response_text_html(self, test_server_dynamic_port: str) -> None:
+    def test_sync_client_response_text_html(self, test_server: str) -> None:
         """Test response text property for HTML content."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         response = client.get(f"{base_url}/html")
@@ -184,9 +184,9 @@ class TestResponseText:
 class TestResponseHeaders:
     """Tests for Response.headers property."""
     
-    def test_sync_client_response_headers(self, test_server_dynamic_port: str) -> None:
+    def test_sync_client_response_headers(self, test_server: str) -> None:
         """Test response headers property on sync Client."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         response = client.get(f"{base_url}/get")
@@ -197,9 +197,9 @@ class TestResponseHeaders:
         assert "content-type" in response.headers or "Content-Type" in response.headers
     
     @pytest.mark.asyncio
-    async def test_async_client_response_headers(self, test_server_dynamic_port: str) -> None:
+    async def test_async_client_response_headers(self, test_server: str) -> None:
         """Test response headers property on AsyncClient."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         response = await client.get(f"{base_url}/get")
@@ -211,9 +211,9 @@ class TestResponseHeaders:
 class TestResponseCookies:
     """Tests for Response.cookies property."""
     
-    def test_sync_client_response_cookies(self, test_server_dynamic_port: str) -> None:
+    def test_sync_client_response_cookies(self, test_server: str) -> None:
         """Test response cookies property on sync Client."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         response = client.get(f"{base_url}/cookies/set?test_cookie=test_value")
@@ -223,9 +223,9 @@ class TestResponseCookies:
         assert cookies is not None
     
     @pytest.mark.asyncio
-    async def test_async_client_response_cookies(self, test_server_dynamic_port: str) -> None:
+    async def test_async_client_response_cookies(self, test_server: str) -> None:
         """Test response cookies property on AsyncClient."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         response = await client.get(f"{base_url}/cookies/set?test_cookie=test_value")
@@ -237,9 +237,9 @@ class TestResponseCookies:
 class TestResponseTextMarkdown:
     """Tests for Response.text_markdown property."""
     
-    def test_sync_client_response_text_markdown(self, test_server_dynamic_port: str) -> None:
+    def test_sync_client_response_text_markdown(self, test_server: str) -> None:
         """Test response text_markdown property on sync Client."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         response = client.get(f"{base_url}/html")
@@ -251,9 +251,9 @@ class TestResponseTextMarkdown:
         assert isinstance(markdown, str)
     
     @pytest.mark.asyncio
-    async def test_async_client_response_text_markdown(self, test_server_dynamic_port: str) -> None:
+    async def test_async_client_response_text_markdown(self, test_server: str) -> None:
         """Test response text_markdown property on AsyncClient."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         response = await client.get(f"{base_url}/html")
@@ -267,9 +267,9 @@ class TestResponseTextMarkdown:
 class TestResponseTextPlain:
     """Tests for Response.text_plain property."""
     
-    def test_sync_client_response_text_plain(self, test_server_dynamic_port: str) -> None:
+    def test_sync_client_response_text_plain(self, test_server: str) -> None:
         """Test response text_plain property on sync Client."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         response = client.get(f"{base_url}/html")
@@ -281,9 +281,9 @@ class TestResponseTextPlain:
         assert isinstance(plain, str)
     
     @pytest.mark.asyncio
-    async def test_async_client_response_text_plain(self, test_server_dynamic_port: str) -> None:
+    async def test_async_client_response_text_plain(self, test_server: str) -> None:
         """Test response text_plain property on AsyncClient."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         response = await client.get(f"{base_url}/html")
@@ -297,9 +297,9 @@ class TestResponseTextPlain:
 class TestResponseTextRich:
     """Tests for Response.text_rich property."""
     
-    def test_sync_client_response_text_rich(self, test_server_dynamic_port: str) -> None:
+    def test_sync_client_response_text_rich(self, test_server: str) -> None:
         """Test response text_rich property on sync Client."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         response = client.get(f"{base_url}/html")
@@ -310,9 +310,9 @@ class TestResponseTextRich:
         assert rich is not None
     
     @pytest.mark.asyncio
-    async def test_async_client_response_text_rich(self, test_server_dynamic_port: str) -> None:
+    async def test_async_client_response_text_rich(self, test_server: str) -> None:
         """Test response text_rich property on AsyncClient."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         response = await client.get(f"{base_url}/html")
@@ -325,9 +325,9 @@ class TestResponseTextRich:
 class TestResponseJson:
     """Tests for Response.json() method."""
     
-    def test_sync_client_response_json(self, test_server_dynamic_port: str) -> None:
+    def test_sync_client_response_json(self, test_server: str) -> None:
         """Test response json() method on sync Client."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         response = client.get(f"{base_url}/get")
@@ -340,9 +340,9 @@ class TestResponseJson:
         assert data["method"] == "GET"
     
     @pytest.mark.asyncio
-    async def test_async_client_response_json(self, test_server_dynamic_port: str) -> None:
+    async def test_async_client_response_json(self, test_server: str) -> None:
         """Test response json() method on AsyncClient."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         response = await client.get(f"{base_url}/get")
@@ -354,9 +354,9 @@ class TestResponseJson:
         assert "method" in data
         assert data["method"] == "GET"
     
-    def test_sync_client_response_json_nested(self, test_server_dynamic_port: str) -> None:
+    def test_sync_client_response_json_nested(self, test_server: str) -> None:
         """Test response json() method with nested data."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         json_data = {
@@ -379,9 +379,9 @@ class TestResponseJson:
 class TestResponseRaiseForStatus:
     """Tests for Response.raise_for_status() method."""
     
-    def test_sync_client_raise_for_status_success(self, test_server_dynamic_port: str) -> None:
+    def test_sync_client_raise_for_status_success(self, test_server: str) -> None:
         """Test raise_for_status() does not raise for successful status."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         response = client.get(f"{base_url}/get")
@@ -390,9 +390,9 @@ class TestResponseRaiseForStatus:
         response.raise_for_status()
     
     @pytest.mark.asyncio
-    async def test_async_client_raise_for_status_success(self, test_server_dynamic_port: str) -> None:
+    async def test_async_client_raise_for_status_success(self, test_server: str) -> None:
         """Test raise_for_status() does not raise for successful status."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         response = await client.get(f"{base_url}/get")
@@ -400,9 +400,9 @@ class TestResponseRaiseForStatus:
         # Should not raise
         response.raise_for_status()
     
-    def test_sync_client_raise_for_status_404(self, test_server_dynamic_port: str) -> None:
+    def test_sync_client_raise_for_status_404(self, test_server: str) -> None:
         """Test raise_for_status() raises for 404 status."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         response = client.get(f"{base_url}/status/404")
@@ -413,9 +413,9 @@ class TestResponseRaiseForStatus:
             response.raise_for_status()
     
     @pytest.mark.asyncio
-    async def test_async_client_raise_for_status_404(self, test_server_dynamic_port: str) -> None:
+    async def test_async_client_raise_for_status_404(self, test_server: str) -> None:
         """Test raise_for_status() raises for 404 status."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         response = await client.get(f"{base_url}/status/404")
@@ -425,9 +425,9 @@ class TestResponseRaiseForStatus:
         with pytest.raises(Exception):
             response.raise_for_status()
     
-    def test_sync_client_raise_for_status_500(self, test_server_dynamic_port: str) -> None:
+    def test_sync_client_raise_for_status_500(self, test_server: str) -> None:
         """Test raise_for_status() raises for 500 status."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         response = client.get(f"{base_url}/status/500")
@@ -438,9 +438,9 @@ class TestResponseRaiseForStatus:
             response.raise_for_status()
     
     @pytest.mark.asyncio
-    async def test_async_client_raise_for_status_500(self, test_server_dynamic_port: str) -> None:
+    async def test_async_client_raise_for_status_500(self, test_server: str) -> None:
         """Test raise_for_status() raises for 500 status."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         response = await client.get(f"{base_url}/status/500")
@@ -455,9 +455,9 @@ class TestResponseStatusCodeRanges:
     """Tests for various HTTP status code ranges."""
     
     @pytest.mark.parametrize("status_code", [200, 201, 202, 204, 301, 302, 400, 401, 403, 404, 500, 502, 503])
-    def test_sync_client_status_codes(self, test_server_dynamic_port: str, status_code: int) -> None:
+    def test_sync_client_status_codes(self, test_server: str, status_code: int) -> None:
         """Test various status codes on sync Client."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         response = client.get(f"{base_url}/status/{status_code}")
@@ -466,9 +466,9 @@ class TestResponseStatusCodeRanges:
     
     @pytest.mark.parametrize("status_code", [200, 201, 202, 204, 301, 302, 400, 401, 403, 404, 500, 502, 503])
     @pytest.mark.asyncio
-    async def test_async_client_status_codes(self, test_server_dynamic_port: str, status_code: int) -> None:
+    async def test_async_client_status_codes(self, test_server: str, status_code: int) -> None:
         """Test various status codes on AsyncClient."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         response = await client.get(f"{base_url}/status/{status_code}")

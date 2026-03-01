@@ -21,9 +21,9 @@ import primp
 class TestSyncStreamingRead:
     """Tests for streaming read() method on sync Client."""
     
-    def test_sync_client_streaming_read(self, test_server_dynamic_port: str) -> None:
+    def test_sync_client_streaming_read(self, test_server: str) -> None:
         """Test streaming with read() method on sync Client."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         
@@ -40,9 +40,9 @@ class TestSyncStreamingRead:
 class TestSyncStreamingIterBytes:
     """Tests for streaming iter_bytes() method on sync Client."""
     
-    def test_sync_client_streaming_iter_bytes(self, test_server_dynamic_port: str) -> None:
+    def test_sync_client_streaming_iter_bytes(self, test_server: str) -> None:
         """Test streaming with iter_bytes() method on sync Client."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         
@@ -61,9 +61,9 @@ class TestSyncStreamingIterBytes:
 class TestSyncStreamingIterText:
     """Tests for streaming iter_text() method on sync Client."""
     
-    def test_sync_client_streaming_iter_text(self, test_server_dynamic_port: str) -> None:
+    def test_sync_client_streaming_iter_text(self, test_server: str) -> None:
         """Test streaming with iter_text() method on sync Client."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         
@@ -82,9 +82,9 @@ class TestSyncStreamingIterText:
 class TestSyncStreamingIterLines:
     """Tests for streaming iter_lines() method on sync Client."""
     
-    def test_sync_client_streaming_iter_lines(self, test_server_dynamic_port: str) -> None:
+    def test_sync_client_streaming_iter_lines(self, test_server: str) -> None:
         """Test streaming with iter_lines() method on sync Client."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         
@@ -101,9 +101,9 @@ class TestSyncStreamingIterLines:
                 assert data["id"] == i
                 assert "message" in data
     
-    def test_sync_client_streaming_iter_lines_partial(self, test_server_dynamic_port: str) -> None:
+    def test_sync_client_streaming_iter_lines_partial(self, test_server: str) -> None:
         """Test streaming with iter_lines() reading partial data."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         
@@ -122,9 +122,9 @@ class TestSyncStreamingIterLines:
 class TestSyncStreamingContextManager:
     """Tests for streaming context manager on sync Client."""
     
-    def test_sync_client_streaming_context_manager(self, test_server_dynamic_port: str) -> None:
+    def test_sync_client_streaming_context_manager(self, test_server: str) -> None:
         """Test streaming with context manager on sync Client."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         
@@ -138,9 +138,9 @@ class TestSyncStreamingContextManager:
 class TestSyncStreamingManualClose:
     """Tests for streaming with manual close on sync Client."""
     
-    def test_sync_client_streaming_manual_close(self, test_server_dynamic_port: str) -> None:
+    def test_sync_client_streaming_manual_close(self, test_server: str) -> None:
         """Test streaming with manual close on sync Client."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         
@@ -159,9 +159,9 @@ class TestSyncStreamingManualClose:
         finally:
             response.close()
     
-    def test_sync_client_streaming_manual_close_after_full_read(self, test_server_dynamic_port: str) -> None:
+    def test_sync_client_streaming_manual_close_after_full_read(self, test_server: str) -> None:
         """Test manual close after reading all content."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         
@@ -179,9 +179,9 @@ class TestAsyncStreamingRead:
     """Tests for streaming read() method on AsyncClient."""
     
     @pytest.mark.asyncio
-    async def test_async_client_streaming_read(self, test_server_dynamic_port: str) -> None:
+    async def test_async_client_streaming_read(self, test_server: str) -> None:
         """Test streaming with aread() method on AsyncClient."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         
@@ -199,9 +199,9 @@ class TestAsyncStreamingIterBytes:
     """Tests for streaming aiter_bytes() method on AsyncClient."""
     
     @pytest.mark.asyncio
-    async def test_async_client_streaming_aiter_bytes(self, test_server_dynamic_port: str) -> None:
+    async def test_async_client_streaming_aiter_bytes(self, test_server: str) -> None:
         """Test streaming with aiter_bytes() method on AsyncClient."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         
@@ -221,9 +221,9 @@ class TestAsyncStreamingIterText:
     """Tests for streaming aiter_text() method on AsyncClient."""
     
     @pytest.mark.asyncio
-    async def test_async_client_streaming_aiter_text(self, test_server_dynamic_port: str) -> None:
+    async def test_async_client_streaming_aiter_text(self, test_server: str) -> None:
         """Test streaming with aiter_text() method on AsyncClient."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         
@@ -243,9 +243,9 @@ class TestAsyncStreamingIterLines:
     """Tests for streaming aiter_lines() method on AsyncClient."""
     
     @pytest.mark.asyncio
-    async def test_async_client_streaming_aiter_lines(self, test_server_dynamic_port: str) -> None:
+    async def test_async_client_streaming_aiter_lines(self, test_server: str) -> None:
         """Test streaming with aiter_lines() method on AsyncClient."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         
@@ -263,9 +263,9 @@ class TestAsyncStreamingIterLines:
                 assert "message" in data
     
     @pytest.mark.asyncio
-    async def test_async_client_streaming_aiter_lines_partial(self, test_server_dynamic_port: str) -> None:
+    async def test_async_client_streaming_aiter_lines_partial(self, test_server: str) -> None:
         """Test streaming with aiter_lines() reading partial data."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         
@@ -285,9 +285,9 @@ class TestAsyncStreamingContextManager:
     """Tests for streaming context manager on AsyncClient."""
     
     @pytest.mark.asyncio
-    async def test_async_client_streaming_context_manager(self, test_server_dynamic_port: str) -> None:
+    async def test_async_client_streaming_context_manager(self, test_server: str) -> None:
         """Test streaming with context manager on AsyncClient."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         
@@ -304,9 +304,9 @@ class TestAsyncStreamingManualClose:
     """Tests for streaming with manual close on AsyncClient."""
     
     @pytest.mark.asyncio
-    async def test_async_client_streaming_manual_close(self, test_server_dynamic_port: str) -> None:
+    async def test_async_client_streaming_manual_close(self, test_server: str) -> None:
         """Test streaming with manual close on AsyncClient."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         
@@ -326,9 +326,9 @@ class TestAsyncStreamingManualClose:
             await response.aclose()
     
     @pytest.mark.asyncio
-    async def test_async_client_streaming_manual_close_after_full_read(self, test_server_dynamic_port: str) -> None:
+    async def test_async_client_streaming_manual_close_after_full_read(self, test_server: str) -> None:
         """Test manual close after reading all content."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         
@@ -347,9 +347,9 @@ class TestAsyncStreamingManualClose:
 class TestStreamingLargeResponse:
     """Tests for streaming large responses."""
     
-    def test_sync_client_streaming_large(self, test_server_dynamic_port: str) -> None:
+    def test_sync_client_streaming_large(self, test_server: str) -> None:
         """Test streaming a larger response on sync Client."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         
@@ -364,9 +364,9 @@ class TestStreamingLargeResponse:
                 assert data["id"] == i
     
     @pytest.mark.asyncio
-    async def test_async_client_streaming_large(self, test_server_dynamic_port: str) -> None:
+    async def test_async_client_streaming_large(self, test_server: str) -> None:
         """Test streaming a larger response on AsyncClient."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         
@@ -386,9 +386,9 @@ class TestStreamingLargeResponse:
 class TestStreamingNonStreamingFallback:
     """Tests for non-streaming requests (stream=False or default)."""
     
-    def test_sync_client_non_streaming(self, test_server_dynamic_port: str) -> None:
+    def test_sync_client_non_streaming(self, test_server: str) -> None:
         """Test non-streaming request on sync Client."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         
@@ -402,9 +402,9 @@ class TestStreamingNonStreamingFallback:
         assert data["method"] == "GET"
     
     @pytest.mark.asyncio
-    async def test_async_client_non_streaming(self, test_server_dynamic_port: str) -> None:
+    async def test_async_client_non_streaming(self, test_server: str) -> None:
         """Test non-streaming request on AsyncClient."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         

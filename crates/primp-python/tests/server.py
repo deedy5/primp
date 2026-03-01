@@ -11,10 +11,12 @@ Usage:
 
 import json
 import re
+import socket
 import threading
 import time
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from queue import Queue
 from socketserver import ThreadingMixIn
 from typing import Any, Generator
 from urllib.parse import parse_qs, urlparse
@@ -170,13 +172,14 @@ class HttpbinRequestHandler(BaseHTTPRequestHandler):
     # GET endpoints
     def do_GET(self) -> None:
         """Handle GET requests."""
+        body = self._read_body()
         parsed_url = urlparse(self.path)
         path = parsed_url.path
         
         if path == "/anything":
-            self._handle_anything("GET")
+            self._handle_anything("GET", body)
         elif path == "/get":
-            self._handle_get()
+            self._handle_get(body)
         elif path == "/html":
             self._handle_html()
         elif path == "/headers":
@@ -276,15 +279,20 @@ class HttpbinRequestHandler(BaseHTTPRequestHandler):
     
     def do_HEAD(self) -> None:
         """Handle HEAD requests."""
+        body = self._read_body()
         parsed_url = urlparse(self.path)
         path = parsed_url.path
         
         if path == "/anything":
+            # Build response to get content length, but don't send body
+            response_dict = self._build_response_dict("HEAD", body)
+            response_body = json.dumps(response_dict, indent=2).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("X-Method", "HEAD")
-            self.send_header("Content-Length", "0")
+            self.send_header("Content-Length", str(len(response_body)))
             self.end_headers()
+            # HEAD must not return a body
         else:
             self.send_response(404)
             self.send_header("Content-Length", "0")
@@ -292,14 +300,20 @@ class HttpbinRequestHandler(BaseHTTPRequestHandler):
     
     def do_OPTIONS(self) -> None:
         """Handle OPTIONS requests."""
+        body = self._read_body()
         parsed_url = urlparse(self.path)
         path = parsed_url.path
         
         if path == "/anything":
+            # Build response with body content for verification
+            response_dict = self._build_response_dict("OPTIONS", body)
+            response_body = json.dumps(response_dict, indent=2).encode("utf-8")
             self.send_response(200)
             self.send_header("Allow", "GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS")
-            self.send_header("Content-Length", "0")
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(response_body)))
             self.end_headers()
+            self.wfile.write(response_body)
         else:
             self.send_response(404)
             self.send_header("Content-Length", "0")
@@ -311,9 +325,9 @@ class HttpbinRequestHandler(BaseHTTPRequestHandler):
         response_dict = self._build_response_dict(method, body)
         self._send_json_response(response_dict)
     
-    def _handle_get(self) -> None:
+    def _handle_get(self, body: bytes = b"") -> None:
         """Handle /get endpoint."""
-        response_dict = self._build_response_dict("GET")
+        response_dict = self._build_response_dict("GET", body)
         self._send_json_response(response_dict)
     
     def _handle_post(self, body: bytes) -> None:
@@ -590,73 +604,108 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     """Threaded HTTP server that handles each request in a new thread."""
     daemon_threads = True
     allow_reuse_address = True
+    address_family = socket.AF_INET
+    
+    def server_bind(self):
+        """Override server_bind to set socket options."""
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # SO_REUSEPORT is needed on macOS/BSD for proper socket reuse behavior
+        if hasattr(socket, 'SO_REUSEPORT'):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        super().server_bind()
 
 
 class ServerThread(threading.Thread):
     """Thread that runs the HTTP server."""
     
-    def __init__(self, port: int = 8080, host: str = "127.0.0.1"):
+    def __init__(self, port: int = 8080, host: str = "127.0.0.1", ready_event: threading.Event | None = None, port_queue: Queue[int] | None = None):
         super().__init__(daemon=True)
         self.port = port
         self.host = host
         self.server: ThreadedHTTPServer | None = None
+        self.ready_event = ready_event
+        self.port_queue = port_queue
+        self._actual_port: int = port
     
     def run(self) -> None:
         """Run the HTTP server."""
-        self.server = ThreadedHTTPServer((self.host, self.port), HttpbinRequestHandler)
-        self.server.serve_forever()
+        try:
+            self.server = ThreadedHTTPServer((self.host, self.port), HttpbinRequestHandler)
+            self._actual_port = self.server.server_address[1]
+            
+            if self.port_queue is not None:
+                self.port_queue.put(self._actual_port)
+            
+            if self.ready_event:
+                self.ready_event.set()
+            
+            self.server.serve_forever()
+        except Exception:
+            if self.port_queue is not None:
+                self.port_queue.put(0)
+            if self.ready_event:
+                self.ready_event.set()
+            raise
     
     def shutdown(self) -> None:
         """Shutdown the server."""
         if self.server:
             self.server.shutdown()
+    
+    @property
+    def actual_port(self) -> int:
+        """Return the actual port the server is listening on."""
+        return self._actual_port
 
 
 @contextmanager
-def run_server(port: int = 8080, host: str = "127.0.0.1") -> Generator[str, None, None]:
-    """Context manager to run the test server.
+def run_server(port: int = 8080, host: str = "127.0.0.1", ready_event: threading.Event | None = None) -> Generator[str, None, None]:
+    """Context manager to run the test server."""
+    port_queue: Queue[int] = Queue()
+    server_thread = ServerThread(port, host, ready_event, port_queue)
+    server_thread.start()
+
+    time.sleep(0.5)
+
+    try:
+        actual_port = port_queue.get(timeout=60.0)
+    except Exception:
+        raise RuntimeError(f"Failed to get server port. Thread alive: {server_thread.is_alive()}")
     
-    Args:
-        port: Port to run the server on (default: 8080)
-        host: Host to bind to (default: 127.0.0.1)
+    if ready_event:
+        ready_event.wait(timeout=60.0)
+    
+    if actual_port == 0:
+        raise RuntimeError("Server failed to start")
+    
+    yield f"http://{host}:{actual_port}"
+    
+    server_thread.shutdown()
+    server_thread.join(timeout=5)
+
+
+@pytest.fixture(scope="session")
+def test_server() -> Generator[str, None, None]:
+    """Session-scoped test server - started once for all tests.
+    
+    Uses port=0 to let the OS assign an available port automatically.
+    This avoids port conflicts and is more reliable than fixed ports.
     
     Yields:
-        The base URL of the server (e.g., "http://127.0.0.1:8080")
-    
-    Example:
-        with run_server(port=8080) as base_url:
-            response = requests.get(f"{base_url}/get")
+        The base URL of the server with a dynamically assigned port.
     """
-    server_thread = ServerThread(port, host)
-    server_thread.start()
-    
-    # Wait for server to be ready
-    import socket
-    max_retries = 50
-    for _ in range(max_retries):
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(0.1)
-            result = sock.connect_ex((host, port))
-            sock.close()
-            if result == 0:
-                break
-        except Exception:
-            pass
-        time.sleep(0.1)
-    
-    base_url = f"http://{host}:{port}"
-    
-    try:
+    # Use an event for faster startup signaling
+    ready_event = threading.Event()
+    with run_server(port=0, ready_event=ready_event) as base_url:
         yield base_url
-    finally:
-        server_thread.shutdown()
-        server_thread.join(timeout=2)
 
 
 @pytest.fixture
 def test_server_dynamic_port(unused_tcp_port: int) -> Generator[str, None, None]:
     """Pytest fixture that starts the server on a dynamically allocated port.
+    
+    This fixture is function-scoped for tests that need complete isolation.
+    For most tests, use the session-scoped `test_server` fixture instead.
     
     Yields:
         The base URL of the server with a dynamic port.
@@ -676,14 +725,14 @@ def main():
     
     print(f"Starting test server on http://{args.host}:{args.port}")
     print("Available endpoints:")
-    print("  GET  /anything          - Returns request details")
-    print("  GET  /get               - Returns request details")
+    print("  GET  /anything          - Returns request details (supports body)")
+    print("  GET  /get               - Returns request details (supports body)")
     print("  POST /post              - Returns request details with posted data")
-    print("  PUT  /put               - Returns request details")
-    print("  PATCH /patch            - Returns request details")
-    print("  DELETE /delete          - Returns request details")
-    print("  HEAD /anything          - Returns only headers")
-    print("  OPTIONS /anything       - Returns allowed methods")
+    print("  PUT  /put               - Returns request details with body")
+    print("  PATCH /patch            - Returns request details with body")
+    print("  DELETE /delete          - Returns request details (supports body)")
+    print("  HEAD /anything          - Returns only headers (supports body parsing)")
+    print("  OPTIONS /anything       - Returns allowed methods (supports body)")
     print("  GET  /html              - Returns HTML content")
     print("  GET  /stream/<n>        - Returns n JSON lines streamed")
     print("  GET  /status/<code>     - Returns specified status code")

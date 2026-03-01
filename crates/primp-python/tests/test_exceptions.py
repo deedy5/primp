@@ -71,25 +71,25 @@ class TestBuilderError:
         with pytest.raises(PrimpError):
             client.get("example.com")
 
-    def test_invalid_header_with_newline(self, test_server_dynamic_port):
+    def test_invalid_header_with_newline(self, test_server):
         """Header with newline character should raise BuilderError."""
         client = primp.Client()
         # Header values with newlines are invalid
         with pytest.raises(BuilderError):
-            client.get(f"{test_server_dynamic_port}/get", headers={"X-Test": "value\nwith-newline"})
+            client.get(f"{test_server}/get", headers={"X-Test": "value\nwith-newline"})
 
-    def test_invalid_header_with_carriage_return(self, test_server_dynamic_port):
+    def test_invalid_header_with_carriage_return(self, test_server):
         """Header with carriage return should raise BuilderError."""
         client = primp.Client()
         with pytest.raises(BuilderError):
-            client.get(f"{test_server_dynamic_port}/get", headers={"X-Test": "value\rwith-cr"})
+            client.get(f"{test_server}/get", headers={"X-Test": "value\rwith-cr"})
 
-    def test_invalid_header_name(self, test_server_dynamic_port):
+    def test_invalid_header_name(self, test_server):
         """Invalid header name should raise BuilderError."""
         client = primp.Client()
         # Header names with special characters are invalid
         with pytest.raises(BuilderError):
-            client.get(f"{test_server_dynamic_port}/get", headers={"Invalid:Name": "value"})
+            client.get(f"{test_server}/get", headers={"Invalid:Name": "value"})
 
 
 class TestConnectError:
@@ -117,61 +117,61 @@ class TestConnectError:
 class TestTimeoutError:
     """Test TimeoutError exception with real scenarios."""
 
-    def test_request_timeout(self, test_server_dynamic_port):
+    def test_request_timeout(self, test_server):
         """Request that exceeds timeout should raise TimeoutError."""
         client = primp.Client()
         # Request a 5 second delay with a 0.5 second timeout
         with pytest.raises(TimeoutError):
-            client.get(f"{test_server_dynamic_port}/delay/5", timeout=0.5)
+            client.get(f"{test_server}/delay/5", timeout=0.5)
 
-    def test_can_catch_as_request_error(self, test_server_dynamic_port):
+    def test_can_catch_as_request_error(self, test_server):
         """TimeoutError should be catchable as RequestError."""
         client = primp.Client()
         with pytest.raises(RequestError):
-            client.get(f"{test_server_dynamic_port}/delay/5", timeout=0.5)
+            client.get(f"{test_server}/delay/5", timeout=0.5)
 
-    def test_can_catch_as_primp_error(self, test_server_dynamic_port):
+    def test_can_catch_as_primp_error(self, test_server):
         """TimeoutError should be catchable as PrimpError."""
         client = primp.Client()
         with pytest.raises(PrimpError):
-            client.get(f"{test_server_dynamic_port}/delay/5", timeout=0.5)
+            client.get(f"{test_server}/delay/5", timeout=0.5)
 
 
 class TestStatusError:
     """Test StatusError exception with real scenarios."""
 
-    def test_404_status(self, test_server_dynamic_port):
+    def test_404_status(self, test_server):
         """HTTP 404 should raise StatusError when raise_for_status is called."""
         client = primp.Client()
-        response = client.get(f"{test_server_dynamic_port}/status/404")
+        response = client.get(f"{test_server}/status/404")
         with pytest.raises(StatusError):
             response.raise_for_status()
 
-    def test_500_status(self, test_server_dynamic_port):
+    def test_500_status(self, test_server):
         """HTTP 500 should raise StatusError when raise_for_status is called."""
         client = primp.Client()
-        response = client.get(f"{test_server_dynamic_port}/status/500")
+        response = client.get(f"{test_server}/status/500")
         with pytest.raises(StatusError):
             response.raise_for_status()
 
-    def test_403_status(self, test_server_dynamic_port):
+    def test_403_status(self, test_server):
         """HTTP 403 should raise StatusError when raise_for_status is called."""
         client = primp.Client()
-        response = client.get(f"{test_server_dynamic_port}/status/403")
+        response = client.get(f"{test_server}/status/403")
         with pytest.raises(StatusError):
             response.raise_for_status()
 
-    def test_can_catch_as_primp_error(self, test_server_dynamic_port):
+    def test_can_catch_as_primp_error(self, test_server):
         """StatusError should be catchable as PrimpError."""
         client = primp.Client()
-        response = client.get(f"{test_server_dynamic_port}/status/404")
+        response = client.get(f"{test_server}/status/404")
         with pytest.raises(PrimpError):
             response.raise_for_status()
 
-    def test_successful_status_no_error(self, test_server_dynamic_port):
+    def test_successful_status_no_error(self, test_server):
         """Successful status codes should not raise StatusError."""
         client = primp.Client()
-        response = client.get(f"{test_server_dynamic_port}/status/200")
+        response = client.get(f"{test_server}/status/200")
         # Should not raise
         response.raise_for_status()
 
@@ -179,18 +179,18 @@ class TestStatusError:
 class TestRedirectError:
     """Test RedirectError exception with real scenarios."""
 
-    def test_max_redirects_exceeded(self, test_server_dynamic_port):
+    def test_max_redirects_exceeded(self, test_server):
         """Exceeding max_redirects should raise RedirectError."""
         client = primp.Client(follow_redirects=True, max_redirects=2)
         # Request 10 redirects with max_redirects=2
         with pytest.raises(RedirectError):
-            client.get(f"{test_server_dynamic_port}/redirect/10")
+            client.get(f"{test_server}/redirect/10")
 
-    def test_can_catch_as_primp_error(self, test_server_dynamic_port):
+    def test_can_catch_as_primp_error(self, test_server):
         """RedirectError should be catchable as PrimpError."""
         client = primp.Client(follow_redirects=True, max_redirects=2)
         with pytest.raises(PrimpError):
-            client.get(f"{test_server_dynamic_port}/redirect/10")
+            client.get(f"{test_server}/redirect/10")
 
 
 class TestDecodeError:
@@ -202,28 +202,28 @@ class TestDecodeError:
     based on the Content-Encoding header.
     """
 
-    def test_invalid_gzip_content(self, test_server_dynamic_port):
+    def test_invalid_gzip_content(self, test_server):
         """Invalid gzip content should raise DecodeError when decompressing."""
         client = primp.Client()
         # The server returns invalid gzip data with Content-Encoding: gzip
         # This should trigger DecodeError when the client tries to decompress
         # The error is raised when accessing the content, not during the request
-        response = client.get(f"{test_server_dynamic_port}/invalid-gzip")
+        response = client.get(f"{test_server}/invalid-gzip")
         with pytest.raises(DecodeError):
             _ = response.content
 
-    def test_invalid_deflate_content(self, test_server_dynamic_port):
+    def test_invalid_deflate_content(self, test_server):
         """Invalid deflate content should raise DecodeError when decompressing."""
         client = primp.Client()
         # The server returns invalid deflate data with Content-Encoding: deflate
-        response = client.get(f"{test_server_dynamic_port}/invalid-deflate")
+        response = client.get(f"{test_server}/invalid-deflate")
         with pytest.raises(DecodeError):
             _ = response.content
 
-    def test_can_catch_as_primp_error(self, test_server_dynamic_port):
+    def test_can_catch_as_primp_error(self, test_server):
         """DecodeError should be catchable as PrimpError."""
         client = primp.Client()
-        response = client.get(f"{test_server_dynamic_port}/invalid-gzip")
+        response = client.get(f"{test_server}/invalid-gzip")
         with pytest.raises(PrimpError):
             _ = response.content
 
@@ -244,7 +244,7 @@ class TestBodyError:
     not BodyError. BodyError is for lower-level body I/O issues.
     """
 
-    def test_request_body_error_on_closed_connection(self, test_server_dynamic_port):
+    def test_request_body_error_on_closed_connection(self, test_server):
         """Sending a large request body to a server that closes early may trigger BodyError.
 
         This test attempts to trigger BodyError by sending a large request body to a server
@@ -257,7 +257,7 @@ class TestBodyError:
         # The server may close the connection while we're still sending
         # This could trigger either BodyError or RequestError depending on timing
         try:
-            response = client.post(f"{test_server_dynamic_port}/broken-body", content=large_body)
+            response = client.post(f"{test_server}/broken-body", content=large_body)
             # If we get here, the request completed - try to read the response
             _ = response.content
         except BodyError as e:
@@ -293,11 +293,11 @@ class TestAsyncExceptions:
             await client.get("example.com")
 
     @pytest.mark.asyncio
-    async def test_invalid_header_async(self, test_server_dynamic_port):
+    async def test_invalid_header_async(self, test_server):
         """Invalid header should raise BuilderError with async client."""
         client = primp.AsyncClient()
         with pytest.raises(BuilderError):
-            await client.get(f"{test_server_dynamic_port}/get", headers={"X-Test": "value\nwith-newline"})
+            await client.get(f"{test_server}/get", headers={"X-Test": "value\nwith-newline"})
 
     @pytest.mark.asyncio
     async def test_connect_error_async(self):
@@ -307,32 +307,32 @@ class TestAsyncExceptions:
             await client.get("http://localhost:1", timeout=5)
 
     @pytest.mark.asyncio
-    async def test_timeout_error_async(self, test_server_dynamic_port):
+    async def test_timeout_error_async(self, test_server):
         """Timeout should raise TimeoutError with async client."""
         client = primp.AsyncClient()
         with pytest.raises(TimeoutError):
-            await client.get(f"{test_server_dynamic_port}/delay/5", timeout=0.5)
+            await client.get(f"{test_server}/delay/5", timeout=0.5)
 
     @pytest.mark.asyncio
-    async def test_status_error_async(self, test_server_dynamic_port):
+    async def test_status_error_async(self, test_server):
         """HTTP error status should raise StatusError with async client."""
         client = primp.AsyncClient()
-        response = await client.get(f"{test_server_dynamic_port}/status/404")
+        response = await client.get(f"{test_server}/status/404")
         with pytest.raises(StatusError):
             response.raise_for_status()
 
     @pytest.mark.asyncio
-    async def test_redirect_error_async(self, test_server_dynamic_port):
+    async def test_redirect_error_async(self, test_server):
         """Exceeding max_redirects should raise RedirectError with async client."""
         client = primp.AsyncClient(follow_redirects=True, max_redirects=2)
         with pytest.raises(RedirectError):
-            await client.get(f"{test_server_dynamic_port}/redirect/10")
+            await client.get(f"{test_server}/redirect/10")
 
     @pytest.mark.asyncio
-    async def test_decode_error_async(self, test_server_dynamic_port):
+    async def test_decode_error_async(self, test_server):
         """Invalid gzip content should raise DecodeError with async client."""
         client = primp.AsyncClient()
-        response = await client.get(f"{test_server_dynamic_port}/invalid-gzip")
+        response = await client.get(f"{test_server}/invalid-gzip")
         with pytest.raises(DecodeError):
             _ = response.content
 
@@ -344,7 +344,7 @@ class TestAsyncExceptions:
             await client.get("example.com")
 
     @pytest.mark.asyncio
-    async def test_body_error_async(self, test_server_dynamic_port):
+    async def test_body_error_async(self, test_server):
         """Sending a large request body to a server that closes early may trigger BodyError with async client.
 
         This test attempts to trigger BodyError by sending a large request body to a server
@@ -356,7 +356,7 @@ class TestAsyncExceptions:
         large_body = b"x" * 10_000_000  # 10MB of data
         # The server may close the connection while we're still sending
         try:
-            response = await client.post(f"{test_server_dynamic_port}/broken-body", content=large_body)
+            response = await client.post(f"{test_server}/broken-body", content=large_body)
             _ = response.content
         except (BodyError, RequestError, ConnectError) as e:
             # Any of these errors is acceptable - the server closed the connection
