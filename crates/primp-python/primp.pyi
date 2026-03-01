@@ -357,6 +357,10 @@ class Client:
         params: Optional[Mapping[str, str]] = None,
         headers: Optional[Mapping[str, str]] = None,
         cookies: Optional[Mapping[str, str]] = None,
+        content: Optional[bytes] = None,
+        data: Optional[Any] = None,
+        json: Optional[Any] = None,
+        files: Optional[Mapping[str, str]] = None,
         auth: Optional[Tuple[str, Optional[str]]] = None,
         auth_bearer: Optional[str] = None,
         timeout: Optional[float] = None,
@@ -369,6 +373,10 @@ class Client:
         params: Optional[Mapping[str, str]] = None,
         headers: Optional[Mapping[str, str]] = None,
         cookies: Optional[Mapping[str, str]] = None,
+        content: Optional[bytes] = None,
+        data: Optional[Any] = None,
+        json: Optional[Any] = None,
+        files: Optional[Mapping[str, str]] = None,
         auth: Optional[Tuple[str, Optional[str]]] = None,
         auth_bearer: Optional[str] = None,
         timeout: Optional[float] = None,
@@ -381,6 +389,10 @@ class Client:
         params: Optional[Mapping[str, str]] = None,
         headers: Optional[Mapping[str, str]] = None,
         cookies: Optional[Mapping[str, str]] = None,
+        content: Optional[bytes] = None,
+        data: Optional[Any] = None,
+        json: Optional[Any] = None,
+        files: Optional[Mapping[str, str]] = None,
         auth: Optional[Tuple[str, Optional[str]]] = None,
         auth_bearer: Optional[str] = None,
         timeout: Optional[float] = None,
@@ -393,6 +405,10 @@ class Client:
         params: Optional[Mapping[str, str]] = None,
         headers: Optional[Mapping[str, str]] = None,
         cookies: Optional[Mapping[str, str]] = None,
+        content: Optional[bytes] = None,
+        data: Optional[Any] = None,
+        json: Optional[Any] = None,
+        files: Optional[Mapping[str, str]] = None,
         auth: Optional[Tuple[str, Optional[str]]] = None,
         auth_bearer: Optional[str] = None,
         timeout: Optional[float] = None,
@@ -533,6 +549,10 @@ class AsyncClient:
         params: Optional[Mapping[str, str]] = None,
         headers: Optional[Mapping[str, str]] = None,
         cookies: Optional[Mapping[str, str]] = None,
+        content: Optional[bytes] = None,
+        data: Optional[Any] = None,
+        json: Optional[Any] = None,
+        files: Optional[Mapping[str, str]] = None,
         auth: Optional[Tuple[str, Optional[str]]] = None,
         auth_bearer: Optional[str] = None,
         timeout: Optional[float] = None,
@@ -545,6 +565,10 @@ class AsyncClient:
         params: Optional[Mapping[str, str]] = None,
         headers: Optional[Mapping[str, str]] = None,
         cookies: Optional[Mapping[str, str]] = None,
+        content: Optional[bytes] = None,
+        data: Optional[Any] = None,
+        json: Optional[Any] = None,
+        files: Optional[Mapping[str, str]] = None,
         auth: Optional[Tuple[str, Optional[str]]] = None,
         auth_bearer: Optional[str] = None,
         timeout: Optional[float] = None,
@@ -557,6 +581,10 @@ class AsyncClient:
         params: Optional[Mapping[str, str]] = None,
         headers: Optional[Mapping[str, str]] = None,
         cookies: Optional[Mapping[str, str]] = None,
+        content: Optional[bytes] = None,
+        data: Optional[Any] = None,
+        json: Optional[Any] = None,
+        files: Optional[Mapping[str, str]] = None,
         auth: Optional[Tuple[str, Optional[str]]] = None,
         auth_bearer: Optional[str] = None,
         timeout: Optional[float] = None,
@@ -569,6 +597,10 @@ class AsyncClient:
         params: Optional[Mapping[str, str]] = None,
         headers: Optional[Mapping[str, str]] = None,
         cookies: Optional[Mapping[str, str]] = None,
+        content: Optional[bytes] = None,
+        data: Optional[Any] = None,
+        json: Optional[Any] = None,
+        files: Optional[Mapping[str, str]] = None,
         auth: Optional[Tuple[str, Optional[str]]] = None,
         auth_bearer: Optional[str] = None,
         timeout: Optional[float] = None,
@@ -642,6 +674,10 @@ def get(
     params: Optional[Mapping[str, str]] = None,
     headers: Optional[Mapping[str, str]] = None,
     cookies: Optional[Mapping[str, str]] = None,
+    content: Optional[bytes] = None,
+    data: Optional[Any] = None,
+    json: Optional[Any] = None,
+    files: Optional[Mapping[str, str]] = None,
     auth: Optional[Tuple[str, Optional[str]]] = None,
     auth_bearer: Optional[str] = None,
     timeout: Optional[float] = None,
@@ -659,6 +695,10 @@ def get(
         params: Query parameters to append to the URL.
         headers: HTTP headers to send with the request.
         cookies: Cookies to send with the request.
+        content: Raw bytes to send in the request body.
+        data: Form data to send in the request body.
+        json: JSON-serializable object to send in the request body.
+        files: Mapping of field names to file paths for multipart upload.
         auth: Tuple of (username, password) for basic authentication.
         auth_bearer: Bearer token for authentication.
         timeout: Request timeout in seconds.
@@ -679,6 +719,10 @@ def head(
     params: Optional[Mapping[str, str]] = None,
     headers: Optional[Mapping[str, str]] = None,
     cookies: Optional[Mapping[str, str]] = None,
+    content: Optional[bytes] = None,
+    data: Optional[Any] = None,
+    json: Optional[Any] = None,
+    files: Optional[Mapping[str, str]] = None,
     auth: Optional[Tuple[str, Optional[str]]] = None,
     auth_bearer: Optional[str] = None,
     timeout: Optional[float] = None,
@@ -696,6 +740,10 @@ def head(
         params: Query parameters to append to the URL.
         headers: HTTP headers to send with the request.
         cookies: Cookies to send with the request.
+        content: Raw bytes to send in the request body.
+        data: Form data to send in the request body.
+        json: JSON-serializable object to send in the request body.
+        files: Mapping of field names to file paths for multipart upload.
         auth: Tuple of (username, password) for basic authentication.
         auth_bearer: Bearer token for authentication.
         timeout: Request timeout in seconds.
@@ -716,6 +764,10 @@ def options(
     params: Optional[Mapping[str, str]] = None,
     headers: Optional[Mapping[str, str]] = None,
     cookies: Optional[Mapping[str, str]] = None,
+    content: Optional[bytes] = None,
+    data: Optional[Any] = None,
+    json: Optional[Any] = None,
+    files: Optional[Mapping[str, str]] = None,
     auth: Optional[Tuple[str, Optional[str]]] = None,
     auth_bearer: Optional[str] = None,
     timeout: Optional[float] = None,
@@ -733,6 +785,10 @@ def options(
         params: Query parameters to append to the URL.
         headers: HTTP headers to send with the request.
         cookies: Cookies to send with the request.
+        content: Raw bytes to send in the request body.
+        data: Form data to send in the request body.
+        json: JSON-serializable object to send in the request body.
+        files: Mapping of field names to file paths for multipart upload.
         auth: Tuple of (username, password) for basic authentication.
         auth_bearer: Bearer token for authentication.
         timeout: Request timeout in seconds.
@@ -753,6 +809,10 @@ def delete(
     params: Optional[Mapping[str, str]] = None,
     headers: Optional[Mapping[str, str]] = None,
     cookies: Optional[Mapping[str, str]] = None,
+    content: Optional[bytes] = None,
+    data: Optional[Any] = None,
+    json: Optional[Any] = None,
+    files: Optional[Mapping[str, str]] = None,
     auth: Optional[Tuple[str, Optional[str]]] = None,
     auth_bearer: Optional[str] = None,
     timeout: Optional[float] = None,
@@ -770,6 +830,10 @@ def delete(
         params: Query parameters to append to the URL.
         headers: HTTP headers to send with the request.
         cookies: Cookies to send with the request.
+        content: Raw bytes to send in the request body.
+        data: Form data to send in the request body.
+        json: JSON-serializable object to send in the request body.
+        files: Mapping of field names to file paths for multipart upload.
         auth: Tuple of (username, password) for basic authentication.
         auth_bearer: Bearer token for authentication.
         timeout: Request timeout in seconds.

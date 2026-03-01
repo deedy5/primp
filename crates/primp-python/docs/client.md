@@ -45,7 +45,7 @@ primp.Client(
 ### HTTP Methods
 
 ```python
-client.get(url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, timeout=30)
+client.get(url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=30)
 client.head(url, ...)
 client.options(url, ...)
 client.delete(url, ...)
