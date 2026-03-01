@@ -63,14 +63,16 @@ jobs:
           target: ${{ matrix.platform.target }}
           args: --release --out dist --manifest-path crates/primp-python/Cargo.toml
           manylinux: auto
+          maturin-version: 1.12.4
       - name: Build free-threaded wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.14t --manifest-path crates/primp-python/Cargo.toml
           manylinux: auto
+          maturin-version: 1.12.4
       - name: Upload wheels
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: wheels-linux-${{ matrix.platform.target }}
           path: dist
@@ -82,7 +84,7 @@ jobs:
           set -e
           python3 -m venv .venv
           source .venv/bin/activate
-          pip install primp --find-links ../../dist --force-reinstall
+          pip install primp --no-index --find-links ../../dist --force-reinstall
           pip install pytest pytest-asyncio certifi
           pytest
       - name: pytest (aarch64)
@@ -93,7 +95,7 @@ jobs:
           set -e
           python3 -m venv .venv
           source .venv/bin/activate
-          pip install primp --find-links ../../dist --force-reinstall
+          pip install primp --no-index --find-links ../../dist --force-reinstall
           pip install pytest pytest-asyncio certifi
           pytest
       - name: pytest (emulated)
@@ -109,7 +111,7 @@ jobs:
             pip3 install -U pip pytest pytest-asyncio certifi
           run: |
             set -e
-            pip3 install primp --find-links dist --force-reinstall
+            pip3 install primp --no-index --find-links dist --force-reinstall
             cd crates/primp-python && pytest
 
   musllinux:
@@ -142,14 +144,16 @@ jobs:
           target: ${{ matrix.platform.target }}
           args: --release --out dist --manifest-path crates/primp-python/Cargo.toml
           manylinux: musllinux_1_2
+          maturin-version: 1.12.4
       - name: Build free-threaded wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.14t --manifest-path crates/primp-python/Cargo.toml
           manylinux: musllinux_1_2
+          maturin-version: 1.12.4
       - name: Upload wheels
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: wheels-musllinux-${{ matrix.platform.target }}
           path: dist
@@ -180,7 +184,7 @@ jobs:
             python3 -m virtualenv .venv
             source .venv/bin/activate
             pip install pytest pytest-asyncio certifi
-            pip install primp --find-links dist --force-reinstall
+            pip install primp --no-index --find-links dist --force-reinstall
             cd crates/primp-python && pytest
 
   windows:
@@ -214,6 +218,7 @@ jobs:
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist --manifest-path crates/primp-python/Cargo.toml
+          maturin-version: 1.12.4
       - uses: actions/setup-python@v6
         with:
           python-version: 3.14t
@@ -223,8 +228,9 @@ jobs:
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.14t --manifest-path crates/primp-python/Cargo.toml
+          maturin-version: 1.12.4
       - name: Upload wheels
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: wheels-windows-${{ matrix.platform.target }}
           path: dist
@@ -235,7 +241,7 @@ jobs:
           set -e
           python3 -m venv .venv
           source .venv/Scripts/activate
-          pip install primp --find-links ../../dist --force-reinstall
+          pip install primp --no-index --find-links ../../dist --force-reinstall
           pip install pytest pytest-asyncio certifi
           pytest
 
@@ -264,13 +270,15 @@ jobs:
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist --manifest-path crates/primp-python/Cargo.toml
+          maturin-version: 1.12.4
       - name: Build free-threaded wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.14t --manifest-path crates/primp-python/Cargo.toml
+          maturin-version: 1.12.4
       - name: Upload wheels
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: wheels-macos-${{ matrix.platform.target }}
           path: dist
@@ -280,7 +288,7 @@ jobs:
           set -e
           python3 -m venv .venv
           source .venv/bin/activate
-          pip install primp --find-links ../../dist --force-reinstall
+          pip install primp --no-index --find-links ../../dist --force-reinstall
           pip install pytest pytest-asyncio certifi
           pytest
 
@@ -298,8 +306,9 @@ jobs:
         with:
           command: sdist
           args: --out dist --manifest-path crates/primp-python/Cargo.toml
+          maturin-version: 1.12.4
       - name: Upload sdist
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: wheels-sdist
           path: dist
@@ -314,9 +323,9 @@ jobs:
       contents: write
       attestations: write
     steps:
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v7
       - name: Generate artifact attestation
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: 'wheels-*/*'
       - name: Install uv
