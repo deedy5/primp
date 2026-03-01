@@ -23,9 +23,9 @@ class TestClientInit:
         client = primp.Client()
         assert client is not None
     
-    def test_client_init_auth(self, test_server_dynamic_port: str) -> None:
+    def test_client_init_auth(self, test_server: str) -> None:
         """Test client initialization with auth parameter."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client(auth=("user", "pass"))
         response = client.get(f"{base_url}/get")
@@ -35,9 +35,9 @@ class TestClientInit:
         # Check that Authorization header is set (lowercase in response)
         assert "authorization" in data["headers"]
     
-    def test_client_init_auth_bearer(self, test_server_dynamic_port: str) -> None:
+    def test_client_init_auth_bearer(self, test_server: str) -> None:
         """Test client initialization with auth_bearer parameter."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client(auth_bearer="test-token-123")
         response = client.get(f"{base_url}/get")
@@ -48,9 +48,9 @@ class TestClientInit:
         assert "authorization" in data["headers"]
         assert "Bearer" in data["headers"]["authorization"]
     
-    def test_client_init_params(self, test_server_dynamic_port: str) -> None:
+    def test_client_init_params(self, test_server: str) -> None:
         """Test client initialization with default params."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client(params={"default_param": "value"})
         response = client.get(f"{base_url}/get")
@@ -59,9 +59,9 @@ class TestClientInit:
         data = response.json()
         assert data["args"]["default_param"] == "value"
     
-    def test_client_init_headers(self, test_server_dynamic_port: str) -> None:
+    def test_client_init_headers(self, test_server: str) -> None:
         """Test client initialization with default headers."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client(headers={"X-Custom": "value"})
         response = client.get(f"{base_url}/get")
@@ -81,9 +81,9 @@ class TestClientInit:
         client = primp.Client(cookie_store=False)
         assert client is not None
     
-    def test_client_init_referer(self, test_server_dynamic_port: str) -> None:
+    def test_client_init_referer(self, test_server: str) -> None:
         """Test client initialization with referer parameter (bool to auto-set referer)."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         # referer is a bool parameter that controls auto-referer
         client = primp.Client(referer=True)
@@ -91,9 +91,9 @@ class TestClientInit:
         
         assert response.status_code == 200
     
-    def test_client_init_timeout(self, test_server_dynamic_port: str) -> None:
+    def test_client_init_timeout(self, test_server: str) -> None:
         """Test client initialization with timeout parameter."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client(timeout=30)
         response = client.get(f"{base_url}/get")
@@ -135,9 +135,9 @@ class TestClientInit:
 class TestClientProperties:
     """Tests for Client property getters."""
     
-    def test_client_headers_getter(self, test_server_dynamic_port: str) -> None:
+    def test_client_headers_getter(self, test_server: str) -> None:
         """Test headers property getter."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client(headers={"X-Test": "value"})
         headers = client.headers
@@ -173,9 +173,9 @@ class TestClientProperties:
 class TestClientSetters:
     """Tests for Client property setters."""
     
-    def test_client_headers_setter(self, test_server_dynamic_port: str) -> None:
+    def test_client_headers_setter(self, test_server: str) -> None:
         """Test headers property setter."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         client.headers = {"X-New-Header": "new_value"}
@@ -196,9 +196,9 @@ class TestClientSetters:
 class TestClientHeadersUpdate:
     """Tests for Client headers_update() method."""
     
-    def test_client_headers_update(self, test_server_dynamic_port: str) -> None:
+    def test_client_headers_update(self, test_server: str) -> None:
         """Test headers_update() method adds headers to existing."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client(headers={"X-Original": "original"})
         client.headers_update({"X-Added": "added"})
@@ -214,9 +214,9 @@ class TestClientHeadersUpdate:
 class TestClientCookies:
     """Tests for Client cookie methods."""
     
-    def test_client_set_and_get_cookies(self, test_server_dynamic_port: str) -> None:
+    def test_client_set_and_get_cookies(self, test_server: str) -> None:
         """Test set_cookies() and get_cookies() methods."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.Client()
         # set_cookies requires URL and cookies dict
@@ -227,9 +227,9 @@ class TestClientCookies:
         assert "test_cookie" in cookies
         assert cookies["test_cookie"] == "test_value"
     
-    def test_client_cookie_store_enabled(self, test_server_dynamic_port: str) -> None:
+    def test_client_cookie_store_enabled(self, test_server: str) -> None:
         """Test that cookie_store parameter works."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         # Test with cookie_store enabled
         client = primp.Client(cookie_store=True)
@@ -241,9 +241,9 @@ class TestClientCookies:
 class TestClientContextManager:
     """Tests for Client context manager support."""
     
-    def test_client_context_manager(self, test_server_dynamic_port: str) -> None:
+    def test_client_context_manager(self, test_server: str) -> None:
         """Test using Client as a context manager."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         with primp.Client() as client:
             response = client.get(f"{base_url}/get")
@@ -260,9 +260,9 @@ class TestAsyncClientInit:
         assert client is not None
     
     @pytest.mark.asyncio
-    async def test_asyncclient_init_auth(self, test_server_dynamic_port: str) -> None:
+    async def test_asyncclient_init_auth(self, test_server: str) -> None:
         """Test async client initialization with auth parameter."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient(auth=("user", "pass"))
         response = await client.get(f"{base_url}/get")
@@ -273,9 +273,9 @@ class TestAsyncClientInit:
         assert "authorization" in data["headers"]
     
     @pytest.mark.asyncio
-    async def test_asyncclient_init_auth_bearer(self, test_server_dynamic_port: str) -> None:
+    async def test_asyncclient_init_auth_bearer(self, test_server: str) -> None:
         """Test async client initialization with auth_bearer parameter."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient(auth_bearer="test-token-123")
         response = await client.get(f"{base_url}/get")
@@ -287,9 +287,9 @@ class TestAsyncClientInit:
         assert "Bearer" in data["headers"]["authorization"]
     
     @pytest.mark.asyncio
-    async def test_asyncclient_init_params(self, test_server_dynamic_port: str) -> None:
+    async def test_asyncclient_init_params(self, test_server: str) -> None:
         """Test async client initialization with default params."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient(params={"default_param": "value"})
         response = await client.get(f"{base_url}/get")
@@ -299,9 +299,9 @@ class TestAsyncClientInit:
         assert data["args"]["default_param"] == "value"
     
     @pytest.mark.asyncio
-    async def test_asyncclient_init_headers(self, test_server_dynamic_port: str) -> None:
+    async def test_asyncclient_init_headers(self, test_server: str) -> None:
         """Test async client initialization with default headers."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient(headers={"X-Custom": "value"})
         response = await client.get(f"{base_url}/get")
@@ -312,9 +312,9 @@ class TestAsyncClientInit:
         assert data["headers"]["x-custom"] == "value"
     
     @pytest.mark.asyncio
-    async def test_asyncclient_init_timeout(self, test_server_dynamic_port: str) -> None:
+    async def test_asyncclient_init_timeout(self, test_server: str) -> None:
         """Test async client initialization with timeout parameter."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient(timeout=30)
         response = await client.get(f"{base_url}/get")
@@ -326,9 +326,9 @@ class TestAsyncClientProperties:
     """Tests for AsyncClient property getters."""
     
     @pytest.mark.asyncio
-    async def test_asyncclient_headers_getter(self, test_server_dynamic_port: str) -> None:
+    async def test_asyncclient_headers_getter(self, test_server: str) -> None:
         """Test headers property getter."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient(headers={"X-Test": "value"})
         headers = client.headers
@@ -357,9 +357,9 @@ class TestAsyncClientSetters:
     """Tests for AsyncClient property setters."""
     
     @pytest.mark.asyncio
-    async def test_asyncclient_headers_setter(self, test_server_dynamic_port: str) -> None:
+    async def test_asyncclient_headers_setter(self, test_server: str) -> None:
         """Test headers property setter."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         client.headers = {"X-New-Header": "new_value"}
@@ -375,9 +375,9 @@ class TestAsyncClientHeadersUpdate:
     """Tests for AsyncClient headers_update() method."""
     
     @pytest.mark.asyncio
-    async def test_asyncclient_headers_update(self, test_server_dynamic_port: str) -> None:
+    async def test_asyncclient_headers_update(self, test_server: str) -> None:
         """Test headers_update() method adds headers to existing."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient(headers={"X-Original": "original"})
         client.headers_update({"X-Added": "added"})
@@ -394,9 +394,9 @@ class TestAsyncClientCookies:
     """Tests for AsyncClient cookie methods."""
     
     @pytest.mark.asyncio
-    async def test_asyncclient_set_and_get_cookies(self, test_server_dynamic_port: str) -> None:
+    async def test_asyncclient_set_and_get_cookies(self, test_server: str) -> None:
         """Test set_cookies() and get_cookies() methods."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         client = primp.AsyncClient()
         # set_cookies requires URL and cookies dict
@@ -408,9 +408,9 @@ class TestAsyncClientCookies:
         assert cookies["test_cookie"] == "test_value"
     
     @pytest.mark.asyncio
-    async def test_asyncclient_cookie_store_enabled(self, test_server_dynamic_port: str) -> None:
+    async def test_asyncclient_cookie_store_enabled(self, test_server: str) -> None:
         """Test that cookie_store parameter works."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         # Test with cookie_store enabled
         client = primp.AsyncClient(cookie_store=True)
@@ -423,9 +423,9 @@ class TestAsyncClientContextManager:
     """Tests for AsyncClient context manager support."""
     
     @pytest.mark.asyncio
-    async def test_asyncclient_context_manager(self, test_server_dynamic_port: str) -> None:
+    async def test_asyncclient_context_manager(self, test_server: str) -> None:
         """Test using AsyncClient as a context manager."""
-        base_url = test_server_dynamic_port
+        base_url = test_server
         
         async with primp.AsyncClient() as client:
             response = await client.get(f"{base_url}/get")

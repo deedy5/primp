@@ -7,6 +7,7 @@ functionality. They require an active internet connection.
 
 from time import sleep
 
+import pytest
 import primp
 
 
@@ -28,6 +29,7 @@ def retry(max_retries=3, delay=1):
     return decorator
 
 
+@pytest.mark.internet
 @retry()
 def test_client_impersonate_chrome144():
     client = primp.Client(
@@ -47,6 +49,7 @@ def test_client_impersonate_chrome144():
     assert json_data["akamai_hash"] == "52d84b11737d980aef856699f885ca86"
 
 
+@pytest.mark.internet
 @retry()
 def test_get_impersonate_safari18_5():
     response = primp.get(
