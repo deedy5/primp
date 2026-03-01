@@ -49,7 +49,7 @@ All request methods return awaitable futures:
 
 ```python
 # HTTP methods
-await client.get(url, ...)
+await client.get(url, content=None, data=None, json=None, files=None, ...)
 await client.head(url, ...)
 await client.options(url, ...)
 await client.delete(url, ...)

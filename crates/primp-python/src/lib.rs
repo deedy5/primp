@@ -282,7 +282,6 @@ impl Client {
     ) -> PyResult<Py<PyAny>> {
         let client = Arc::clone(&self.client);
         let method = Method::from_bytes(method.as_bytes()).map_err(Into::<PrimpErrorEnum>::into)?;
-        let is_post_put_patch = matches!(method, Method::POST | Method::PUT | Method::PATCH);
         let data_value: Option<Value> = data
             .map(depythonize)
             .transpose()
@@ -340,34 +339,31 @@ impl Client {
                 request_builder = request_builder.headers(headers.to_headermap()?);
             }
 
-            // Only if method POST || PUT || PATCH
-            if is_post_put_patch {
-                // Content
-                if let Some(content) = content {
-                    request_builder = request_builder.body(content);
+            // Body content (if provided)
+            if let Some(content) = content {
+                request_builder = request_builder.body(content);
+            }
+            // Form data (if provided)
+            if let Some(form_data) = data_value {
+                request_builder = request_builder.form(&form_data);
+            }
+            // JSON (if provided)
+            if let Some(json_data) = json_value {
+                request_builder = request_builder.json(&json_data);
+            }
+            // Files (if provided)
+            if let Some(files) = files {
+                let mut form = multipart::Form::new();
+                for (file_name, file_path) in files {
+                    let file = File::open(file_path)
+                        .await
+                        .map_err(Into::<PrimpErrorEnum>::into)?;
+                    let stream = FramedRead::new(file, BytesCodec::new());
+                    let file_body = Body::wrap_stream(stream);
+                    let part = multipart::Part::stream(file_body).file_name(file_name.clone());
+                    form = form.part(file_name, part);
                 }
-                // Data
-                if let Some(form_data) = data_value {
-                    request_builder = request_builder.form(&form_data);
-                }
-                // Json
-                if let Some(json_data) = json_value {
-                    request_builder = request_builder.json(&json_data);
-                }
-                // Files
-                if let Some(files) = files {
-                    let mut form = multipart::Form::new();
-                    for (file_name, file_path) in files {
-                        let file = File::open(file_path)
-                            .await
-                            .map_err(Into::<PrimpErrorEnum>::into)?;
-                        let stream = FramedRead::new(file, BytesCodec::new());
-                        let file_body = Body::wrap_stream(stream);
-                        let part = multipart::Part::stream(file_body).file_name(file_name.clone());
-                        form = form.part(file_name, part);
-                    }
-                    request_builder = request_builder.multipart(form);
-                }
+                request_builder = request_builder.multipart(form);
             }
 
             // Auth
@@ -480,7 +476,7 @@ impl Client {
     }
 
     /// Send a GET request.
-    #[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, timeout=None, stream=false))]
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, stream=false))]
     fn get(
         &self,
         py: Python,
@@ -488,6 +484,10 @@ impl Client {
         params: Option<IndexMapSSR>,
         headers: Option<IndexMapSSR>,
         cookies: Option<IndexMapSSR>,
+        content: Option<Vec<u8>>,
+        data: Option<&Bound<'_, PyAny>>,
+        json: Option<&Bound<'_, PyAny>>,
+        files: Option<indexmap::IndexMap<String, String>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -500,10 +500,10 @@ impl Client {
             params,
             headers,
             cookies,
-            None,
-            None,
-            None,
-            None,
+            content,
+            data,
+            json,
+            files,
             auth,
             auth_bearer,
             timeout,
@@ -512,7 +512,7 @@ impl Client {
     }
 
     /// Send a HEAD request.
-    #[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, timeout=None, stream=false))]
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, stream=false))]
     fn head(
         &self,
         py: Python,
@@ -520,6 +520,10 @@ impl Client {
         params: Option<IndexMapSSR>,
         headers: Option<IndexMapSSR>,
         cookies: Option<IndexMapSSR>,
+        content: Option<Vec<u8>>,
+        data: Option<&Bound<'_, PyAny>>,
+        json: Option<&Bound<'_, PyAny>>,
+        files: Option<indexmap::IndexMap<String, String>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -532,10 +536,10 @@ impl Client {
             params,
             headers,
             cookies,
-            None,
-            None,
-            None,
-            None,
+            content,
+            data,
+            json,
+            files,
             auth,
             auth_bearer,
             timeout,
@@ -544,7 +548,7 @@ impl Client {
     }
 
     /// Send an OPTIONS request.
-    #[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, timeout=None, stream=false))]
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, stream=false))]
     fn options(
         &self,
         py: Python,
@@ -552,6 +556,10 @@ impl Client {
         params: Option<IndexMapSSR>,
         headers: Option<IndexMapSSR>,
         cookies: Option<IndexMapSSR>,
+        content: Option<Vec<u8>>,
+        data: Option<&Bound<'_, PyAny>>,
+        json: Option<&Bound<'_, PyAny>>,
+        files: Option<indexmap::IndexMap<String, String>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -564,10 +572,10 @@ impl Client {
             params,
             headers,
             cookies,
-            None,
-            None,
-            None,
-            None,
+            content,
+            data,
+            json,
+            files,
             auth,
             auth_bearer,
             timeout,
@@ -576,7 +584,7 @@ impl Client {
     }
 
     /// Send a DELETE request.
-    #[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, timeout=None, stream=false))]
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, stream=false))]
     fn delete(
         &self,
         py: Python,
@@ -584,6 +592,10 @@ impl Client {
         params: Option<IndexMapSSR>,
         headers: Option<IndexMapSSR>,
         cookies: Option<IndexMapSSR>,
+        content: Option<Vec<u8>>,
+        data: Option<&Bound<'_, PyAny>>,
+        json: Option<&Bound<'_, PyAny>>,
+        files: Option<indexmap::IndexMap<String, String>>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
@@ -596,10 +608,10 @@ impl Client {
             params,
             headers,
             cookies,
-            None,
-            None,
-            None,
-            None,
+            content,
+            data,
+            json,
+            files,
             auth,
             auth_bearer,
             timeout,
@@ -739,6 +751,10 @@ impl Client {
 /// * `params` - A map of query parameters to append to the URL. Default is None.
 /// * `headers` - A map of HTTP headers to send with the request. Default is None.
 /// * `cookies` - An optional map of cookies to send with requests as the `Cookie` header.
+/// * `content` - The content to send in the request body as bytes. Default is None.
+/// * `data` - The form data to send in the request body. Default is None.
+/// * `json` -  A JSON serializable object to send in the request body. Default is None.
+/// * `files` - A map of file fields to file paths to be sent as multipart/form-data. Default is None.
 /// * `auth` - A tuple containing the username and an optional password for basic authentication. Default is None.
 /// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
 /// * `timeout` - The timeout for the request in seconds. Default is 30.
@@ -748,13 +764,17 @@ impl Client {
 /// * `ca_cert_file` - Path to CA certificate store. Default is None.
 /// * `stream` - If True, returns a StreamResponse for streaming the response body. Default is False.
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, stream=false))]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, stream=false))]
 fn get(
     py: Python,
     url: &str,
     params: Option<IndexMapSSR>,
     headers: Option<IndexMapSSR>,
     cookies: Option<IndexMapSSR>,
+    content: Option<Vec<u8>>,
+    data: Option<&Bound<'_, PyAny>>,
+    json: Option<&Bound<'_, PyAny>>,
+    files: Option<indexmap::IndexMap<String, String>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
@@ -788,6 +808,10 @@ fn get(
         params,
         headers,
         cookies,
+        content,
+        data,
+        json,
+        files,
         auth,
         auth_bearer,
         timeout,
@@ -803,6 +827,10 @@ fn get(
 /// * `params` - A map of query parameters to append to the URL. Default is None.
 /// * `headers` - A map of HTTP headers to send with the request. Default is None.
 /// * `cookies` - An optional map of cookies to send with requests as the `Cookie` header.
+/// * `content` - The content to send in the request body as bytes. Default is None.
+/// * `data` - The form data to send in the request body. Default is None.
+/// * `json` -  A JSON serializable object to send in the request body. Default is None.
+/// * `files` - A map of file fields to file paths to be sent as multipart/form-data. Default is None.
 /// * `auth` - A tuple containing the username and an optional password for basic authentication. Default is None.
 /// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
 /// * `timeout` - The timeout for the request in seconds. Default is 30.
@@ -812,13 +840,17 @@ fn get(
 /// * `ca_cert_file` - Path to CA certificate store. Default is None.
 /// * `stream` - If True, returns a StreamResponse for streaming the response body. Default is False.
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, stream=false))]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, stream=false))]
 fn head(
     py: Python,
     url: &str,
     params: Option<IndexMapSSR>,
     headers: Option<IndexMapSSR>,
     cookies: Option<IndexMapSSR>,
+    content: Option<Vec<u8>>,
+    data: Option<&Bound<'_, PyAny>>,
+    json: Option<&Bound<'_, PyAny>>,
+    files: Option<indexmap::IndexMap<String, String>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
@@ -852,6 +884,10 @@ fn head(
         params,
         headers,
         cookies,
+        content,
+        data,
+        json,
+        files,
         auth,
         auth_bearer,
         timeout,
@@ -867,6 +903,10 @@ fn head(
 /// * `params` - A map of query parameters to append to the URL. Default is None.
 /// * `headers` - A map of HTTP headers to send with the request. Default is None.
 /// * `cookies` - An optional map of cookies to send with requests as the `Cookie` header.
+/// * `content` - The content to send in the request body as bytes. Default is None.
+/// * `data` - The form data to send in the request body. Default is None.
+/// * `json` -  A JSON serializable object to send in the request body. Default is None.
+/// * `files` - A map of file fields to file paths to be sent as multipart/form-data. Default is None.
 /// * `auth` - A tuple containing the username and an optional password for basic authentication. Default is None.
 /// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
 /// * `timeout` - The timeout for the request in seconds. Default is 30.
@@ -876,13 +916,17 @@ fn head(
 /// * `ca_cert_file` - Path to CA certificate store. Default is None.
 /// * `stream` - If True, returns a StreamResponse for streaming the response body. Default is False.
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, stream=false))]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, stream=false))]
 fn options(
     py: Python,
     url: &str,
     params: Option<IndexMapSSR>,
     headers: Option<IndexMapSSR>,
     cookies: Option<IndexMapSSR>,
+    content: Option<Vec<u8>>,
+    data: Option<&Bound<'_, PyAny>>,
+    json: Option<&Bound<'_, PyAny>>,
+    files: Option<indexmap::IndexMap<String, String>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
@@ -916,6 +960,10 @@ fn options(
         params,
         headers,
         cookies,
+        content,
+        data,
+        json,
+        files,
         auth,
         auth_bearer,
         timeout,
@@ -931,6 +979,10 @@ fn options(
 /// * `params` - A map of query parameters to append to the URL. Default is None.
 /// * `headers` - A map of HTTP headers to send with the request. Default is None.
 /// * `cookies` - An optional map of cookies to send with requests as the `Cookie` header.
+/// * `content` - The content to send in the request body as bytes. Default is None.
+/// * `data` - The form data to send in the request body. Default is None.
+/// * `json` -  A JSON serializable object to send in the request body. Default is None.
+/// * `files` - A map of file fields to file paths to be sent as multipart/form-data. Default is None.
 /// * `auth` - A tuple containing the username and an optional password for basic authentication. Default is None.
 /// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
 /// * `timeout` - The timeout for the request in seconds. Default is 30.
@@ -940,13 +992,17 @@ fn options(
 /// * `ca_cert_file` - Path to CA certificate store. Default is None.
 /// * `stream` - If True, returns a StreamResponse for streaming the response body. Default is False.
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, stream=false))]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, stream=false))]
 fn delete(
     py: Python,
     url: &str,
     params: Option<IndexMapSSR>,
     headers: Option<IndexMapSSR>,
     cookies: Option<IndexMapSSR>,
+    content: Option<Vec<u8>>,
+    data: Option<&Bound<'_, PyAny>>,
+    json: Option<&Bound<'_, PyAny>>,
+    files: Option<indexmap::IndexMap<String, String>>,
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
@@ -980,6 +1036,10 @@ fn delete(
         params,
         headers,
         cookies,
+        content,
+        data,
+        json,
+        files,
         auth,
         auth_bearer,
         timeout,
