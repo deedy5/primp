@@ -1,0 +1,8 @@
+matplotlib
+aiohttp
+granian
+requests
+httpx
+primp
+curl_cffi
+pycurl
