@@ -1,0 +1,85 @@
+[package]
+name = "primp"
+version = "1.2.0"
+description = "HTTP client with browser impersonation capabilities"
+keywords = ["http", "request", "client", "impersonate"]
+categories = ["web-programming::http-client"]
+authors = ["deedy5"]
+readme = "README.md"
+license = "MIT"
+edition = "2021"
+rust-version = "1.84"
+autotests = true
+include = [
+    "README.md",
+    "Cargo.toml",
+    "LICENSE-MIT",
+    "src/**/*.rs"
+]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs", "--cfg", "reqwest_unstable"]
+targets = ["x86_64-unknown-linux-gnu", "wasm32-unknown-unknown"]
+
+[features]
+default = ["impersonate"]
+
+impersonate = [
+    "dep:rand",
+    "default-tls",
+    "http2",
+    "cookies",
+    "gzip",
+    "brotli",
+    "zstd",
+    "deflate",
+    "query",
+    "form",
+    "json",
+    "multipart",
+    "stream",
+    "system-proxy",
+]
+
+# Individual features (for fine-grained control, or used by impersonate)
+default-tls = ["reqwest/default-tls"]
+http2 = ["reqwest/http2"]
+cookies = ["reqwest/cookies"]
+gzip = ["reqwest/gzip"]
+brotli = ["reqwest/brotli"]
+zstd = ["reqwest/zstd"]
+deflate = ["reqwest/deflate"]
+query = ["reqwest/query"]
+form = ["reqwest/form"]
+json = ["reqwest/json"]
+multipart = ["reqwest/multipart"]
+stream = ["reqwest/stream"]
+system-proxy = ["reqwest/system-proxy"]
+
+# Additional optional features
+hickory-dns = ["reqwest/hickory-dns"]
+socks = ["reqwest/socks"]
+http3 = ["reqwest/http3"]
+rustls-no-provider = ["reqwest/rustls-no-provider"]
+
+[dependencies]
+reqwest = { version = "0.13", default-features = false }
+http = "1.1"
+url = "2.4"
+rand = { version = "0.10", optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+h2 = { version = "0.4", features = ["unstable"] }
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "impersonate", "zlib"] }
+webpki-roots = "1"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+tokio = { version = "1.0", default-features = false, features = ["macros", "rt-multi-thread"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+criterion = "0.7"
+
+[[bench]]
+name = "client_creation"
+harness = false

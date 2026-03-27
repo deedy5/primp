@@ -1,0 +1,48 @@
+[package]
+name = "h2"
+version = "0.4.13"
+license = "MIT"
+authors = [
+  "deedy5",
+  "Carl Lerche <me@carllerche.com>",
+  "Sean McArthur <sean@seanmonstar.com>",
+]
+description = "A fork of the HTTP/2 client and server library from hyperium"
+edition = "2021"
+rust-version = "1.84"
+
+[features]
+unstable = []
+stream = []
+
+[dependencies]
+atomic-waker = "1.0.0"
+bytes = "1"
+futures-core = { version = "0.3", default-features = false }
+futures-sink = { version = "0.3", default-features = false }
+http = "1"
+indexmap = { version = "2", features = ["std"] }
+slab = "0.4.2"
+smallvec = "1.11"
+tokio = { version = "1", features = ["io-util"] }
+tokio-util = { version = "0.7.1", features = ["codec", "io"] }
+tracing = { version = "0.1.35", default-features = false, features = ["std"] }
+fnv = "1.0.5"
+
+[dev-dependencies]
+# Fuzzing
+quickcheck = { version = "1.0.3", default-features = false }
+rand = "0.8.4"
+
+# HPACK fixtures
+hex = "0.4.3"
+walkdir = "2.3.2"
+serde = "1.0.0"
+serde_json = "1.0.0"
+
+# Examples
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "net"] }
+env_logger = { version = "0.10", default-features = false }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(fuzzing)"] }
