@@ -1794,9 +1794,11 @@ impl<'a> Codec<'a> for CertificateExtensions<'a> {
         let mut sub = r.sub(len)?;
 
         while sub.any_left() {
-            out.read_one(&mut sub, |_unk| {
-                Err(InvalidMessage::UnknownCertificateExtension)
-            })?;
+            // Ignore unrecognized certificate extensions, consistent with
+            // ClientExtensions, ServerExtensions, and NewSessionTicketExtensions.
+            // See: https://datatracker.ietf.org/doc/html/rfc8446#section-4.4.2
+            // See: https://www.iana.org/assignments/tls-extensiontype-values
+            out.read_one(&mut sub, |_unk| Ok(()))?;
         }
 
         Ok(out)
@@ -3262,5 +3264,12 @@ mod tests {
             public_name: DnsName::try_from("example.com").unwrap(),
             extensions: vec![],
         }
+    }
+
+    #[test]
+    fn test_certificate_ext_ignores_unknown_type() {
+        let bytes = [0x00u8, 0x06, 0x99, 0x99, 0x00, 0x02, 0xAB, 0xCD];
+        let ext = CertificateExtensions::read_bytes(&bytes).unwrap();
+        assert!(ext.status.is_none());
     }
 }
