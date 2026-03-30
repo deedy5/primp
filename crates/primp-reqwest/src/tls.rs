@@ -621,18 +621,32 @@ pub(crate) fn rustls_store(certs: Vec<Certificate>) -> crate::Result<RootCertSto
     Ok(root_cert_store)
 }
 
-/// Returns a cached default root certificate store with webpki roots.
-/// This avoids recreating the root store on every client creation.
+/// Returns a cached default root certificate store with webpki roots and native OS root CAs.
 #[cfg(feature = "__rustls")]
-pub(crate) fn default_root_store() -> &'static rustls::RootCertStore {
-    use std::sync::OnceLock;
-    static DEFAULT_ROOTS: OnceLock<rustls::RootCertStore> = OnceLock::new();
-
+pub fn default_root_store() -> &'static rustls::RootCertStore {
+    static DEFAULT_ROOTS: std::sync::OnceLock<rustls::RootCertStore> = std::sync::OnceLock::new();
     DEFAULT_ROOTS.get_or_init(|| {
         let mut roots = rustls::RootCertStore::empty();
         roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        let native = rustls_native_certs::load_native_certs();
+        for err in &native.errors {
+            log::warn!("failed to load native root certificate: {err}");
+        }
+        if !native.certs.is_empty() {
+            roots.add_parsable_certificates(native.certs);
+        }
         roots
     })
+}
+
+/// Creates a root certificate store from the cached default store plus user-provided certs.
+#[cfg(feature = "__rustls")]
+pub fn merged_root_store(certs: Vec<Certificate>) -> crate::Result<RootCertStore> {
+    let mut store = default_root_store().clone();
+    for cert in certs {
+        cert.add_to_rustls(&mut store)?;
+    }
+    Ok(store)
 }
 
 #[cfg(feature = "__rustls")]
