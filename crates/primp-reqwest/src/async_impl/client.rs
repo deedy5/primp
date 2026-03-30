@@ -787,16 +787,10 @@ impl ClientBuilder {
                             ));
                         }
 
-                        // Use webpki roots instead of platform verifier
-                        let has_custom_roots = !config.root_certs.is_empty();
-                        let roots = if has_custom_roots {
-                            // Custom roots provided - create a new store with them
-                            let mut roots = crate::tls::rustls_store(config.root_certs)?;
-                            roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-                            roots
-                        } else {
-                            // No custom roots - use cached default root store
+                        let roots = if config.root_certs.is_empty() {
                             crate::tls::default_root_store().clone()
+                        } else {
+                            crate::tls::merged_root_store(config.root_certs)?
                         };
 
                         config_builder.with_root_certificates(roots)
