@@ -86,7 +86,7 @@ http3 = ["rustls", "dep:h3", "dep:h3-quinn", "dep:quinn", "tokio/macros"]
 __tls = ["dep:rustls-pki-types", "tokio/io-util"]
 
 # Enables common rustls code.
-__rustls = ["dep:hyper-rustls", "dep:tokio-rustls", "dep:rustls", "dep:webpki-roots", "__tls"]
+__rustls = ["dep:hyper-rustls", "dep:tokio-rustls", "dep:rustls", "dep:webpki-roots", "dep:rustls-native-certs", "__tls"]
 __rustls-aws-lc-rs = ["hyper-rustls?/aws-lc-rs", "tokio-rustls?/aws-lc-rs", "rustls?/aws-lc-rs", "quinn?/rustls-aws-lc-rs"]
 
 # Enables common native-tls code.
@@ -141,6 +141,7 @@ hyper-rustls = { version = "0.27", default-features = false, optional = true, fe
 rustls = { version = "0.23", optional = true, default-features = false, features = ["std", "tls12", "impersonate"] }
 tokio-rustls = { version = "0.26", optional = true, default-features = false }
 webpki-roots = { version = "1", optional = true }
+rustls-native-certs = { version = "0.8", optional = true }
 
 ## cookies
 cookie_crate = { version = "0.18.0", package = "cookie", optional = true }

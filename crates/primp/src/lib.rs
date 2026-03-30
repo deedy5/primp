@@ -47,6 +47,8 @@ pub struct ClientBuilder {
     impersonate: Option<Impersonate>,
     #[cfg(not(target_arch = "wasm32"))]
     os_type: Option<ImpersonateOS>,
+    #[cfg(not(target_arch = "wasm32"))]
+    root_certs: Vec<reqwest::Certificate>,
 }
 
 impl Default for ClientBuilder {
@@ -66,6 +68,8 @@ impl ClientBuilder {
             impersonate: None,
             #[cfg(not(target_arch = "wasm32"))]
             os_type: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            root_certs: Vec::new(),
         }
     }
 
@@ -73,29 +77,13 @@ impl ClientBuilder {
     pub fn build(self) -> crate::Result<Client> {
         #[cfg(not(target_arch = "wasm32"))]
         let inner = match (self.impersonate, self.os_type) {
-            (Some(impersonate), Some(os_type)) => {
-                let settings = imp::get_browser_settings(impersonate, Some(os_type));
-                apply_impersonation(self.inner, settings)?
-            }
-            (Some(Impersonate::Random), None) => {
-                let settings =
-                    imp::get_browser_settings(Impersonate::Random, Some(ImpersonateOS::Random));
-                apply_impersonation(self.inner, settings)?
-            }
-            (Some(impersonate), None) => {
-                let settings = imp::get_browser_settings(impersonate, Some(ImpersonateOS::Random));
-                apply_impersonation(self.inner, settings)?
-            }
-            (None, Some(ImpersonateOS::Random)) => {
-                let settings =
-                    imp::get_browser_settings(Impersonate::Random, Some(ImpersonateOS::Random));
-                apply_impersonation(self.inner, settings)?
-            }
-            (None, Some(os_type)) => {
-                let settings = imp::get_browser_settings(Impersonate::Random, Some(os_type));
-                apply_impersonation(self.inner, settings)?
-            }
             (None, None) => self.inner.build()?,
+            _ => {
+                let imp = self.impersonate.unwrap_or(Impersonate::Random);
+                let os = self.os_type.unwrap_or(ImpersonateOS::Random);
+                let settings = imp::get_browser_settings(imp, Some(os));
+                apply_impersonation(self.inner, settings, &self.root_certs)?
+            }
         };
 
         #[cfg(target_arch = "wasm32")]
@@ -404,6 +392,8 @@ impl ClientBuilder {
 
     /// Add custom certificate roots.
     pub fn add_root_certificate(mut self, cert: reqwest::Certificate) -> Self {
+        #[cfg(not(target_arch = "wasm32"))]
+        self.root_certs.push(cert.clone());
         self.inner = self.inner.add_root_certificate(cert);
         self
     }
@@ -545,9 +535,10 @@ pub async fn get<T: IntoUrl>(url: T) -> crate::Result<Response> {
 fn apply_impersonation(
     builder: reqwest::ClientBuilder,
     settings: BrowserSettings,
+    custom_certs: &[reqwest::Certificate],
 ) -> crate::Result<reqwest::Client> {
     // Build rustls::ClientConfig with impersonation TLS settings
-    let tls_config = build_impersonate_tls_config(&settings);
+    let tls_config = build_impersonate_tls_config(&settings, custom_certs)?;
 
     // Apply TLS configuration
     let builder = builder.use_preconfigured_tls(tls_config);
@@ -574,7 +565,10 @@ fn apply_impersonation(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn build_impersonate_tls_config(settings: &BrowserSettings) -> rustls::ClientConfig {
+fn build_impersonate_tls_config(
+    settings: &BrowserSettings,
+    custom_certs: &[reqwest::Certificate],
+) -> crate::Result<rustls::ClientConfig> {
     use rustls::client::EchMode;
     use std::sync::Arc;
 
@@ -582,9 +576,13 @@ fn build_impersonate_tls_config(settings: &BrowserSettings) -> rustls::ClientCon
         .cloned()
         .unwrap_or_else(|| Arc::new(rustls::crypto::aws_lc_rs::default_provider()));
 
-    // Create a root store with webpki roots
-    let mut root_store = rustls::RootCertStore::empty();
-    root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    // Use cached root store with both webpki roots and native OS root CAs.
+    // If custom certs are provided, merge them in.
+    let root_store = if custom_certs.is_empty() {
+        reqwest::tls::default_root_store().clone()
+    } else {
+        reqwest::tls::merged_root_store(custom_certs.to_vec())?
+    };
 
     // ECH GREASE is only used for Chrome-based browsers and Firefox to match JA4 fingerprint
     // Safari does NOT use ECH GREASE
@@ -629,7 +627,7 @@ fn build_impersonate_tls_config(settings: &BrowserSettings) -> rustls::ClientCon
         });
     }
 
-    config
+    Ok(config)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
