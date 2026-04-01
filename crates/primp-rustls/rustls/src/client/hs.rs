@@ -47,6 +47,15 @@ use crate::SupportedCipherSuite;
 ///
 /// There are 15 possible GREASE values (high nibble 1–15, avoids 0x0A0A).
 /// A bitmask tracks used values; each pick is O(1) amortized.
+
+/// Placeholder for the first/trailing GREASE extension type.
+/// Must match the value used in contiguous_extensions and unknown_extensions.
+const GREASE_EXT_FIRST_PLACEHOLDER: u16 = 0x6a6a;
+
+/// Placeholder for the last GREASE extension type.
+/// Must match the value used in contiguous_extensions and unknown_extensions.
+const GREASE_EXT_LAST_PLACEHOLDER: u16 = 0x0a0a;
+
 #[cfg(feature = "impersonate")]
 fn generate_distinct_grease(random: &[u8; 32]) -> (u16, u16, u16, u16) {
     let mut used: u16 = 0; // bit N set means high-nibble N is taken
@@ -329,10 +338,14 @@ fn emit_client_hello_for_retry(
                     .push((ExtensionType::Unknown(0x44cd), Payload::new(v)));
                 // GREASE extensions for Chrome fingerprinting (RFC 8701)
                 // Chrome places GREASE at first and last positions in the extension list
-                exts.unknown_extensions
-                    .push((ExtensionType::Unknown(0x6a6a), Payload::empty()));
-                exts.unknown_extensions
-                    .push((ExtensionType::Unknown(0x7a7a), Payload::empty()));
+                exts.unknown_extensions.push((
+                    ExtensionType::Unknown(GREASE_EXT_FIRST_PLACEHOLDER),
+                    Payload::empty(),
+                ));
+                exts.unknown_extensions.push((
+                    ExtensionType::Unknown(GREASE_EXT_LAST_PLACEHOLDER),
+                    Payload::empty(),
+                ));
 
                 // Note: contiguous_extensions is set after all extensions are added (see below)
             }
@@ -655,24 +668,24 @@ fn emit_client_hello_for_retry(
             // signature_algorithms, ALPN, ec_point_formats, compress_certificate,
             // extended_main_secret, psk_key_exchange_modes, GREASE
             exts.contiguous_extensions = vec![
-                ExtensionType::Unknown(0x6a6a),       // GREASE (first)
-                ExtensionType::EncryptedClientHello,  // ECH GREASE (position 1)
-                ExtensionType::SupportedVersions,     // 43 (0x002b)
-                ExtensionType::SCT,                   // 18 (0x0012)
-                ExtensionType::Unknown(0x44cd),       // ALPS (17613, new codepoint)
-                ExtensionType::EllipticCurves,        // 10 (0x000a) supported_groups
-                ExtensionType::RenegotiationInfo,     // 65281 (0xff01)
-                ExtensionType::KeyShare,              // 51 (0x0033)
-                ExtensionType::StatusRequest,         // 5 (0x0005)
-                ExtensionType::SessionTicket,         // 35 (0x0023)
-                ExtensionType::ServerName,            // 0 (0x0000)
-                ExtensionType::SignatureAlgorithms,   // 13 (0x000d)
+                ExtensionType::Unknown(GREASE_EXT_FIRST_PLACEHOLDER), // GREASE (first)
+                ExtensionType::EncryptedClientHello,                  // ECH GREASE (position 1)
+                ExtensionType::SupportedVersions,                     // 43 (0x002b)
+                ExtensionType::SCT,                                   // 18 (0x0012)
+                ExtensionType::Unknown(0x44cd),                       // ALPS (17613, new codepoint)
+                ExtensionType::EllipticCurves, // 10 (0x000a) supported_groups
+                ExtensionType::RenegotiationInfo, // 65281 (0xff01)
+                ExtensionType::KeyShare,       // 51 (0x0033)
+                ExtensionType::StatusRequest,  // 5 (0x0005)
+                ExtensionType::SessionTicket,  // 35 (0x0023)
+                ExtensionType::ServerName,     // 0 (0x0000)
+                ExtensionType::SignatureAlgorithms, // 13 (0x000d)
                 ExtensionType::ALProtocolNegotiation, // 16 (0x0010)
-                ExtensionType::ECPointFormats,        // 11 (0x000b)
-                ExtensionType::CompressCertificate,   // 27 (0x001b)
-                ExtensionType::ExtendedMasterSecret,  // 23 (0x0017)
-                ExtensionType::PSKKeyExchangeModes,   // 45 (0x002d)
-                ExtensionType::Unknown(0x0a0a),       // GREASE (last, placeholder)
+                ExtensionType::ECPointFormats, // 11 (0x000b)
+                ExtensionType::CompressCertificate, // 27 (0x001b)
+                ExtensionType::ExtendedMasterSecret, // 23 (0x0017)
+                ExtensionType::PSKKeyExchangeModes, // 45 (0x002d)
+                ExtensionType::Unknown(GREASE_EXT_LAST_PLACEHOLDER), // GREASE (last, placeholder)
             ];
             // ECH is at position 1 in contiguous_extensions, no need for ech_before_trailing_grease
             exts.ech_before_trailing_grease = false;
@@ -682,24 +695,24 @@ fn emit_client_hello_for_retry(
         // supported_groups, ECH, ALPN, ALPS(0x44cd), psk_key_exchange_modes, supported_versions, GREASE
         if be.browser_type == BrowserType::Edge {
             exts.contiguous_extensions = vec![
-                ExtensionType::Unknown(0x6a6a),       // GREASE (first)
-                ExtensionType::RenegotiationInfo,     // 65281
-                ExtensionType::ExtendedMasterSecret,  // 23
-                ExtensionType::SessionTicket,         // 35
-                ExtensionType::SCT,                   // 18
-                ExtensionType::StatusRequest,         // 5
-                ExtensionType::SignatureAlgorithms,   // 13
-                ExtensionType::CompressCertificate,   // 27
-                ExtensionType::ServerName,            // 0
-                ExtensionType::KeyShare,              // 51
-                ExtensionType::ECPointFormats,        // 11
-                ExtensionType::EllipticCurves,        // 10
-                ExtensionType::EncryptedClientHello,  // 65037 (ECH GREASE)
-                ExtensionType::ALProtocolNegotiation, // 16
-                ExtensionType::Unknown(0x44cd),       // ALPS
-                ExtensionType::PSKKeyExchangeModes,   // 45
-                ExtensionType::SupportedVersions,     // 43
-                ExtensionType::Unknown(0x0a0a),       // GREASE (last, placeholder)
+                ExtensionType::Unknown(GREASE_EXT_FIRST_PLACEHOLDER), // GREASE (first)
+                ExtensionType::RenegotiationInfo,                     // 65281
+                ExtensionType::ExtendedMasterSecret,                  // 23
+                ExtensionType::SessionTicket,                         // 35
+                ExtensionType::SCT,                                   // 18
+                ExtensionType::StatusRequest,                         // 5
+                ExtensionType::SignatureAlgorithms,                   // 13
+                ExtensionType::CompressCertificate,                   // 27
+                ExtensionType::ServerName,                            // 0
+                ExtensionType::KeyShare,                              // 51
+                ExtensionType::ECPointFormats,                        // 11
+                ExtensionType::EllipticCurves,                        // 10
+                ExtensionType::EncryptedClientHello,                  // 65037 (ECH GREASE)
+                ExtensionType::ALProtocolNegotiation,                 // 16
+                ExtensionType::Unknown(0x44cd),                       // ALPS
+                ExtensionType::PSKKeyExchangeModes,                   // 45
+                ExtensionType::SupportedVersions,                     // 43
+                ExtensionType::Unknown(GREASE_EXT_LAST_PLACEHOLDER),  // GREASE (last, placeholder)
             ];
             exts.ech_before_trailing_grease = false;
         }
@@ -710,24 +723,24 @@ fn emit_client_hello_for_retry(
             // supported_versions, psk_key_exchange_modes, SCT, ec_point_formats,
             // ALPS(0x44cd), signature_algorithms, session_ticket, GREASE
             exts.contiguous_extensions = vec![
-                ExtensionType::Unknown(0x6a6a),       // GREASE (first)
-                ExtensionType::EncryptedClientHello,  // ECH
-                ExtensionType::KeyShare,              // 51
-                ExtensionType::RenegotiationInfo,     // 65281
-                ExtensionType::ExtendedMasterSecret,  // 23
-                ExtensionType::CompressCertificate,   // 27
-                ExtensionType::EllipticCurves,        // 10
-                ExtensionType::ServerName,            // 0
-                ExtensionType::ALProtocolNegotiation, // 16
-                ExtensionType::StatusRequest,         // 5
-                ExtensionType::SupportedVersions,     // 43
-                ExtensionType::PSKKeyExchangeModes,   // 45
-                ExtensionType::SCT,                   // 18
-                ExtensionType::ECPointFormats,        // 11
-                ExtensionType::Unknown(0x44cd),       // ALPS
-                ExtensionType::SignatureAlgorithms,   // 13
-                ExtensionType::SessionTicket,         // 35
-                ExtensionType::Unknown(0x0a0a),       // GREASE (last)
+                ExtensionType::Unknown(GREASE_EXT_FIRST_PLACEHOLDER), // GREASE (first)
+                ExtensionType::EncryptedClientHello,                  // ECH
+                ExtensionType::KeyShare,                              // 51
+                ExtensionType::RenegotiationInfo,                     // 65281
+                ExtensionType::ExtendedMasterSecret,                  // 23
+                ExtensionType::CompressCertificate,                   // 27
+                ExtensionType::EllipticCurves,                        // 10
+                ExtensionType::ServerName,                            // 0
+                ExtensionType::ALProtocolNegotiation,                 // 16
+                ExtensionType::StatusRequest,                         // 5
+                ExtensionType::SupportedVersions,                     // 43
+                ExtensionType::PSKKeyExchangeModes,                   // 45
+                ExtensionType::SCT,                                   // 18
+                ExtensionType::ECPointFormats,                        // 11
+                ExtensionType::Unknown(0x44cd),                       // ALPS
+                ExtensionType::SignatureAlgorithms,                   // 13
+                ExtensionType::SessionTicket,                         // 35
+                ExtensionType::Unknown(GREASE_EXT_LAST_PLACEHOLDER),  // GREASE (last)
             ];
             exts.ech_before_trailing_grease = false;
         }
@@ -755,9 +768,9 @@ fn emit_client_hello_for_retry(
 
         // Update unknown_extensions GREASE entries to match
         for (ext_type, _) in exts.unknown_extensions.iter_mut() {
-            if *ext_type == ExtensionType::Unknown(0x6a6a) {
+            if *ext_type == ExtensionType::Unknown(GREASE_EXT_FIRST_PLACEHOLDER) {
                 *ext_type = ExtensionType::Unknown(grease_ext_first);
-            } else if *ext_type == ExtensionType::Unknown(0xcafe) {
+            } else if *ext_type == ExtensionType::Unknown(GREASE_EXT_LAST_PLACEHOLDER) {
                 *ext_type = ExtensionType::Unknown(grease_ext_last);
             }
         }
