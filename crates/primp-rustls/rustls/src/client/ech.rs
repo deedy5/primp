@@ -13,7 +13,7 @@ use crate::hash_hs::{HandshakeHash, HandshakeHashBuffer};
 use crate::log::{debug, trace, warn};
 use crate::msgs::base::{Payload, PayloadU16};
 use crate::msgs::codec::{Codec, Reader};
-use crate::msgs::enums::{ExtensionType, HpkeKem};
+use crate::msgs::enums::ExtensionType;
 use crate::msgs::handshake::{
     ClientExtensions, ClientHelloPayload, EchConfigContents, EchConfigPayload, Encoding,
     EncryptedClientHello, EncryptedClientHelloOuter, HandshakeMessagePayload, HandshakePayload,
@@ -212,7 +212,7 @@ impl EchGreaseConfig {
         &self,
         secure_random: &'static dyn SecureRandom,
         inner_name: ServerName<'static>,
-        outer_hello: &ClientHelloPayload,
+        _outer_hello: &ClientHelloPayload,
     ) -> Result<EncryptedClientHello, Error> {
         trace!("Preparing GREASE ECH extension");
 
@@ -224,12 +224,12 @@ impl EchGreaseConfig {
 
         // Construct a dummy ECH state - we don't have a real ECH config from a server since
         // this is for GREASE.
-        let mut grease_state = EchState::new(
+        let grease_state = EchState::new(
             &EchConfig {
                 config: EchConfigPayload::V18(EchConfigContents {
                     key_config: HpkeKeyConfig {
                         config_id: config_id[0],
-                        kem_id: HpkeKem::DHKEM_P256_HKDF_SHA256,
+                        kem_id: suite.kem,
                         public_key: PayloadU16::new(self.placeholder_key.0.clone()),
                         symmetric_cipher_suites: vec![suite.sym],
                     },
@@ -245,19 +245,18 @@ impl EchGreaseConfig {
             false, // Does not matter if we enable/disable SNI here. Inner hello is not used.
         )?;
 
-        // Construct an inner hello using the outer hello - this allows us to know the size of
-        // dummy payload we should use for the GREASE extension.
-        let encoded_inner_hello = grease_state.encode_inner_hello(outer_hello, None, &None);
-
-        // Generate a payload of random data equivalent in length to a real inner hello.
-        let payload_len = encoded_inner_hello.len()
-            + suite
-                .sym
-                .aead_id
-                .tag_len()
-                // Safety: we have confirmed the AEAD is supported when building the config. All
-                //  supported AEADs have a tag length.
-                .unwrap();
+        // Generate a payload of random data. BoringSSL uses a random length of
+        // 128-224+tag bytes for GREASE ECH payload.
+        let tag_len = suite
+            .sym
+            .aead_id
+            .tag_len()
+            // Safety: we have confirmed the AEAD is supported when building the config. All
+            //  supported AEADs have a tag length.
+            .unwrap();
+        let mut random_len = [0u8; 2];
+        secure_random.fill(&mut random_len)?;
+        let payload_len = 128 + (u16::from_be_bytes(random_len) % 97) as usize + tag_len;
         let mut payload = vec![0; payload_len];
         secure_random.fill(&mut payload)?;
 
