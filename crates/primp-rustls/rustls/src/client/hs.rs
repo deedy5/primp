@@ -482,14 +482,20 @@ fn emit_client_hello_for_retry(
         let mut shares = vec![KeyShareEntry::new(key_share.group(), key_share.pub_key())];
 
         // Add GREASE key_share entry for browser emulation (Chrome behavior)
-        // Real Chrome sends GREASE with a 1-byte random key before real entries
+        // Real Chrome (BoringSSL) sends GREASE with a fixed 1-byte key of 0 before real entries.
+        // See BoringSSL ssl_setup_key_shares: CBB_add_u8(cbb.get(), 0 /* one byte key share */)
+        // Skip GREASE in HRR retry - RFC 8446 §4.1.4: second ClientHello key_share
+        // must only contain the group requested by the server.
         #[cfg(feature = "impersonate")]
-        if config.browser_emulation.is_some() {
+        if config.browser_emulation.is_some()
+            && !retryreq
+                .map(|rr| rr.key_share.is_some())
+                .unwrap_or_default()
+        {
             if let Some(ng) = exts.named_groups.as_ref().and_then(|ngs| ngs.first()) {
                 if let NamedGroup::Unknown(_grease_val) = ng {
-                    let mut grease_random = [0u8; 1];
-                    let _ = config.provider.secure_random.fill(&mut grease_random);
-                    shares.insert(0, KeyShareEntry::new(*ng, &grease_random[..]));
+                    // BoringSSL uses a fixed key value of 0, not random
+                    shares.insert(0, KeyShareEntry::new(*ng, &[0u8][..]));
                 }
             }
         }
