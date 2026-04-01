@@ -47,7 +47,7 @@ use crate::SupportedCipherSuite;
 ///
 /// There are 15 possible GREASE values (high nibble 1–15, avoids 0x0A0A).
 /// A bitmask tracks used values; each pick is O(1) amortized.
-
+///
 /// Placeholder for the first/trailing GREASE extension type.
 /// Must match the value used in contiguous_extensions and unknown_extensions.
 const GREASE_EXT_FIRST_PLACEHOLDER: u16 = 0x6a6a;
@@ -115,6 +115,9 @@ pub(super) struct ClientHelloInput {
     pub(super) session_id: SessionId,
     pub(super) server_name: ServerName<'static>,
     pub(super) prev_ech_ext: Option<EncryptedClientHello>,
+    /// Extra key exchanges offered in the ClientHello (e.g. for Firefox browser emulation
+    /// which sends a third key share beyond primary + hybrid component).
+    pub(super) extra_key_exchanges: Vec<Box<dyn ActiveKeyExchange>>,
 }
 
 impl ClientHelloInput {
@@ -183,6 +186,7 @@ impl ClientHelloInput {
             server_name,
             prev_ech_ext: None,
             config,
+            extra_key_exchanges: Vec::new(),
         })
     }
 
@@ -556,6 +560,7 @@ fn emit_client_hello_for_retry(
                             if let Ok(extra_kx) = skxg.start() {
                                 shares
                                     .push(KeyShareEntry::new(extra_kx.group(), extra_kx.pub_key()));
+                                input.extra_key_exchanges.push(extra_kx);
                                 break; // Only add one extra for Firefox
                             }
                         }
