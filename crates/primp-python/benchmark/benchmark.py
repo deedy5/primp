@@ -65,7 +65,7 @@ def get_test(session_class, requests_number):
     for _ in range(requests_number):
         s = session_class()
         try:
-            s.get(url).text
+            _ = s.get(url).text
         finally:
             if hasattr(s, "close"):
                 s.close()
@@ -75,7 +75,7 @@ def session_get_test(session_class, requests_number):
     s = session_class()
     try:
         for _ in range(requests_number):
-            s.get(url).text
+            _ = s.get(url).text
     finally:
         if hasattr(s, "close"):
             s.close()
@@ -110,28 +110,28 @@ def plot_data(data, ax, title):
     """Plot data for a single session type."""
     names = list(data.keys())
     sizes = ["5k", "50k", "200k"]
-    
+
     x = np.arange(len(names))
     width = 0.125  # Narrower bars to fit 6 bars per group
-    
+
     # Plot time bars (first 3)
     for i, size in enumerate(sizes):
         values = [data[name].get(size, {}).get("time", 0) for name in names]
         rects = ax.bar(x + i * width, values, width, label=f"Time {size}")
         ax.bar_label(rects, padding=3, fontsize=8, rotation=90)
-    
+
     # Plot cpu_time bars (next 3)
     for i, size in enumerate(sizes):
         values = [data[name].get(size, {}).get("cpu_time", 0) for name in names]
         rects = ax.bar(x + (i + 3) * width, values, width, label=f"CPU Time {size}")
         ax.bar_label(rects, padding=3, fontsize=8, rotation=90)
-    
+
     ax.set_ylabel("Time (s)", fontsize=10)
     ax.set_title(title, fontsize=11)
     ax.set_xticks(x + 3 * width - width / 2)
     ax.set_xticklabels(names, rotation=0, ha="center", fontsize=9)
     ax.legend(loc="upper left", ncols=6, prop={"size": 8})
-    
+
     # Adjust y-axis
     y_min, y_max = ax.get_ylim()
     ax.set_ylim(y_min, y_max * 1.2)
@@ -140,11 +140,23 @@ def plot_data(data, ax, title):
 def generate_image():
     """Generate the benchmark image from in-memory data."""
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 7), layout="constrained")
-    
-    plot_data(results_data["sync_no_session"], ax1, "Session=False | Requests: 500 | Response: gzip, utf-8, size 5Kb, 50Kb, 200Kb")
-    plot_data(results_data["sync_session"], ax2, "Session=True | Requests: 500 | Response: gzip, utf-8, size 5Kb, 50Kb, 200Kb")
-    plot_data(results_data["async_session"], ax3, "Session=Async | Requests: 500 | Response: gzip, utf-8, size 5Kb, 50Kb, 200Kb")
-    
+
+    plot_data(
+        results_data["sync_no_session"],
+        ax1,
+        "Session=False | Requests: 500 | Response: gzip, utf-8, size 5Kb, 50Kb, 200Kb",
+    )
+    plot_data(
+        results_data["sync_session"],
+        ax2,
+        "Session=True | Requests: 500 | Response: gzip, utf-8, size 5Kb, 50Kb, 200Kb",
+    )
+    plot_data(
+        results_data["async_session"],
+        ax3,
+        "Session=Async | Requests: 500 | Response: gzip, utf-8, size 5Kb, 50Kb, 200Kb",
+    )
+
     plt.savefig("benchmark.jpg", format="jpg", dpi=80, bbox_inches="tight")
     print("\nBenchmark image saved to benchmark.jpg")
 
@@ -154,9 +166,9 @@ AsyncPACKAGES = add_package_version(AsyncPACKAGES)
 requests_number = 500
 
 # Sync - No Session
-print(f"\n{'='*60}")
+print(f"\n{'=' * 60}")
 print(f"Threads=1, session=False, requests={requests_number}")
-print(f"{'='*60}")
+print(f"{'=' * 60}")
 for response_size in ["5k", "50k", "200k"]:
     url = f"http://127.0.0.1:8000/{response_size}"
     print(f"\n{response_size}:")
@@ -172,9 +184,9 @@ for response_size in ["5k", "50k", "200k"]:
         print(f"  {name:<30} time: {dur}s cpu_time: {cpu_dur}s")
 
 # Sync - With Session
-print(f"\n{'='*60}")
+print(f"\n{'=' * 60}")
 print(f"Threads=1, session=True, requests={requests_number}")
-print(f"{'='*60}")
+print(f"{'=' * 60}")
 for response_size in ["5k", "50k", "200k"]:
     url = f"http://127.0.0.1:8000/{response_size}"
     print(f"\n{response_size}:")
@@ -190,9 +202,9 @@ for response_size in ["5k", "50k", "200k"]:
         print(f"  {name:<30} time: {dur}s cpu_time: {cpu_dur}s")
 
 # Async
-print(f"\n{'='*60}")
+print(f"\n{'=' * 60}")
 print(f"Threads=1, session=Async, requests={requests_number}")
-print(f"{'='*60}")
+print(f"{'=' * 60}")
 for response_size in ["5k", "50k", "200k"]:
     url = f"http://127.0.0.1:8000/{response_size}"
     print(f"\n{response_size}:")
@@ -209,4 +221,3 @@ for response_size in ["5k", "50k", "200k"]:
 
 # Generate image from in-memory data
 generate_image()
-

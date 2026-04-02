@@ -5,17 +5,11 @@ import primp
 client = primp.Client(impersonate="chrome_146")
 
 # POST form data
-resp = client.post(
-    "https://httpbin.org/post",
-    data={"username": "john", "password": "secret"}
-)
+resp = client.post("https://httpbin.org/post", data={"username": "john", "password": "secret"})
 print(f"Form data: {resp.json()['form']}")
 
 # POST JSON
-resp = client.post(
-    "https://httpbin.org/post",
-    json={"name": "John", "age": 30}
-)
+resp = client.post("https://httpbin.org/post", json={"name": "John", "age": 30})
 print(f"JSON data: {resp.json()['json']}")
 
 # POST raw bytes

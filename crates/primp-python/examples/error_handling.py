@@ -1,6 +1,7 @@
 """Error handling examples for primp."""
 
 import json
+
 import primp
 
 client = primp.Client(impersonate="chrome_146", timeout=10)
