@@ -26,24 +26,24 @@ STARTUP_TIMEOUT = 30
 def create_venv() -> Path:
     """Create a virtual environment and return the path to its python executable."""
     print(f"Creating virtual environment at {VENV_DIR}...")
-    
+
     # Remove existing venv if present
     if VENV_DIR.exists():
-        print(f"Removing existing virtual environment...")
+        print("Removing existing virtual environment...")
         shutil.rmtree(VENV_DIR)
-    
+
     # Create new venv
     subprocess.run(
         [sys.executable, "-m", "venv", str(VENV_DIR)],
         check=True,
     )
-    
+
     # Determine python executable path in venv
     if sys.platform == "win32":
         python_path = VENV_DIR / "Scripts" / "python.exe"
     else:
         python_path = VENV_DIR / "bin" / "python"
-    
+
     print("Virtual environment created.")
     return python_path
 
@@ -51,23 +51,23 @@ def create_venv() -> Path:
 def install_dependencies(python_path: Path):
     """Install dependencies from requirements.txt."""
     print("Installing dependencies...")
-    
+
     requirements_path = BENCHMARK_DIR / "requirements.txt"
-    
+
     subprocess.run(
         [str(python_path), "-m", "pip", "install", "--upgrade", "pip"],
         check=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    
+
     subprocess.run(
         [str(python_path), "-m", "pip", "install", "-r", str(requirements_path)],
         check=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    
+
     print("Dependencies installed.")
 
 
@@ -86,27 +86,34 @@ def is_server_ready(port: int, timeout: float = STARTUP_TIMEOUT) -> bool:
 def start_server(port: int, python_path: Path):
     """Start the server as a subprocess."""
     print(f"Starting benchmark server on {HOST}:{port}...")
-    
+
     server_process = subprocess.Popen(
         [
-            str(python_path), "-m", "granian",
+            str(python_path),
+            "-m",
+            "granian",
             "server:app",
-            "--host", HOST,
-            "--port", str(port),
-            "--interface", "asgi",
-            "--workers", "1",
-            "--log-level", "error",
+            "--host",
+            HOST,
+            "--port",
+            str(port),
+            "--interface",
+            "asgi",
+            "--workers",
+            "1",
+            "--log-level",
+            "error",
         ],
         cwd=str(BENCHMARK_DIR),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    
+
     if not is_server_ready(port):
         print("ERROR: Server failed to start")
         server_process.kill()
         sys.exit(1)
-    
+
     print("Server is ready.")
     return server_process
 
@@ -114,12 +121,12 @@ def start_server(port: int, python_path: Path):
 def run_benchmark(python_path: Path):
     """Run the benchmark."""
     print("\nRunning benchmark...\n")
-    
+
     result = subprocess.run(
         [str(python_path), str(BENCHMARK_DIR / "benchmark.py")],
         cwd=str(BENCHMARK_DIR),
     )
-    
+
     return result.returncode
 
 
@@ -136,23 +143,23 @@ def main():
     port = DEFAULT_PORT
     server_process = None
     python_path = None
-    
+
     try:
         # Create virtual environment
         python_path = create_venv()
-        
+
         # Install dependencies
         install_dependencies(python_path)
-        
+
         # Start server
         server_process = start_server(port, python_path)
-        
+
         # Run benchmark (includes image generation)
         return_code = run_benchmark(python_path)
-        
+
         if return_code != 0:
             sys.exit(1)
-        
+
     except KeyboardInterrupt:
         print("\nInterrupted by user")
         sys.exit(1)
@@ -164,7 +171,7 @@ def main():
                 server_process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 server_process.kill()
-        
+
         # Cleanup virtual environment
         cleanup_venv()
 

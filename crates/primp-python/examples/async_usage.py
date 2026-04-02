@@ -1,6 +1,7 @@
 """Async usage examples for primp AsyncClient."""
 
 import asyncio
+
 import primp
 
 

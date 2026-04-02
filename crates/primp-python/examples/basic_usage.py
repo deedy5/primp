@@ -18,8 +18,5 @@ resp = client.get("https://httpbin.org/get", params={"key": "value", "foo": "bar
 print(f"Params: {resp.json()['args']}")
 
 # Custom headers
-resp = client.get(
-    "https://httpbin.org/headers",
-    headers={"X-Custom-Header": "custom-value"}
-)
+resp = client.get("https://httpbin.org/headers", headers={"X-Custom-Header": "custom-value"})
 print(f"Headers: {resp.json()['headers']}")

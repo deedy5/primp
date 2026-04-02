@@ -1,8 +1,8 @@
 """Streaming examples for primp."""
 
 import asyncio
-import primp
 
+import primp
 
 client = primp.Client(impersonate="chrome_146")
 
