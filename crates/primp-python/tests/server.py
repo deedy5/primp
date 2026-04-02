@@ -33,6 +33,13 @@ class HttpbinRequestHandler(BaseHTTPRequestHandler):
         """Suppress default logging."""
         pass
     
+    def handle(self) -> None:
+        """Override to suppress ConnectionResetError from client disconnects."""
+        try:
+            super().handle()
+        except (ConnectionResetError, BrokenPipeError, OSError):
+            pass
+    
     def _build_response_dict(self, method: str, body: bytes = b"") -> dict[str, Any]:
         """Build a response dictionary with request details."""
         parsed_url = urlparse(self.path)
@@ -151,7 +158,10 @@ class HttpbinRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(response_body)))
         self.end_headers()
-        self.wfile.write(response_body)
+        try:
+            self.wfile.write(response_body)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
     
     def _send_html_response(self, html: str, status: int = 200) -> None:
         """Send an HTML response."""
@@ -160,7 +170,10 @@ class HttpbinRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(response_body)))
         self.end_headers()
-        self.wfile.write(response_body)
+        try:
+            self.wfile.write(response_body)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
     
     def _read_body(self) -> bytes:
         """Read the request body."""
@@ -313,7 +326,10 @@ class HttpbinRequestHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(response_body)))
             self.end_headers()
-            self.wfile.write(response_body)
+            try:
+                self.wfile.write(response_body)
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                pass
         else:
             self.send_response(404)
             self.send_header("Content-Length", "0")
@@ -468,9 +484,12 @@ class HttpbinRequestHandler(BaseHTTPRequestHandler):
         
         for name, values in query_params.items():
             self.send_header("Set-Cookie", f"{name}={values[0]}")
-        
+
         self.end_headers()
-        self.wfile.write(response_body)
+        try:
+            self.wfile.write(response_body)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
     
     def _handle_redirect(self, path: str) -> None:
         """Handle /redirect/<n> endpoint."""
@@ -500,7 +519,10 @@ class HttpbinRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Encoding", "gzip")
         self.send_header("Content-Length", str(len(gzipped_data)))
         self.end_headers()
-        self.wfile.write(gzipped_data)
+        try:
+            self.wfile.write(gzipped_data)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
 
     def _handle_invalid_gzip(self) -> None:
         """Handle /invalid-gzip endpoint - returns invalid gzip data."""
@@ -512,7 +534,10 @@ class HttpbinRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Encoding", "gzip")
         self.send_header("Content-Length", str(len(invalid_gzip_data)))
         self.end_headers()
-        self.wfile.write(invalid_gzip_data)
+        try:
+            self.wfile.write(invalid_gzip_data)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
 
     def _handle_invalid_deflate(self) -> None:
         """Handle /invalid-deflate endpoint - returns invalid deflate data."""
@@ -524,7 +549,10 @@ class HttpbinRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Encoding", "deflate")
         self.send_header("Content-Length", str(len(invalid_deflate_data)))
         self.end_headers()
-        self.wfile.write(invalid_deflate_data)
+        try:
+            self.wfile.write(invalid_deflate_data)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
 
     def _handle_broken_chunked(self) -> None:
         """Handle /broken-chunked endpoint - sends incomplete chunked response."""
@@ -571,7 +599,10 @@ class HttpbinRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/xml")
         self.send_header("Content-Length", str(len(response_body)))
         self.end_headers()
-        self.wfile.write(response_body)
+        try:
+            self.wfile.write(response_body)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
 
     def _handle_upgrade(self) -> None:
         """Handle /upgrade endpoint - sends 101 Switching Protocols but fails the upgrade.
