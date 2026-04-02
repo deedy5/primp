@@ -161,6 +161,11 @@ class TestClientProperties:
         # Should be None if not set
         assert impersonate is None
     
+    def test_client_impersonate_getter_set(self) -> None:
+        """Test impersonate property getter when set."""
+        client = primp.Client(impersonate="chrome_144")
+        assert client.impersonate == "chrome_144"
+    
     def test_client_impersonate_os_getter(self) -> None:
         """Test impersonate_os property getter."""
         client = primp.Client()
@@ -168,6 +173,16 @@ class TestClientProperties:
         
         # Should be None if not set
         assert impersonate_os is None
+    
+    def test_client_impersonate_os_getter_set(self) -> None:
+        """Test impersonate_os property getter when set."""
+        client = primp.Client(impersonate_os="windows")
+        assert client.impersonate_os == "windows"
+    
+    def test_client_ca_cert_file(self) -> None:
+        """Test client initialization with ca_cert_file parameter."""
+        client = primp.Client(ca_cert_file=None)
+        assert client is not None
 
 
 class TestClientSetters:
@@ -187,10 +202,57 @@ class TestClientSetters:
         assert data["headers"]["x-new-header"] == "new_value"
     
     def test_client_proxy_setter(self) -> None:
-        """Test proxy property getter returns None when not set."""
+        """Test proxy property setter."""
         client = primp.Client()
-        # Proxy should be None if not set
-        assert client.proxy is None
+        client.proxy = "http://localhost:9999"
+        assert client.proxy == "http://localhost:9999"
+    
+    def test_client_auth_setter(self, test_server: str) -> None:
+        """Test auth property setter."""
+        base_url = test_server
+        
+        client = primp.Client()
+        client.auth = ("user", "pass")
+        
+        response = client.get(f"{base_url}/get")
+        assert response.status_code == 200
+        data = response.json()
+        assert "authorization" in data["headers"]
+    
+    def test_client_auth_bearer_setter(self, test_server: str) -> None:
+        """Test auth_bearer property setter."""
+        base_url = test_server
+        
+        client = primp.Client()
+        client.auth_bearer = "my-token"
+        
+        response = client.get(f"{base_url}/get")
+        assert response.status_code == 200
+        data = response.json()
+        assert "authorization" in data["headers"]
+        assert "Bearer" in data["headers"]["authorization"]
+    
+    def test_client_params_setter(self, test_server: str) -> None:
+        """Test params property setter."""
+        base_url = test_server
+        
+        client = primp.Client()
+        client.params = {"set_param": "value"}
+        
+        response = client.get(f"{base_url}/get")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["args"]["set_param"] == "value"
+    
+    def test_client_timeout_setter(self, test_server: str) -> None:
+        """Test timeout property setter."""
+        base_url = test_server
+        
+        client = primp.Client()
+        client.timeout = 30
+        
+        response = client.get(f"{base_url}/get")
+        assert response.status_code == 200
 
 
 class TestClientHeadersUpdate:
@@ -320,6 +382,52 @@ class TestAsyncClientInit:
         response = await client.get(f"{base_url}/get")
         
         assert response.status_code == 200
+    
+    def test_asyncclient_init_proxy(self) -> None:
+        """Test async client initialization with proxy parameter."""
+        # proxy is accepted without error even if not reachable
+        client = primp.AsyncClient(proxy="http://localhost:9999")
+        assert client is not None
+        assert client.proxy == "http://localhost:9999"
+    
+    def test_asyncclient_init_verify(self) -> None:
+        """Test async client initialization with verify parameter."""
+        client = primp.AsyncClient(verify=True)
+        assert client is not None
+        
+        client = primp.AsyncClient(verify=False)
+        assert client is not None
+    
+    def test_asyncclient_init_https_only(self) -> None:
+        """Test async client initialization with https_only parameter."""
+        client = primp.AsyncClient(https_only=True)
+        assert client is not None
+    
+    def test_asyncclient_init_http2_only(self) -> None:
+        """Test async client initialization with http2_only parameter."""
+        client = primp.AsyncClient(http2_only=True)
+        assert client is not None
+
+    def test_asyncclient_init_cookie_store(self) -> None:
+        """Test async client initialization with cookie_store parameter."""
+        client = primp.AsyncClient(cookie_store=True)
+        assert client is not None
+
+        client = primp.AsyncClient(cookie_store=False)
+        assert client is not None
+
+    def test_asyncclient_init_referer(self, test_server: str) -> None:
+        """Test async client initialization with referer parameter."""
+        client = primp.AsyncClient(referer=True)
+        assert client is not None
+
+        client = primp.AsyncClient(referer=False)
+        assert client is not None
+
+    def test_asyncclient_init_ca_cert_file(self) -> None:
+        """Test async client initialization with ca_cert_file parameter."""
+        client = primp.AsyncClient(ca_cert_file=None)
+        assert client is not None
 
 
 class TestAsyncClientProperties:
@@ -352,6 +460,21 @@ class TestAsyncClientProperties:
         
         assert impersonate is None
 
+    def test_asyncclient_impersonate_getter_set(self) -> None:
+        """Test impersonate property getter when set."""
+        client = primp.AsyncClient(impersonate="chrome_144")
+        assert client.impersonate == "chrome_144"
+
+    def test_asyncclient_impersonate_os_getter(self) -> None:
+        """Test impersonate_os property getter."""
+        client = primp.AsyncClient()
+        assert client.impersonate_os is None
+
+    def test_asyncclient_impersonate_os_getter_set(self) -> None:
+        """Test impersonate_os property getter when set."""
+        client = primp.AsyncClient(impersonate_os="windows")
+        assert client.impersonate_os == "windows"
+
 
 class TestAsyncClientSetters:
     """Tests for AsyncClient property setters."""
@@ -369,6 +492,63 @@ class TestAsyncClientSetters:
         data = response.json()
         # Headers are lowercase in response
         assert data["headers"]["x-new-header"] == "new_value"
+    
+    @pytest.mark.asyncio
+    async def test_asyncclient_auth_setter(self, test_server: str) -> None:
+        """Test auth property setter."""
+        base_url = test_server
+        
+        client = primp.AsyncClient()
+        client.auth = ("user", "pass")
+        
+        response = await client.get(f"{base_url}/get")
+        assert response.status_code == 200
+        data = response.json()
+        assert "authorization" in data["headers"]
+    
+    @pytest.mark.asyncio
+    async def test_asyncclient_auth_bearer_setter(self, test_server: str) -> None:
+        """Test auth_bearer property setter."""
+        base_url = test_server
+        
+        client = primp.AsyncClient()
+        client.auth_bearer = "my-token"
+        
+        response = await client.get(f"{base_url}/get")
+        assert response.status_code == 200
+        data = response.json()
+        assert "authorization" in data["headers"]
+        assert "Bearer" in data["headers"]["authorization"]
+    
+    @pytest.mark.asyncio
+    async def test_asyncclient_params_setter(self, test_server: str) -> None:
+        """Test params property setter."""
+        base_url = test_server
+        
+        client = primp.AsyncClient()
+        client.params = {"set_param": "value"}
+        
+        response = await client.get(f"{base_url}/get")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["args"]["set_param"] == "value"
+    
+    @pytest.mark.asyncio
+    async def test_asyncclient_timeout_setter(self, test_server: str) -> None:
+        """Test timeout property setter."""
+        base_url = test_server
+        
+        client = primp.AsyncClient()
+        client.timeout = 30
+        
+        response = await client.get(f"{base_url}/get")
+        assert response.status_code == 200
+    
+    def test_asyncclient_proxy_setter(self) -> None:
+        """Test proxy property setter."""
+        client = primp.AsyncClient()
+        client.proxy = "http://localhost:9999"
+        assert client.proxy == "http://localhost:9999"
 
 
 class TestAsyncClientHeadersUpdate:

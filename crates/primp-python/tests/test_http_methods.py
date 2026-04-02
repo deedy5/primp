@@ -242,3 +242,135 @@ class TestBodyParameterEdgeCases:
         data = response.json()
         assert data["data"] == "custom content"
         assert "application/octet-stream" in data["headers"].get("content-type", "")
+
+
+class TestRequestMethodWithBody:
+    """Tests for generic request() method with body parameters."""
+
+    @pytest.mark.parametrize("method", [m.upper() for m in METHODS_TRADITIONALLY_WITH_BODY])
+    def test_sync_request_with_json(self, test_server: str, method: str) -> None:
+        """Test sync Client.request() with JSON body."""
+        base_url = test_server
+        client = primp.Client()
+
+        response = client.request(method, f"{base_url}/anything", json={"key": "value"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["method"].upper() == method.upper()
+        assert data["json"]["key"] == "value"
+
+    @pytest.mark.parametrize("method", [m.upper() for m in METHODS_TRADITIONALLY_WITH_BODY])
+    @pytest.mark.asyncio
+    async def test_async_request_with_json(self, test_server: str, method: str) -> None:
+        """Test async Client.request() with JSON body."""
+        base_url = test_server
+        client = primp.AsyncClient()
+
+        response = await client.request(method, f"{base_url}/anything", json={"key": "value"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["method"].upper() == method.upper()
+        assert data["json"]["key"] == "value"
+
+    @pytest.mark.parametrize("method", [m.upper() for m in METHODS_TRADITIONALLY_WITH_BODY])
+    def test_module_request_with_json(self, test_server: str, method: str) -> None:
+        """Test module-level request() with JSON body."""
+        base_url = test_server
+
+        response = primp.request(method, f"{base_url}/anything", json={"key": "value"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["method"].upper() == method.upper()
+        assert data["json"]["key"] == "value"
+
+    @pytest.mark.parametrize("method", [m.upper() for m in METHODS_TRADITIONALLY_WITH_BODY])
+    def test_sync_request_with_content(self, test_server: str, method: str) -> None:
+        """Test sync Client.request() with raw content body."""
+        base_url = test_server
+        client = primp.Client()
+
+        response = client.request(method, f"{base_url}/anything", content=b"raw body")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["data"] == "raw body"
+
+    @pytest.mark.parametrize("method", [m.upper() for m in METHODS_TRADITIONALLY_WITH_BODY])
+    def test_sync_request_with_form_data(self, test_server: str, method: str) -> None:
+        """Test sync Client.request() with form data body."""
+        base_url = test_server
+        client = primp.Client()
+
+        response = client.request(method, f"{base_url}/anything", data={"field": "value"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["form"]["field"] == "value"
+
+    def test_sync_request_head_with_body(self, test_server: str) -> None:
+        """Test sync Client.request() HEAD with body."""
+        base_url = test_server
+        client = primp.Client()
+
+        response = client.request("HEAD", f"{base_url}/anything", json={"key": "value"})
+
+        assert response.status_code == 200
+        assert response.text == ""  # HEAD has no body
+
+    def test_sync_request_options_with_body(self, test_server: str) -> None:
+        """Test sync Client.request() OPTIONS with body."""
+        base_url = test_server
+        client = primp.Client()
+
+        response = client.request("OPTIONS", f"{base_url}/anything", json={"key": "value"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["json"]["key"] == "value"
+
+    def test_module_request_with_content(self, test_server: str) -> None:
+        """Test module-level request() with raw content body."""
+        base_url = test_server
+
+        response = primp.request("POST", f"{base_url}/anything", content=b"module raw")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["data"] == "module raw"
+
+    def test_module_request_with_form_data(self, test_server: str) -> None:
+        """Test module-level request() with form data body."""
+        base_url = test_server
+
+        response = primp.request("POST", f"{base_url}/anything", data={"field": "value"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["form"]["field"] == "value"
+
+    @pytest.mark.asyncio
+    async def test_async_request_with_content(self, test_server: str) -> None:
+        """Test async Client.request() with raw content body."""
+        base_url = test_server
+        client = primp.AsyncClient()
+
+        response = await client.request("POST", f"{base_url}/anything", content=b"async raw")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["data"] == "async raw"
+
+    @pytest.mark.asyncio
+    async def test_async_request_with_form_data(self, test_server: str) -> None:
+        """Test async Client.request() with form data body."""
+        base_url = test_server
+        client = primp.AsyncClient()
+
+        response = await client.request("POST", f"{base_url}/anything", data={"field": "value"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["form"]["field"] == "value"

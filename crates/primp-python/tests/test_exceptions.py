@@ -161,6 +161,23 @@ class TestStatusError:
         with pytest.raises(StatusError):
             response.raise_for_status()
 
+    def test_status_error_has_status_code(self, test_server):
+        """StatusError args should contain status code."""
+        client = primp.Client()
+        response = client.get(f"{test_server}/status/404")
+        with pytest.raises(StatusError) as exc_info:
+            response.raise_for_status()
+        # StatusError args: (status_code, message, url)
+        assert exc_info.value.args[0] == 404
+
+    def test_status_error_status_code_500(self, test_server):
+        """StatusError args should contain status code for 500."""
+        client = primp.Client()
+        response = client.get(f"{test_server}/status/500")
+        with pytest.raises(StatusError) as exc_info:
+            response.raise_for_status()
+        assert exc_info.value.args[0] == 500
+
     def test_can_catch_as_primp_error(self, test_server):
         """StatusError should be catchable as PrimpError."""
         client = primp.Client()
@@ -320,6 +337,15 @@ class TestAsyncExceptions:
         response = await client.get(f"{test_server}/status/404")
         with pytest.raises(StatusError):
             response.raise_for_status()
+
+    @pytest.mark.asyncio
+    async def test_status_error_async_500(self, test_server):
+        """HTTP 500 should raise StatusError with async client."""
+        client = primp.AsyncClient()
+        response = await client.get(f"{test_server}/status/500")
+        with pytest.raises(StatusError) as exc_info:
+            response.raise_for_status()
+        assert exc_info.value.args[0] == 500
 
     @pytest.mark.asyncio
     async def test_redirect_error_async(self, test_server):

@@ -492,3 +492,23 @@ class TestRequestMultipleFiles:
         finally:
             for _, path in files:
                 os.unlink(path)
+
+
+class TestModuleVerify:
+    """Tests for module-level verify parameter."""
+
+    def test_module_verify_false(self, test_server: str) -> None:
+        """Test module-level function with verify=False."""
+        base_url = test_server
+
+        response = primp.get(f"{base_url}/get", verify=False)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["method"] == "GET"
+
+    def test_module_verify_true(self, test_server: str) -> None:
+        """Test module-level function with verify=True (default)."""
+        base_url = test_server
+
+        response = primp.get(f"{base_url}/get", verify=True)
+        assert response.status_code == 200

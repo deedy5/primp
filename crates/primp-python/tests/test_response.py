@@ -141,6 +141,27 @@ class TestResponseEncoding:
         
         if response.encoding is not None:
             assert isinstance(response.encoding, str)
+    
+    def test_sync_client_response_encoding_setter(self, test_server: str) -> None:
+        """Test response encoding property setter on sync Client."""
+        base_url = test_server
+        
+        client = primp.Client()
+        response = client.get(f"{base_url}/get")
+        
+        response.encoding = "utf-8"
+        assert response.encoding == "utf-8"
+    
+    @pytest.mark.asyncio
+    async def test_async_client_response_encoding_setter(self, test_server: str) -> None:
+        """Test response encoding property setter on AsyncClient."""
+        base_url = test_server
+        
+        client = primp.AsyncClient()
+        response = await client.get(f"{base_url}/get")
+        
+        response.encoding = "utf-8"
+        assert response.encoding == "utf-8"
 
 
 class TestResponseText:
