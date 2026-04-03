@@ -11,7 +11,7 @@ use super::client::{Client, Pending};
 #[cfg(feature = "multipart")]
 use super::multipart;
 use super::response::Response;
-use crate::config::{RequestConfig, TotalTimeout};
+use crate::config::{ReadTimeout, RequestConfig, TotalTimeout};
 #[cfg(feature = "multipart")]
 use crate::header::CONTENT_LENGTH;
 #[cfg(any(feature = "multipart", feature = "form", feature = "json"))]
@@ -123,6 +123,18 @@ impl Request {
     #[inline]
     pub fn timeout_mut(&mut self) -> &mut Option<Duration> {
         RequestConfig::<TotalTimeout>::get_mut(&mut self.extensions)
+    }
+
+    /// Get the read timeout.
+    #[inline]
+    pub fn read_timeout(&self) -> Option<&Duration> {
+        RequestConfig::<ReadTimeout>::get(&self.extensions)
+    }
+
+    /// Get a mutable reference to the read timeout.
+    #[inline]
+    pub fn read_timeout_mut(&mut self) -> &mut Option<Duration> {
+        RequestConfig::<ReadTimeout>::get_mut(&mut self.extensions)
     }
 
     /// Get the http version.
@@ -292,6 +304,19 @@ impl RequestBuilder {
     pub fn timeout(mut self, timeout: Duration) -> RequestBuilder {
         if let Ok(ref mut req) = self.request {
             *req.timeout_mut() = Some(timeout);
+        }
+        self
+    }
+
+    /// Enables a per-request read timeout.
+    ///
+    /// The read timeout is applied to each read of the response body.
+    /// If no data is received within this duration, the request fails.
+    /// It affects only this request and overrides the read timeout
+    /// configured using `ClientBuilder::read_timeout()`.
+    pub fn read_timeout(mut self, timeout: Duration) -> RequestBuilder {
+        if let Ok(ref mut req) = self.request {
+            *req.read_timeout_mut() = Some(timeout);
         }
         self
     }

@@ -16,7 +16,7 @@ use super::Body;
 use crate::async_impl::h3_client::connect::{H3ClientConfig, H3Connector};
 #[cfg(feature = "http3")]
 use crate::async_impl::h3_client::H3Client;
-use crate::config::{RequestConfig, TotalTimeout};
+use crate::config::{ReadTimeout, RequestConfig, TotalTimeout};
 #[cfg(unix)]
 use crate::connect::uds::UnixSocketProvider;
 #[cfg(target_os = "windows")]
@@ -1057,6 +1057,8 @@ impl ClientBuilder {
             p
         };
 
+        let redirect_enabled = redirect_policy.redirect_enabled_ref();
+
         let retry_policy = config.retry_policy.into_policy();
 
         let svc = tower::retry::Retry::new(retry_policy.clone(), hyper_service);
@@ -1128,7 +1130,7 @@ impl ClientBuilder {
                 },
                 headers: config.headers,
                 referer: config.referer,
-                read_timeout: config.read_timeout,
+                read_timeout: RequestConfig::new(config.read_timeout),
                 total_timeout: RequestConfig::new(config.timeout),
                 hyper,
                 proxies,
@@ -1136,6 +1138,7 @@ impl ClientBuilder {
                 proxies_maybe_http_custom_headers,
                 https_only: config.https_only,
                 redirect_policy_desc,
+                redirect_enabled,
             }),
         })
     }
@@ -2737,6 +2740,23 @@ impl Client {
         Arc::make_mut(&mut self.inner).proxies = Arc::new(proxy_matchers);
     }
 
+    /// Set the redirect policy for the client.
+    ///
+    /// This uses a shared atomic flag to control redirect behavior at runtime
+    /// without rebuilding the HTTP service stack.
+    pub fn set_redirect_policy(&mut self, policy: redirect::Policy) {
+        let enabled = !matches!(policy.inner, crate::redirect::PolicyKind::None);
+        self.inner
+            .redirect_enabled
+            .store(enabled, std::sync::atomic::Ordering::Relaxed);
+        let desc = if policy.is_default() {
+            None
+        } else {
+            Some(format!("{:?}", &policy))
+        };
+        Arc::make_mut(&mut self.inner).redirect_policy_desc = desc;
+    }
+
     pub(super) fn execute_request(&self, req: Request) -> Pending {
         let (method, url, mut headers, body, version, extensions) = req.pieces();
         if url.scheme() != "http" && url.scheme() != "https" {
@@ -2795,9 +2815,12 @@ impl Client {
             .map(tokio::time::sleep)
             .map(Box::pin);
 
-        let read_timeout_fut = self
+        let read_timeout_duration = self
             .inner
             .read_timeout
+            .fetch(&extensions)
+            .copied();
+        let read_timeout_fut = read_timeout_duration
             .map(tokio::time::sleep)
             .map(Box::pin);
 
@@ -2812,7 +2835,7 @@ impl Client {
                 in_flight,
                 total_timeout,
                 read_timeout_fut,
-                read_timeout: self.inner.read_timeout,
+                read_timeout: read_timeout_duration,
             })),
         }
     }
@@ -3080,12 +3103,13 @@ struct ClientRef {
     h3_client: Option<LayeredService<H3Client>>,
     referer: bool,
     total_timeout: RequestConfig<TotalTimeout>,
-    read_timeout: Option<Duration>,
+    read_timeout: RequestConfig<ReadTimeout>,
     proxies: Arc<Vec<ProxyMatcher>>,
     proxies_maybe_http_auth: bool,
     proxies_maybe_http_custom_headers: bool,
     https_only: bool,
     redirect_policy_desc: Option<String>,
+    redirect_enabled: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl ClientRef {
@@ -3118,9 +3142,7 @@ impl ClientRef {
 
         self.total_timeout.fmt_as_field(f);
 
-        if let Some(ref d) = self.read_timeout {
-            f.field("read_timeout", d);
-        }
+        self.read_timeout.fmt_as_field(f);
     }
 }
 

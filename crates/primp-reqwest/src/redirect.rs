@@ -5,6 +5,7 @@
 //! `redirect::Policy` can be used with a `ClientBuilder`.
 
 use std::fmt;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::{error::Error as StdError, sync::Arc};
 
 use crate::header::{AUTHORIZATION, COOKIE, PROXY_AUTHORIZATION, REFERER, WWW_AUTHENTICATE};
@@ -26,7 +27,7 @@ use tower_http::follow_redirect::policy::{
 /// - `none` can be used to disable all redirect behavior.
 /// - `custom` can be used to create a customized policy.
 pub struct Policy {
-    inner: PolicyKind,
+    pub(crate) inner: PolicyKind,
 }
 
 /// A type that holds information on the next request and previous requests
@@ -205,7 +206,7 @@ impl Attempt<'_> {
     }
 }
 
-enum PolicyKind {
+pub(crate) enum PolicyKind {
     Custom(Box<dyn Fn(Attempt) -> Action + Send + Sync + 'static>),
     Limit(usize),
     None,
@@ -267,15 +268,18 @@ pub(crate) struct TowerRedirectPolicy {
     referer: bool,
     urls: Vec<Url>,
     https_only: bool,
+    redirect_enabled: Arc<AtomicBool>,
 }
 
 impl TowerRedirectPolicy {
     pub(crate) fn new(policy: Policy) -> Self {
+        let enabled = !matches!(policy.inner, PolicyKind::None);
         Self {
             policy: Arc::new(policy),
             referer: false,
             urls: Vec::new(),
             https_only: false,
+            redirect_enabled: Arc::new(AtomicBool::new(enabled)),
         }
     }
 
@@ -287,6 +291,10 @@ impl TowerRedirectPolicy {
     pub(crate) fn with_https_only(&mut self, https_only: bool) -> &mut Self {
         self.https_only = https_only;
         self
+    }
+
+    pub(crate) fn redirect_enabled_ref(&self) -> Arc<AtomicBool> {
+        self.redirect_enabled.clone()
     }
 }
 
@@ -304,6 +312,11 @@ fn make_referer(next: &Url, previous: &Url) -> Option<HeaderValue> {
 
 impl TowerPolicy<async_impl::body::Body, crate::Error> for TowerRedirectPolicy {
     fn redirect(&mut self, attempt: &TowerAttempt<'_>) -> Result<TowerAction, crate::Error> {
+        // Check if redirects are enabled
+        if !self.redirect_enabled.load(Ordering::Relaxed) {
+            return Ok(TowerAction::Stop);
+        }
+
         let previous_url =
             Url::parse(&attempt.previous().to_string()).expect("Previous URL must be valid");
 
