@@ -543,11 +543,11 @@ class TestStreamingNonStreamingFallback:
         assert data["method"] == "GET"
 
 
-class TestSyncStreamResponseProperties:
-    """Tests for StreamResponse properties on sync Client."""
+class TestSyncResponseStreaming:
+    """Tests for Response properties on sync Client."""
 
     def test_stream_response_url(self, test_server: str) -> None:
-        """Test StreamResponse.url property."""
+        """Test Response.url property."""
         base_url = test_server
         client = primp.Client()
 
@@ -556,7 +556,7 @@ class TestSyncStreamResponseProperties:
             assert "/stream/1" in response.url
 
     def test_stream_response_status_code(self, test_server: str) -> None:
-        """Test StreamResponse.status_code property."""
+        """Test Response.status_code property."""
         base_url = test_server
         client = primp.Client()
 
@@ -564,7 +564,7 @@ class TestSyncStreamResponseProperties:
             assert response.status_code == 200
 
     def test_stream_response_headers(self, test_server: str) -> None:
-        """Test StreamResponse.headers property."""
+        """Test Response.headers property."""
         base_url = test_server
         client = primp.Client()
 
@@ -573,7 +573,7 @@ class TestSyncStreamResponseProperties:
             assert isinstance(response.headers, dict)
 
     def test_stream_response_cookies(self, test_server: str) -> None:
-        """Test StreamResponse.cookies property."""
+        """Test Response.cookies property."""
         base_url = test_server
         client = primp.Client()
 
@@ -582,7 +582,7 @@ class TestSyncStreamResponseProperties:
             assert isinstance(response.cookies, dict)
 
     def test_stream_response_encoding(self, test_server: str) -> None:
-        """Test StreamResponse.encoding property (getter and setter)."""
+        """Test Response.encoding property (getter and setter)."""
         base_url = test_server
         client = primp.Client()
 
@@ -593,7 +593,7 @@ class TestSyncStreamResponseProperties:
             assert response.encoding == "utf-8"
 
     def test_stream_response_content(self, test_server: str) -> None:
-        """Test StreamResponse.content property."""
+        """Test Response.content property."""
         base_url = test_server
         client = primp.Client()
 
@@ -604,7 +604,7 @@ class TestSyncStreamResponseProperties:
             assert len(content) > 0
 
     def test_stream_response_text(self, test_server: str) -> None:
-        """Test StreamResponse.text property."""
+        """Test Response.text property."""
         base_url = test_server
         client = primp.Client()
 
@@ -615,7 +615,7 @@ class TestSyncStreamResponseProperties:
             assert len(text) > 0
 
     def test_stream_response_raise_for_status_success(self, test_server: str) -> None:
-        """Test StreamResponse.raise_for_status() for success."""
+        """Test Response.raise_for_status() for success."""
         base_url = test_server
         client = primp.Client()
 
@@ -623,7 +623,7 @@ class TestSyncStreamResponseProperties:
             response.raise_for_status()  # Should not raise
 
     def test_stream_response_raise_for_status_error(self, test_server: str) -> None:
-        """Test StreamResponse.raise_for_status() for error status."""
+        """Test Response.raise_for_status() for error status."""
         base_url = test_server
         client = primp.Client()
 
@@ -632,12 +632,12 @@ class TestSyncStreamResponseProperties:
                 response.raise_for_status()
 
 
-class TestAsyncStreamResponseProperties:
-    """Tests for AsyncStreamResponse properties on AsyncClient."""
+class TestAsyncResponseStreaming:
+    """Tests for AsyncResponse properties on AsyncClient."""
 
     @pytest.mark.asyncio
     async def test_async_stream_response_url(self, test_server: str) -> None:
-        """Test AsyncStreamResponse.url property."""
+        """Test AsyncResponse.url property."""
         base_url = test_server
         client = primp.AsyncClient()
 
@@ -647,7 +647,7 @@ class TestAsyncStreamResponseProperties:
 
     @pytest.mark.asyncio
     async def test_async_stream_response_status_code(self, test_server: str) -> None:
-        """Test AsyncStreamResponse.status_code property."""
+        """Test AsyncResponse.status_code property."""
         base_url = test_server
         client = primp.AsyncClient()
 
@@ -656,7 +656,7 @@ class TestAsyncStreamResponseProperties:
 
     @pytest.mark.asyncio
     async def test_async_stream_response_headers(self, test_server: str) -> None:
-        """Test AsyncStreamResponse.headers property."""
+        """Test AsyncResponse.headers property."""
         base_url = test_server
         client = primp.AsyncClient()
 
@@ -666,7 +666,7 @@ class TestAsyncStreamResponseProperties:
 
     @pytest.mark.asyncio
     async def test_async_stream_response_cookies(self, test_server: str) -> None:
-        """Test AsyncStreamResponse.cookies property."""
+        """Test AsyncResponse.cookies property."""
         base_url = test_server
         client = primp.AsyncClient()
 
@@ -676,7 +676,7 @@ class TestAsyncStreamResponseProperties:
 
     @pytest.mark.asyncio
     async def test_async_stream_response_encoding(self, test_server: str) -> None:
-        """Test AsyncStreamResponse.encoding property (getter and setter)."""
+        """Test AsyncResponse.encoding property (getter and setter)."""
         base_url = test_server
         client = primp.AsyncClient()
 
@@ -688,7 +688,7 @@ class TestAsyncStreamResponseProperties:
 
     @pytest.mark.asyncio
     async def test_async_stream_response_content(self, test_server: str) -> None:
-        """Test AsyncStreamResponse.content property."""
+        """Test AsyncResponse.content property."""
         base_url = test_server
         client = primp.AsyncClient()
 
@@ -700,7 +700,7 @@ class TestAsyncStreamResponseProperties:
 
     @pytest.mark.asyncio
     async def test_async_stream_response_text(self, test_server: str) -> None:
-        """Test AsyncStreamResponse.text property via aread()."""
+        """Test AsyncResponse.text property via aread()."""
         base_url = test_server
         client = primp.AsyncClient()
 
@@ -712,7 +712,7 @@ class TestAsyncStreamResponseProperties:
 
     @pytest.mark.asyncio
     async def test_async_stream_response_raise_for_status_success(self, test_server: str) -> None:
-        """Test AsyncStreamResponse.raise_for_status() for success."""
+        """Test AsyncResponse.raise_for_status() for success."""
         base_url = test_server
         client = primp.AsyncClient()
 
@@ -721,7 +721,7 @@ class TestAsyncStreamResponseProperties:
 
     @pytest.mark.asyncio
     async def test_async_stream_response_raise_for_status_error(self, test_server: str) -> None:
-        """Test AsyncStreamResponse.raise_for_status() for error status."""
+        """Test AsyncResponse.raise_for_status() for error status."""
         base_url = test_server
         client = primp.AsyncClient()
 

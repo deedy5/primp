@@ -13,7 +13,9 @@ primp.Client(
     cookie_store=True,      # Persistent cookie store
     referer=True,           # Auto-set Referer header
     proxy=None,             # Proxy URL (e.g., "socks5://127.0.0.1:1080")
-    timeout=None,           # Request timeout in seconds
+    timeout=None,           # Total request timeout in seconds
+    connect_timeout=None,   # Connection establishment timeout in seconds
+    read_timeout=None,      # Response body read timeout in seconds
     impersonate=None,       # Browser to impersonate
     impersonate_os=None,    # OS to impersonate
     follow_redirects=True,  # Follow redirects
@@ -22,6 +24,8 @@ primp.Client(
     ca_cert_file=None,      # Path to CA certificate
     https_only=False,       # HTTPS only mode
     http2_only=False,       # HTTP/2 only mode
+    base_url=None,          # Base URL for relative paths
+    cookies=None,           # Initial cookies to send with all requests
 )
 ```
 
@@ -45,11 +49,11 @@ primp.Client(
 ### HTTP Methods
 
 ```python
-client.get(url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=30)
+client.get(url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, read_timeout=None)
 client.head(url, ...)
 client.options(url, ...)
 client.delete(url, ...)
-client.post(url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=30)
+client.post(url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, read_timeout=None)
 client.put(url, ...)
 client.patch(url, ...)
 ```
@@ -68,7 +72,8 @@ client.patch(url, ...)
 | `files` | dict | File paths for multipart |
 | `auth` | tuple | (username, password) |
 | `auth_bearer` | str | Bearer token |
-| `timeout` | float | Timeout in seconds |
+| `timeout` | float | Total timeout in seconds |
+| `read_timeout` | float | Read timeout in seconds (max gap between bytes) |
 
 ### Cookie Management
 

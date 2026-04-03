@@ -100,6 +100,20 @@ class TestClientInit:
         
         assert response.status_code == 200
     
+    def test_client_init_connect_timeout(self) -> None:
+        """Test client initialization with connect_timeout parameter."""
+        client = primp.Client(connect_timeout=5)
+        assert client is not None
+    
+    def test_client_init_read_timeout(self, test_server: str) -> None:
+        """Test client initialization with read_timeout parameter."""
+        base_url = test_server
+        
+        client = primp.Client(read_timeout=10)
+        response = client.get(f"{base_url}/get")
+        
+        assert response.status_code == 200
+    
     def test_client_init_follow_redirects(self) -> None:
         """Test client initialization with follow_redirects parameter."""
         client = primp.Client(follow_redirects=True)
@@ -129,6 +143,17 @@ class TestClientInit:
     def test_client_init_http2_only(self) -> None:
         """Test client initialization with http2_only parameter."""
         client = primp.Client(http2_only=True)
+        assert client is not None
+    
+    def test_client_init_base_url(self) -> None:
+        """Test client initialization with base_url parameter."""
+        client = primp.Client(base_url="https://httpbin.org")
+        assert client is not None
+        assert client.base_url == "https://httpbin.org"
+    
+    def test_client_init_cookies(self) -> None:
+        """Test client initialization with cookies parameter."""
+        client = primp.Client(cookies={"session": "abc123"})
         assert client is not None
 
 
@@ -253,6 +278,28 @@ class TestClientSetters:
         
         response = client.get(f"{base_url}/get")
         assert response.status_code == 200
+    
+    def test_client_connect_timeout_setter(self) -> None:
+        """Test connect_timeout property setter."""
+        client = primp.Client()
+        client.connect_timeout = 5
+        assert client.connect_timeout == 5
+    
+    def test_client_read_timeout_setter(self, test_server: str) -> None:
+        """Test read_timeout property setter."""
+        base_url = test_server
+        
+        client = primp.Client()
+        client.read_timeout = 10
+        
+        response = client.get(f"{base_url}/get")
+        assert response.status_code == 200
+    
+    def test_client_base_url_setter(self) -> None:
+        """Test base_url property setter."""
+        client = primp.Client()
+        client.base_url = "https://httpbin.org"
+        assert client.base_url == "https://httpbin.org"
 
 
 class TestClientHeadersUpdate:
@@ -383,6 +430,21 @@ class TestAsyncClientInit:
         
         assert response.status_code == 200
     
+    def test_asyncclient_init_connect_timeout(self) -> None:
+        """Test async client initialization with connect_timeout parameter."""
+        client = primp.AsyncClient(connect_timeout=5)
+        assert client is not None
+    
+    @pytest.mark.asyncio
+    async def test_asyncclient_init_read_timeout(self, test_server: str) -> None:
+        """Test async client initialization with read_timeout parameter."""
+        base_url = test_server
+        
+        client = primp.AsyncClient(read_timeout=10)
+        response = await client.get(f"{base_url}/get")
+        
+        assert response.status_code == 200
+    
     def test_asyncclient_init_proxy(self) -> None:
         """Test async client initialization with proxy parameter."""
         # proxy is accepted without error even if not reachable
@@ -406,6 +468,17 @@ class TestAsyncClientInit:
     def test_asyncclient_init_http2_only(self) -> None:
         """Test async client initialization with http2_only parameter."""
         client = primp.AsyncClient(http2_only=True)
+        assert client is not None
+
+    def test_asyncclient_init_base_url(self) -> None:
+        """Test async client initialization with base_url parameter."""
+        client = primp.AsyncClient(base_url="https://httpbin.org")
+        assert client is not None
+        assert client.base_url == "https://httpbin.org"
+    
+    def test_asyncclient_init_cookies(self) -> None:
+        """Test async client initialization with cookies parameter."""
+        client = primp.AsyncClient(cookies={"session": "abc123"})
         assert client is not None
 
     def test_asyncclient_init_cookie_store(self) -> None:
@@ -544,11 +617,34 @@ class TestAsyncClientSetters:
         response = await client.get(f"{base_url}/get")
         assert response.status_code == 200
     
+    def test_asyncclient_connect_timeout_setter(self) -> None:
+        """Test connect_timeout property setter."""
+        client = primp.AsyncClient()
+        client.connect_timeout = 5
+        assert client.connect_timeout == 5
+    
+    @pytest.mark.asyncio
+    async def test_asyncclient_read_timeout_setter(self, test_server: str) -> None:
+        """Test read_timeout property setter."""
+        base_url = test_server
+        
+        client = primp.AsyncClient()
+        client.read_timeout = 10
+        
+        response = await client.get(f"{base_url}/get")
+        assert response.status_code == 200
+    
     def test_asyncclient_proxy_setter(self) -> None:
         """Test proxy property setter."""
         client = primp.AsyncClient()
         client.proxy = "http://localhost:9999"
         assert client.proxy == "http://localhost:9999"
+    
+    def test_asyncclient_base_url_setter(self) -> None:
+        """Test base_url property setter."""
+        client = primp.AsyncClient()
+        client.base_url = "https://httpbin.org"
+        assert client.base_url == "https://httpbin.org"
 
 
 class TestAsyncClientHeadersUpdate:

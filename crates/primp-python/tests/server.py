@@ -97,8 +97,8 @@ class HttpbinRequestHandler(BaseHTTPRequestHandler):
     
     def _parse_multipart(self, body: bytes, content_type: str) -> tuple[dict, dict]:
         """Parse multipart form data."""
-        form_data = {}
-        files_data = {}
+        form_data: dict[str, str] = {}
+        files_data: dict[str, dict[str, int | str]] = {}
         
         # Extract boundary
         boundary_match = re.search(r"boundary=([^;\s]+)", content_type)

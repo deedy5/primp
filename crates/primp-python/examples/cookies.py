@@ -28,3 +28,10 @@ print(f"Response cookies: {resp.cookies}")
 client = primp.Client(cookie_store=False)
 resp = client.get("https://httpbin.org/cookies/set?name=value")
 # Cookies won't persist between requests
+
+# Initialize client with pre-set cookies
+client = primp.Client(
+    cookies={"session_id": "preloaded", "user": "admin"},
+)
+resp = client.get("https://httpbin.org/cookies")
+print(f"Preloaded cookies: {resp.json()['cookies']}")

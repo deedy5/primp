@@ -1,12 +1,10 @@
 # Response
 
-primp provides two types of response objects:
-- **`Response`** — standard response (eager loading)
-- **`StreamResponse`** — streaming response (lazy loading)
-
-## Response Properties
+primp provides a single unified `Response` type that supports both buffered and streaming modes.
 
 All properties are synchronous and work identically for both sync and async clients.
+
+## Response Properties
 
 | Property | Type | Description |
 |:---------|:-----|:------------|
@@ -26,7 +24,7 @@ All properties are synchronous and work identically for both sync and async clie
 | `.json()` | Parse as JSON (raises `json.JSONDecodeError` on failure) |
 | `.raise_for_status()` | Raise `StatusError` for 4xx/5xx |
 
-## StreamResponse
+## Streaming
 
 Returned when using `stream=True`. Supports context manager for automatic cleanup.
 
@@ -41,16 +39,6 @@ async with await client.get(url, stream=True) as resp:
     async for chunk in resp.aiter_bytes():
         process(chunk)
 ```
-
-### StreamResponse Properties
-
-| Property | Type | Description |
-|:---------|:-----|:------------|
-| `.url` | `str` | Final response URL |
-| `.status_code` | `int` | HTTP status code |
-| `.headers` | `dict` | Response headers |
-| `.cookies` | `dict` | Response cookies |
-| `.encoding` | `str` | Character encoding (read/write) |
 
 ### Streaming Methods
 
