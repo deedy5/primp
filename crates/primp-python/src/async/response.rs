@@ -36,6 +36,10 @@ async fn collect_body_bytes(resp: &mut ::primp::Response) -> Result<Bytes, PyErr
 }
 
 /// A struct representing an async HTTP response.
+///
+/// Supports both buffered (non-streaming) and streaming modes.
+/// In buffered mode, body content is cached after first read.
+/// In streaming mode, body is consumed on each read and supports iteration.
 #[pyclass]
 pub struct AsyncResponse {
     resp: Arc<TMutex<Option<::primp::Response>>>,
@@ -47,6 +51,7 @@ pub struct AsyncResponse {
     pub url: String,
     #[pyo3(get)]
     pub status_code: u16,
+    streaming: bool,
 }
 
 impl AsyncResponse {
@@ -59,6 +64,27 @@ impl AsyncResponse {
             _cookies: None,
             url,
             status_code,
+            streaming: false,
+        }
+    }
+
+    pub fn new_streaming(
+        resp: ::primp::Response,
+        url: String,
+        status_code: u16,
+        encoding: String,
+        headers: IndexMapSSR,
+        cookies: IndexMapSSR,
+    ) -> Self {
+        AsyncResponse {
+            resp: Arc::new(TMutex::new(Some(resp))),
+            _content: None,
+            _encoding: Some(encoding),
+            _headers: Some(headers),
+            _cookies: Some(cookies),
+            url,
+            status_code,
+            streaming: true,
         }
     }
 }
@@ -68,9 +94,11 @@ impl AsyncResponse {
     /// Get response content as bytes (sync - blocks until content is read)
     #[getter]
     fn get_content<'rs>(&mut self, py: Python<'rs>) -> PyResult<Bound<'rs, PyBytes>> {
-        if let Some(content) = &self._content {
-            let cloned = content.clone_ref(py);
-            return Ok(cloned.into_bound(py));
+        if !self.streaming {
+            if let Some(content) = &self._content {
+                let cloned = content.clone_ref(py);
+                return Ok(cloned.into_bound(py));
+            }
         }
 
         let resp = Arc::clone(&self.resp);
@@ -87,7 +115,10 @@ impl AsyncResponse {
         })?;
 
         let content = PyBytes::new(py, &bytes);
-        self._content = Some(content.clone().unbind());
+
+        if !self.streaming {
+            self._content = Some(content.clone().unbind());
+        }
         Ok(content)
     }
 
@@ -254,74 +285,10 @@ impl AsyncResponse {
         }
         Ok(())
     }
-}
-
-/// A streaming async HTTP response that supports async iteration over response chunks.
-///
-/// This is returned by `primp.async_stream()` or when using `stream=True` parameter with async client.
-/// It supports async context manager protocol for automatic resource cleanup.
-#[pyclass]
-pub struct AsyncStreamResponse {
-    resp: Arc<TMutex<Option<::primp::Response>>>,
-    encoding: String,
-    #[pyo3(get)]
-    url: String,
-    #[pyo3(get)]
-    status_code: u16,
-    headers: IndexMapSSR,
-    cookies: IndexMapSSR,
-}
-
-impl AsyncStreamResponse {
-    pub fn new(
-        resp: ::primp::Response,
-        url: String,
-        status_code: u16,
-        encoding: String,
-        headers: IndexMapSSR,
-        cookies: IndexMapSSR,
-    ) -> Self {
-        AsyncStreamResponse {
-            resp: Arc::new(TMutex::new(Some(resp))),
-            encoding,
-            url,
-            status_code,
-            headers,
-            cookies,
-        }
-    }
-}
-
-#[pymethods]
-impl AsyncStreamResponse {
-    /// Get response headers (sync)
-    #[getter]
-    fn get_headers<'rs>(&self, py: Python<'rs>) -> PyResult<Bound<'rs, PyDict>> {
-        self.headers.clone().into_pyobject(py)
-    }
-
-    /// Get response cookies (sync)
-    #[getter]
-    fn get_cookies<'rs>(&self, py: Python<'rs>) -> PyResult<Bound<'rs, PyDict>> {
-        self.cookies.clone().into_pyobject(py)
-    }
-
-    /// Get character encoding (sync)
-    #[getter]
-    fn get_encoding(&self) -> String {
-        self.encoding.clone()
-    }
-
-    /// Set character encoding (sync)
-    #[setter]
-    fn set_encoding(&mut self, encoding: String) {
-        self.encoding = encoding;
-    }
 
     /// Read remaining content into memory (async)
     fn aread<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         use pyo3_async_runtimes::tokio::future_into_py;
-
         let resp = Arc::clone(&self.resp);
         let future = async move {
             let mut resp_guard = resp.lock().await;
@@ -334,23 +301,25 @@ impl AsyncStreamResponse {
             };
             Ok::<Vec<u8>, PyErr>(bytes.to_vec())
         };
-
         future_into_py(py, future)
     }
 
     /// Get response content as bytes (async - reads all remaining content)
     #[getter]
-    fn get_content<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+    fn get_content_async<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         self.aread(py)
     }
 
     /// Get response text (async - reads all remaining content)
     #[getter]
-    fn text<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+    fn text_async<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         use pyo3_async_runtimes::tokio::future_into_py;
 
         let resp = Arc::clone(&self.resp);
-        let encoding = self.encoding.clone();
+        let encoding = self
+            ._encoding
+            .clone()
+            .unwrap_or_else(|| "utf-8".to_string());
         let future = async move {
             let mut resp_guard = resp.lock().await;
             let bytes = match resp_guard.as_mut() {
@@ -368,34 +337,61 @@ impl AsyncStreamResponse {
         future_into_py(py, future)
     }
 
-    /// Return an async iterator over byte chunks
-    #[pyo3(signature = (chunk_size=None))]
-    fn aiter_bytes(&self, chunk_size: Option<usize>) -> PyResult<AsyncBytesIterator> {
-        Ok(AsyncBytesIterator::new(
-            Arc::clone(&self.resp),
-            chunk_size.unwrap_or(8192),
-        ))
-    }
-
-    /// Return an async iterator over text chunks
-    #[pyo3(signature = (chunk_size=None))]
-    fn aiter_text(&self, chunk_size: Option<usize>) -> PyResult<AsyncTextIterator> {
-        Ok(AsyncTextIterator::new(
-            Arc::clone(&self.resp),
-            self.encoding.clone(),
-            chunk_size.unwrap_or(8192),
-        ))
-    }
-
-    /// Return an async iterator over lines
-    fn aiter_lines(&self) -> PyResult<AsyncLinesIterator> {
-        Ok(AsyncLinesIterator::new(Arc::clone(&self.resp)))
-    }
-
-    /// Get next chunk explicitly (async)
-    fn anext<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+    /// Parse response content as JSON (async - reads all remaining content)
+    fn json_async<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         use pyo3_async_runtimes::tokio::future_into_py;
 
+        let resp = Arc::clone(&self.resp);
+        let bytes_future = future_into_py(py, async move {
+            let mut resp_guard = resp.lock().await;
+            let bytes = match resp_guard.as_mut() {
+                Some(r) => match collect_body_bytes(r).await {
+                    Ok(buf) => buf,
+                    Err(e) => return Err(e),
+                },
+                None => Bytes::new(),
+            };
+            Ok::<Vec<u8>, PyErr>(bytes.to_vec())
+        })?;
+
+        let json_code = c"
+import json as _json
+async def _parse_json(coro):
+    data = await coro
+    return _json.loads(bytes(data))
+_parse_json
+";
+        let parse_fn = py.eval(json_code, None, None)?.call0()?;
+        parse_fn.call1((bytes_future,))
+    }
+
+    #[pyo3(signature = (chunk_size=None))]
+    fn aiter_bytes(&self, chunk_size: Option<usize>) -> PyResult<AsyncBytesIterator> {
+        let resp = Arc::clone(&self.resp);
+        Ok(AsyncBytesIterator::new(resp, chunk_size.unwrap_or(8192)))
+    }
+
+    #[pyo3(signature = (chunk_size=None))]
+    fn aiter_text(&self, chunk_size: Option<usize>) -> PyResult<AsyncTextIterator> {
+        let resp = Arc::clone(&self.resp);
+        let encoding = self
+            ._encoding
+            .clone()
+            .unwrap_or_else(|| "utf-8".to_string());
+        Ok(AsyncTextIterator::new(
+            resp,
+            encoding,
+            chunk_size.unwrap_or(8192),
+        ))
+    }
+
+    fn aiter_lines(&self) -> PyResult<AsyncLinesIterator> {
+        let resp = Arc::clone(&self.resp);
+        Ok(AsyncLinesIterator::new(resp))
+    }
+
+    fn anext<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        use pyo3_async_runtimes::tokio::future_into_py;
         let resp = Arc::clone(&self.resp);
         let future = async move {
             let mut resp_guard = resp.lock().await;
@@ -408,11 +404,9 @@ impl AsyncStreamResponse {
                 None => Ok(None),
             }
         };
-
         future_into_py(py, future)
     }
 
-    /// Close response and release resources (async)
     fn aclose<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         use pyo3_async_runtimes::tokio::future_into_py;
 
@@ -426,42 +420,12 @@ impl AsyncStreamResponse {
         future_into_py(py, future)
     }
 
-    /// Raise HTTPError for 4xx/5xx status codes (sync)
-    fn raise_for_status(&self) -> PyResult<()> {
-        if self.status_code >= 400 {
-            let reason = if self.status_code < 600 {
-                match self.status_code {
-                    400 => "Bad Request",
-                    401 => "Unauthorized",
-                    403 => "Forbidden",
-                    404 => "Not Found",
-                    405 => "Method Not Allowed",
-                    409 => "Conflict",
-                    500 => "Internal Server Error",
-                    502 => "Bad Gateway",
-                    503 => "Service Unavailable",
-                    _ => "Error",
-                }
-            } else {
-                "Unknown Error"
-            };
-
-            return Err(PyErr::from(PrimpErrorEnum::HttpStatus(
-                self.status_code,
-                reason.to_string(),
-                self.url.clone(),
-            )));
-        }
-        Ok(())
-    }
-
     /// Async context manager entry
     fn __aenter__<'py>(slf: PyRef<'_, Self>, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         use pyo3_async_runtimes::tokio::future_into_py;
 
-        // Get the Py<Self> from the PyRef's cell
-        let slf_py: Py<AsyncStreamResponse> = Py::from(slf);
-        let future = async move { Ok::<Py<AsyncStreamResponse>, PyErr>(slf_py) };
+        let slf_py: Py<AsyncResponse> = Py::from(slf);
+        let future = async move { Ok::<Py<AsyncResponse>, PyErr>(slf_py) };
         future_into_py(py, future)
     }
 
@@ -518,7 +482,6 @@ impl AsyncBytesIterator {
         let buffer = Arc::clone(&self.buffer);
 
         let future = async move {
-            // If we have buffered data, return it
             {
                 let mut buf = buffer.lock().await;
                 if buf.len() >= chunk_size {
@@ -527,7 +490,6 @@ impl AsyncBytesIterator {
                 }
             }
 
-            // Need to fetch more data
             let mut resp_guard = resp.lock().await;
             match resp_guard.as_mut() {
                 Some(r) => match r.chunk().await {
@@ -541,7 +503,6 @@ impl AsyncBytesIterator {
                             let result: Vec<u8> = std::mem::take(&mut *buf);
                             Ok(result)
                         } else {
-                            // Received empty chunk, stream is exhausted
                             Err(PyErr::new::<pyo3::exceptions::PyStopAsyncIteration, _>(
                                 "Stream exhausted",
                             ))
@@ -617,7 +578,6 @@ impl AsyncTextIterator {
         let buffer = Arc::clone(&self.buffer);
 
         let future = async move {
-            // If we have buffered data, return it
             {
                 let mut buf = buffer.lock().await;
                 if buf.len() >= chunk_size {
@@ -628,7 +588,6 @@ impl AsyncTextIterator {
                 }
             }
 
-            // Need to fetch more data
             let mut resp_guard = resp.lock().await;
             match resp_guard.as_mut() {
                 Some(r) => match r.chunk().await {
@@ -717,7 +676,6 @@ impl AsyncLinesIterator {
 
         let future = async move {
             loop {
-                // Check if we have a complete line in buffer
                 {
                     let mut buf = buffer.lock().await;
                     if let Some(newline_pos) = buf.find('\n') {
@@ -741,7 +699,6 @@ impl AsyncLinesIterator {
                     }
                 }
 
-                // Fetch more data
                 let mut resp_guard = resp.lock().await;
                 match resp_guard.as_mut() {
                     Some(r) => match r.chunk().await {
