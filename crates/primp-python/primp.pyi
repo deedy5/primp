@@ -112,41 +112,16 @@ class Response:
     def json(self) -> Any: ...
     def raise_for_status(self) -> None: ...
 
-class StreamResponse:
-    """
-    Streaming HTTP response object.
-
-    Supports iteration over response chunks and context manager protocol.
-    """
-
-    # Properties (read-only)
-    url: str
-    status_code: int
-
-    @property
-    def headers(self) -> dict[str, str]: ...
-    @property
-    def cookies(self) -> dict[str, str]: ...
-    @property
-    def encoding(self) -> str: ...
-    @encoding.setter
-    def encoding(self, value: str) -> None: ...
-    @property
-    def content(self) -> bytes: ...
-    @property
-    def text(self) -> str: ...
-
-    # Methods
+    # Streaming methods
     def read(self) -> bytes: ...
     def iter_bytes(self, chunk_size: int | None = None) -> BytesIterator: ...
     def iter_text(self, chunk_size: int | None = None) -> TextIterator: ...
     def iter_lines(self) -> LinesIterator: ...
     def next(self) -> bytes | None: ...
     def close(self) -> None: ...
-    def raise_for_status(self) -> None: ...
 
     # Context manager
-    def __enter__(self) -> StreamResponse: ...
+    def __enter__(self) -> Response: ...
     def __exit__(
         self,
         exc_type: Any | None,
@@ -211,41 +186,16 @@ class AsyncResponse:
     def json(self) -> Any: ...
     def raise_for_status(self) -> None: ...
 
-class AsyncStreamResponse:
-    """
-    Asynchronous streaming HTTP response object.
-
-    Supports async iteration over response chunks and async context manager protocol.
-    """
-
-    # Properties (read-only)
-    url: str
-    status_code: int
-
-    @property
-    def headers(self) -> dict[str, str]: ...
-    @property
-    def cookies(self) -> dict[str, str]: ...
-    @property
-    def encoding(self) -> str: ...
-    @encoding.setter
-    def encoding(self, value: str) -> None: ...
-    @property
-    def content(self) -> bytes: ...
-    @property
-    def text(self) -> str: ...
-
-    # Async methods
+    # Async streaming methods
     async def aread(self) -> bytes: ...
     def aiter_bytes(self, chunk_size: int | None = None) -> AsyncBytesIterator: ...
     def aiter_text(self, chunk_size: int | None = None) -> AsyncTextIterator: ...
     def aiter_lines(self) -> AsyncLinesIterator: ...
     async def anext(self) -> bytes | None: ...
     async def aclose(self) -> None: ...
-    def raise_for_status(self) -> None: ...
 
     # Async context manager
-    async def __aenter__(self) -> AsyncStreamResponse: ...
+    async def __aenter__(self) -> AsyncResponse: ...
     async def __aexit__(
         self,
         exc_type: Any | None,
@@ -294,6 +244,9 @@ class Client:
     params: Mapping[str, str] | None
     proxy: str | None
     timeout: float | None
+    connect_timeout: float | None
+    read_timeout: float | None
+    base_url: str | None
 
     @property
     def headers(self) -> dict[str, str]: ...
@@ -313,6 +266,8 @@ class Client:
         referer: bool = True,
         proxy: str | None = None,
         timeout: float | None = None,
+        connect_timeout: float | None = None,
+        read_timeout: float | None = None,
         impersonate: str | None = None,
         impersonate_os: str | None = None,
         follow_redirects: bool = True,
@@ -321,6 +276,8 @@ class Client:
         ca_cert_file: str | None = None,
         https_only: bool = False,
         http2_only: bool = False,
+        base_url: str | None = None,
+        cookies: Mapping[str, str] | None = None,
     ) -> None: ...
     def headers_update(self, new_headers: Mapping[str, str] | None) -> None: ...
     def get_cookies(self, url: str) -> dict[str, str]: ...
@@ -339,8 +296,10 @@ class Client:
         auth: tuple[str, str | None] | None = None,
         auth_bearer: str | None = None,
         timeout: float | None = None,
+        read_timeout: float | None = None,
+        follow_redirects: bool | None = None,
         stream: bool = False,
-    ) -> Response | StreamResponse: ...
+    ) -> Response: ...
     def get(
         self,
         url: str,
@@ -354,8 +313,10 @@ class Client:
         auth: tuple[str, str | None] | None = None,
         auth_bearer: str | None = None,
         timeout: float | None = None,
+        read_timeout: float | None = None,
+        follow_redirects: bool | None = None,
         stream: bool = False,
-    ) -> Response | StreamResponse: ...
+    ) -> Response: ...
     def head(
         self,
         url: str,
@@ -369,8 +330,10 @@ class Client:
         auth: tuple[str, str | None] | None = None,
         auth_bearer: str | None = None,
         timeout: float | None = None,
+        read_timeout: float | None = None,
+        follow_redirects: bool | None = None,
         stream: bool = False,
-    ) -> Response | StreamResponse: ...
+    ) -> Response: ...
     def options(
         self,
         url: str,
@@ -384,8 +347,10 @@ class Client:
         auth: tuple[str, str | None] | None = None,
         auth_bearer: str | None = None,
         timeout: float | None = None,
+        read_timeout: float | None = None,
+        follow_redirects: bool | None = None,
         stream: bool = False,
-    ) -> Response | StreamResponse: ...
+    ) -> Response: ...
     def delete(
         self,
         url: str,
@@ -399,8 +364,10 @@ class Client:
         auth: tuple[str, str | None] | None = None,
         auth_bearer: str | None = None,
         timeout: float | None = None,
+        read_timeout: float | None = None,
+        follow_redirects: bool | None = None,
         stream: bool = False,
-    ) -> Response | StreamResponse: ...
+    ) -> Response: ...
     def post(
         self,
         url: str,
@@ -414,8 +381,10 @@ class Client:
         auth: tuple[str, str | None] | None = None,
         auth_bearer: str | None = None,
         timeout: float | None = None,
+        read_timeout: float | None = None,
+        follow_redirects: bool | None = None,
         stream: bool = False,
-    ) -> Response | StreamResponse: ...
+    ) -> Response: ...
     def put(
         self,
         url: str,
@@ -429,8 +398,10 @@ class Client:
         auth: tuple[str, str | None] | None = None,
         auth_bearer: str | None = None,
         timeout: float | None = None,
+        read_timeout: float | None = None,
+        follow_redirects: bool | None = None,
         stream: bool = False,
-    ) -> Response | StreamResponse: ...
+    ) -> Response: ...
     def patch(
         self,
         url: str,
@@ -444,8 +415,10 @@ class Client:
         auth: tuple[str, str | None] | None = None,
         auth_bearer: str | None = None,
         timeout: float | None = None,
+        read_timeout: float | None = None,
+        follow_redirects: bool | None = None,
         stream: bool = False,
-    ) -> Response | StreamResponse: ...
+    ) -> Response: ...
 
     # Context manager
     def __enter__(self) -> Client: ...
@@ -475,6 +448,9 @@ class AsyncClient:
     params: Mapping[str, str] | None
     proxy: str | None
     timeout: float | None
+    connect_timeout: float | None
+    read_timeout: float | None
+    base_url: str | None
 
     @property
     def headers(self) -> dict[str, str]: ...
@@ -494,6 +470,8 @@ class AsyncClient:
         referer: bool = True,
         proxy: str | None = None,
         timeout: float | None = None,
+        connect_timeout: float | None = None,
+        read_timeout: float | None = None,
         impersonate: str | None = None,
         impersonate_os: str | None = None,
         follow_redirects: bool = True,
@@ -502,6 +480,8 @@ class AsyncClient:
         ca_cert_file: str | None = None,
         https_only: bool = False,
         http2_only: bool = False,
+        base_url: str | None = None,
+        cookies: Mapping[str, str] | None = None,
     ) -> None: ...
     def headers_update(self, new_headers: Mapping[str, str] | None) -> None: ...
     def get_cookies(self, url: str) -> dict[str, str]: ...
@@ -520,8 +500,10 @@ class AsyncClient:
         auth: tuple[str, str | None] | None = None,
         auth_bearer: str | None = None,
         timeout: float | None = None,
+        read_timeout: float | None = None,
+        follow_redirects: bool | None = None,
         stream: bool = False,
-    ) -> AsyncResponse | AsyncStreamResponse: ...
+    ) -> AsyncResponse: ...
     async def get(
         self,
         url: str,
@@ -535,8 +517,10 @@ class AsyncClient:
         auth: tuple[str, str | None] | None = None,
         auth_bearer: str | None = None,
         timeout: float | None = None,
+        read_timeout: float | None = None,
+        follow_redirects: bool | None = None,
         stream: bool = False,
-    ) -> AsyncResponse | AsyncStreamResponse: ...
+    ) -> AsyncResponse: ...
     async def head(
         self,
         url: str,
@@ -550,8 +534,10 @@ class AsyncClient:
         auth: tuple[str, str | None] | None = None,
         auth_bearer: str | None = None,
         timeout: float | None = None,
+        read_timeout: float | None = None,
+        follow_redirects: bool | None = None,
         stream: bool = False,
-    ) -> AsyncResponse | AsyncStreamResponse: ...
+    ) -> AsyncResponse: ...
     async def options(
         self,
         url: str,
@@ -565,8 +551,10 @@ class AsyncClient:
         auth: tuple[str, str | None] | None = None,
         auth_bearer: str | None = None,
         timeout: float | None = None,
+        read_timeout: float | None = None,
+        follow_redirects: bool | None = None,
         stream: bool = False,
-    ) -> AsyncResponse | AsyncStreamResponse: ...
+    ) -> AsyncResponse: ...
     async def delete(
         self,
         url: str,
@@ -580,8 +568,10 @@ class AsyncClient:
         auth: tuple[str, str | None] | None = None,
         auth_bearer: str | None = None,
         timeout: float | None = None,
+        read_timeout: float | None = None,
+        follow_redirects: bool | None = None,
         stream: bool = False,
-    ) -> AsyncResponse | AsyncStreamResponse: ...
+    ) -> AsyncResponse: ...
     async def post(
         self,
         url: str,
@@ -595,8 +585,10 @@ class AsyncClient:
         auth: tuple[str, str | None] | None = None,
         auth_bearer: str | None = None,
         timeout: float | None = None,
+        read_timeout: float | None = None,
+        follow_redirects: bool | None = None,
         stream: bool = False,
-    ) -> AsyncResponse | AsyncStreamResponse: ...
+    ) -> AsyncResponse: ...
     async def put(
         self,
         url: str,
@@ -610,8 +602,10 @@ class AsyncClient:
         auth: tuple[str, str | None] | None = None,
         auth_bearer: str | None = None,
         timeout: float | None = None,
+        read_timeout: float | None = None,
+        follow_redirects: bool | None = None,
         stream: bool = False,
-    ) -> AsyncResponse | AsyncStreamResponse: ...
+    ) -> AsyncResponse: ...
     async def patch(
         self,
         url: str,
@@ -625,8 +619,10 @@ class AsyncClient:
         auth: tuple[str, str | None] | None = None,
         auth_bearer: str | None = None,
         timeout: float | None = None,
+        read_timeout: float | None = None,
+        follow_redirects: bool | None = None,
         stream: bool = False,
-    ) -> AsyncResponse | AsyncStreamResponse: ...
+    ) -> AsyncResponse: ...
 
     # Async context manager
     async def __aenter__(self) -> AsyncClient: ...
@@ -653,36 +649,16 @@ def get(
     auth: tuple[str, str | None] | None = None,
     auth_bearer: str | None = None,
     timeout: float | None = None,
+    connect_timeout: float | None = None,
+    read_timeout: float | None = None,
     impersonate: str | None = None,
     impersonate_os: str | None = None,
     verify: bool = True,
     ca_cert_file: str | None = None,
+    follow_redirects: bool | None = None,
     stream: bool = False,
-) -> Response | StreamResponse:
-    """
-    Send a GET request with a temporary client.
-
-    Args:
-        url: The URL to request.
-        params: Query parameters to append to the URL.
-        headers: HTTP headers to send with the request.
-        cookies: Cookies to send with the request.
-        content: Raw bytes to send in the request body.
-        data: Form data to send in the request body.
-        json: JSON-serializable object to send in the request body.
-        files: Mapping of field names to file paths for multipart upload.
-        auth: Tuple of (username, password) for basic authentication.
-        auth_bearer: Bearer token for authentication.
-        timeout: Request timeout in seconds.
-        impersonate: Browser to impersonate (e.g., "chrome_146").
-        impersonate_os: OS to impersonate (e.g., "windows", "macos", "linux").
-        verify: Whether to verify SSL certificates.
-        ca_cert_file: Path to CA certificate file.
-        stream: If True, returns a StreamResponse for streaming.
-
-    Returns:
-        Response or StreamResponse object.
-    """
+) -> Response:
+    """Send a GET request with a temporary client."""
     ...
 
 def head(
@@ -697,36 +673,16 @@ def head(
     auth: tuple[str, str | None] | None = None,
     auth_bearer: str | None = None,
     timeout: float | None = None,
+    connect_timeout: float | None = None,
+    read_timeout: float | None = None,
     impersonate: str | None = None,
     impersonate_os: str | None = None,
     verify: bool = True,
     ca_cert_file: str | None = None,
+    follow_redirects: bool | None = None,
     stream: bool = False,
-) -> Response | StreamResponse:
-    """
-    Send a HEAD request with a temporary client.
-
-    Args:
-        url: The URL to request.
-        params: Query parameters to append to the URL.
-        headers: HTTP headers to send with the request.
-        cookies: Cookies to send with the request.
-        content: Raw bytes to send in the request body.
-        data: Form data to send in the request body.
-        json: JSON-serializable object to send in the request body.
-        files: Mapping of field names to file paths for multipart upload.
-        auth: Tuple of (username, password) for basic authentication.
-        auth_bearer: Bearer token for authentication.
-        timeout: Request timeout in seconds.
-        impersonate: Browser to impersonate (e.g., "chrome_146").
-        impersonate_os: OS to impersonate (e.g., "windows", "macos", "linux").
-        verify: Whether to verify SSL certificates.
-        ca_cert_file: Path to CA certificate file.
-        stream: If True, returns a StreamResponse for streaming.
-
-    Returns:
-        Response or StreamResponse object.
-    """
+) -> Response:
+    """Send a HEAD request with a temporary client."""
     ...
 
 def options(
@@ -741,36 +697,16 @@ def options(
     auth: tuple[str, str | None] | None = None,
     auth_bearer: str | None = None,
     timeout: float | None = None,
+    connect_timeout: float | None = None,
+    read_timeout: float | None = None,
     impersonate: str | None = None,
     impersonate_os: str | None = None,
     verify: bool = True,
     ca_cert_file: str | None = None,
+    follow_redirects: bool | None = None,
     stream: bool = False,
-) -> Response | StreamResponse:
-    """
-    Send an OPTIONS request with a temporary client.
-
-    Args:
-        url: The URL to request.
-        params: Query parameters to append to the URL.
-        headers: HTTP headers to send with the request.
-        cookies: Cookies to send with the request.
-        content: Raw bytes to send in the request body.
-        data: Form data to send in the request body.
-        json: JSON-serializable object to send in the request body.
-        files: Mapping of field names to file paths for multipart upload.
-        auth: Tuple of (username, password) for basic authentication.
-        auth_bearer: Bearer token for authentication.
-        timeout: Request timeout in seconds.
-        impersonate: Browser to impersonate (e.g., "chrome_146").
-        impersonate_os: OS to impersonate (e.g., "windows", "macos", "linux").
-        verify: Whether to verify SSL certificates.
-        ca_cert_file: Path to CA certificate file.
-        stream: If True, returns a StreamResponse for streaming.
-
-    Returns:
-        Response or StreamResponse object.
-    """
+) -> Response:
+    """Send an OPTIONS request with a temporary client."""
     ...
 
 def delete(
@@ -785,36 +721,16 @@ def delete(
     auth: tuple[str, str | None] | None = None,
     auth_bearer: str | None = None,
     timeout: float | None = None,
+    connect_timeout: float | None = None,
+    read_timeout: float | None = None,
     impersonate: str | None = None,
     impersonate_os: str | None = None,
     verify: bool = True,
     ca_cert_file: str | None = None,
+    follow_redirects: bool | None = None,
     stream: bool = False,
-) -> Response | StreamResponse:
-    """
-    Send a DELETE request with a temporary client.
-
-    Args:
-        url: The URL to request.
-        params: Query parameters to append to the URL.
-        headers: HTTP headers to send with the request.
-        cookies: Cookies to send with the request.
-        content: Raw bytes to send in the request body.
-        data: Form data to send in the request body.
-        json: JSON-serializable object to send in the request body.
-        files: Mapping of field names to file paths for multipart upload.
-        auth: Tuple of (username, password) for basic authentication.
-        auth_bearer: Bearer token for authentication.
-        timeout: Request timeout in seconds.
-        impersonate: Browser to impersonate (e.g., "chrome_146").
-        impersonate_os: OS to impersonate (e.g., "windows", "macos", "linux").
-        verify: Whether to verify SSL certificates.
-        ca_cert_file: Path to CA certificate file.
-        stream: If True, returns a StreamResponse for streaming.
-
-    Returns:
-        Response or StreamResponse object.
-    """
+) -> Response:
+    """Send a DELETE request with a temporary client."""
     ...
 
 def post(
@@ -829,36 +745,16 @@ def post(
     auth: tuple[str, str | None] | None = None,
     auth_bearer: str | None = None,
     timeout: float | None = None,
+    connect_timeout: float | None = None,
+    read_timeout: float | None = None,
     impersonate: str | None = None,
     impersonate_os: str | None = None,
     verify: bool = True,
     ca_cert_file: str | None = None,
+    follow_redirects: bool | None = None,
     stream: bool = False,
-) -> Response | StreamResponse:
-    """
-    Send a POST request with a temporary client.
-
-    Args:
-        url: The URL to request.
-        params: Query parameters to append to the URL.
-        headers: HTTP headers to send with the request.
-        cookies: Cookies to send with the request.
-        content: Raw bytes to send in the request body.
-        data: Form data to send in the request body.
-        json: JSON-serializable object to send in the request body.
-        files: Mapping of field names to file paths for multipart upload.
-        auth: Tuple of (username, password) for basic authentication.
-        auth_bearer: Bearer token for authentication.
-        timeout: Request timeout in seconds.
-        impersonate: Browser to impersonate (e.g., "chrome_146").
-        impersonate_os: OS to impersonate (e.g., "windows", "macos", "linux").
-        verify: Whether to verify SSL certificates.
-        ca_cert_file: Path to CA certificate file.
-        stream: If True, returns a StreamResponse for streaming.
-
-    Returns:
-        Response or StreamResponse object.
-    """
+) -> Response:
+    """Send a POST request with a temporary client."""
     ...
 
 def put(
@@ -873,36 +769,16 @@ def put(
     auth: tuple[str, str | None] | None = None,
     auth_bearer: str | None = None,
     timeout: float | None = None,
+    connect_timeout: float | None = None,
+    read_timeout: float | None = None,
     impersonate: str | None = None,
     impersonate_os: str | None = None,
     verify: bool = True,
     ca_cert_file: str | None = None,
+    follow_redirects: bool | None = None,
     stream: bool = False,
-) -> Response | StreamResponse:
-    """
-    Send a PUT request with a temporary client.
-
-    Args:
-        url: The URL to request.
-        params: Query parameters to append to the URL.
-        headers: HTTP headers to send with the request.
-        cookies: Cookies to send with the request.
-        content: Raw bytes to send in the request body.
-        data: Form data to send in the request body.
-        json: JSON-serializable object to send in the request body.
-        files: Mapping of field names to file paths for multipart upload.
-        auth: Tuple of (username, password) for basic authentication.
-        auth_bearer: Bearer token for authentication.
-        timeout: Request timeout in seconds.
-        impersonate: Browser to impersonate (e.g., "chrome_146").
-        impersonate_os: OS to impersonate (e.g., "windows", "macos", "linux").
-        verify: Whether to verify SSL certificates.
-        ca_cert_file: Path to CA certificate file.
-        stream: If True, returns a StreamResponse for streaming.
-
-    Returns:
-        Response or StreamResponse object.
-    """
+) -> Response:
+    """Send a PUT request with a temporary client."""
     ...
 
 def patch(
@@ -917,36 +793,16 @@ def patch(
     auth: tuple[str, str | None] | None = None,
     auth_bearer: str | None = None,
     timeout: float | None = None,
+    connect_timeout: float | None = None,
+    read_timeout: float | None = None,
     impersonate: str | None = None,
     impersonate_os: str | None = None,
     verify: bool = True,
     ca_cert_file: str | None = None,
+    follow_redirects: bool | None = None,
     stream: bool = False,
-) -> Response | StreamResponse:
-    """
-    Send a PATCH request with a temporary client.
-
-    Args:
-        url: The URL to request.
-        params: Query parameters to append to the URL.
-        headers: HTTP headers to send with the request.
-        cookies: Cookies to send with the request.
-        content: Raw bytes to send in the request body.
-        data: Form data to send in the request body.
-        json: JSON-serializable object to send in the request body.
-        files: Mapping of field names to file paths for multipart upload.
-        auth: Tuple of (username, password) for basic authentication.
-        auth_bearer: Bearer token for authentication.
-        timeout: Request timeout in seconds.
-        impersonate: Browser to impersonate (e.g., "chrome_146").
-        impersonate_os: OS to impersonate (e.g., "windows", "macos", "linux").
-        verify: Whether to verify SSL certificates.
-        ca_cert_file: Path to CA certificate file.
-        stream: If True, returns a StreamResponse for streaming.
-
-    Returns:
-        Response or StreamResponse object.
-    """
+) -> Response:
+    """Send a PATCH request with a temporary client."""
     ...
 
 def request(
@@ -962,35 +818,14 @@ def request(
     auth: tuple[str, str | None] | None = None,
     auth_bearer: str | None = None,
     timeout: float | None = None,
+    connect_timeout: float | None = None,
+    read_timeout: float | None = None,
     impersonate: str | None = None,
     impersonate_os: str | None = None,
     verify: bool = True,
     ca_cert_file: str | None = None,
+    follow_redirects: bool | None = None,
     stream: bool = False,
-) -> Response | StreamResponse:
-    """
-    Send a request with a custom HTTP method using a temporary client.
-
-    Args:
-        method: The HTTP method to use (e.g., "GET", "POST", "CUSTOM").
-        url: The URL to request.
-        params: Query parameters to append to the URL.
-        headers: HTTP headers to send with the request.
-        cookies: Cookies to send with the request.
-        content: Raw bytes to send in the request body.
-        data: Form data to send in the request body.
-        json: JSON-serializable object to send in the request body.
-        files: Mapping of field names to file paths for multipart upload.
-        auth: Tuple of (username, password) for basic authentication.
-        auth_bearer: Bearer token for authentication.
-        timeout: Request timeout in seconds.
-        impersonate: Browser to impersonate (e.g., "chrome_146").
-        impersonate_os: OS to impersonate (e.g., "windows", "macos", "linux").
-        verify: Whether to verify SSL certificates.
-        ca_cert_file: Path to CA certificate file.
-        stream: If True, returns a StreamResponse for streaming.
-
-    Returns:
-        Response or StreamResponse object.
-    """
+) -> Response:
+    """Send a request with a custom HTTP method using a temporary client."""
     ...
