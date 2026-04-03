@@ -280,6 +280,157 @@ class TestRequestTimeout:
         assert response.status_code == 200
 
 
+class TestRequestReadTimeout:
+    """Tests for per-request read_timeout parameter."""
+    
+    def test_sync_client_read_timeout_per_request(self, test_server: str) -> None:
+        """Test per-request read_timeout on sync Client."""
+        base_url = test_server
+        
+        client = primp.Client()
+        response = client.get(f"{base_url}/get", read_timeout=30)
+        
+        assert response.status_code == 200
+    
+    @pytest.mark.asyncio
+    async def test_async_client_read_timeout_per_request(self, test_server: str) -> None:
+        """Test per-request read_timeout on AsyncClient."""
+        base_url = test_server
+        
+        client = primp.AsyncClient()
+        response = await client.get(f"{base_url}/get", read_timeout=30)
+        
+        assert response.status_code == 200
+    
+    def test_module_read_timeout_per_request(self, test_server: str) -> None:
+        """Test per-request read_timeout on module function."""
+        base_url = test_server
+        
+        response = primp.get(f"{base_url}/get", read_timeout=30)
+        
+        assert response.status_code == 200
+    
+    def test_both_timeout_and_read_timeout(self, test_server: str) -> None:
+        """Test both timeout and read_timeout together."""
+        base_url = test_server
+        
+        client = primp.Client()
+        response = client.get(f"{base_url}/get", timeout=30, read_timeout=15)
+        
+        assert response.status_code == 200
+
+
+class TestRequestFollowRedirects:
+    """Tests for per-request follow_redirects parameter."""
+    
+    def test_sync_client_follow_redirects_true(self, test_server: str) -> None:
+        """Test per-request follow_redirects=True on sync Client."""
+        base_url = test_server
+        
+        client = primp.Client(follow_redirects=False)
+        response = client.get(f"{base_url}/get", follow_redirects=True)
+        
+        assert response.status_code == 200
+    
+    def test_sync_client_follow_redirects_false(self, test_server: str) -> None:
+        """Test per-request follow_redirects=False on sync Client."""
+        base_url = test_server
+        
+        client = primp.Client(follow_redirects=True)
+        response = client.get(f"{base_url}/get", follow_redirects=False)
+        
+        assert response.status_code == 200
+    
+    @pytest.mark.asyncio
+    async def test_async_client_follow_redirects_per_request(self, test_server: str) -> None:
+        """Test per-request follow_redirects on AsyncClient."""
+        base_url = test_server
+        
+        client = primp.AsyncClient(follow_redirects=False)
+        response = await client.get(f"{base_url}/get", follow_redirects=True)
+        
+        assert response.status_code == 200
+    
+    def test_module_follow_redirects_per_request(self, test_server: str) -> None:
+        """Test per-request follow_redirects on module function."""
+        base_url = test_server
+        
+        response = primp.get(f"{base_url}/get", follow_redirects=True)
+        
+        assert response.status_code == 200
+
+
+class TestClientBaseUrl:
+    """Tests for base_url parameter and URL resolution."""
+    
+    def test_sync_client_base_url_resolves_relative_path(self, test_server: str) -> None:
+        """Test that base_url resolves relative paths on sync Client."""
+        client = primp.Client(base_url=test_server)
+        response = client.get("/get")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["method"] == "GET"
+    
+    def test_sync_client_base_url_absolute_url_overrides(self, test_server: str) -> None:
+        """Test that absolute URLs override base_url on sync Client."""
+        base_url = test_server
+        
+        client = primp.Client(base_url="https://example.com")
+        response = client.get(f"{base_url}/get")
+        
+        assert response.status_code == 200
+    
+    @pytest.mark.asyncio
+    async def test_async_client_base_url_resolves_relative_path(self, test_server: str) -> None:
+        """Test that base_url resolves relative paths on AsyncClient."""
+        client = primp.AsyncClient(base_url=test_server)
+        response = await client.get("/get")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["method"] == "GET"
+    
+    @pytest.mark.asyncio
+    async def test_async_client_base_url_absolute_url_overrides(self, test_server: str) -> None:
+        """Test that absolute URLs override base_url on AsyncClient."""
+        base_url = test_server
+        
+        client = primp.AsyncClient(base_url="https://example.com")
+        response = await client.get(f"{base_url}/get")
+        
+        assert response.status_code == 200
+
+
+class TestClientInitCookies:
+    """Tests for cookies parameter at client initialization."""
+    
+    def test_sync_client_init_cookies(self, test_server: str) -> None:
+        """Test client initialization with cookies on sync Client."""
+        base_url = test_server
+        
+        client = primp.Client(cookies={"init_cookie": "init_value"})
+        response = client.get(f"{base_url}/cookies")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "init_cookie" in data["cookies"]
+        assert data["cookies"]["init_cookie"] == "init_value"
+    
+    @pytest.mark.asyncio
+    async def test_async_client_init_cookies(self, test_server: str) -> None:
+        """Test client initialization with cookies on AsyncClient."""
+        base_url = test_server
+        
+        client = primp.AsyncClient(cookies={"init_cookie": "init_value"})
+        response = await client.get(f"{base_url}/cookies")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "init_cookie" in data["cookies"]
+        assert data["cookies"]["init_cookie"] == "init_value"
+
+
 class TestRequestContent:
     """Tests for per-request content parameter (raw body)."""
     

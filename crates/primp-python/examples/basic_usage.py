@@ -20,3 +20,22 @@ print(f"Params: {resp.json()['args']}")
 # Custom headers
 resp = client.get("https://httpbin.org/headers", headers={"X-Custom-Header": "custom-value"})
 print(f"Headers: {resp.json()['headers']}")
+
+# Timeout configuration
+client = primp.Client(
+    timeout=30,
+    connect_timeout=10,
+    read_timeout=15,
+)
+resp = client.get("https://httpbin.org/delay/5")
+print(f"Status: {resp.status_code}")
+
+# Base URL for relative paths
+client = primp.Client(base_url="https://httpbin.org")
+resp = client.get("/get")
+print(f"Status: {resp.status_code}")
+
+# Per-request follow_redirects
+client = primp.Client(follow_redirects=True)
+resp = client.get("https://httpbin.org/redirect/1", follow_redirects=False)
+print(f"Status: {resp.status_code}")

@@ -16,6 +16,8 @@ primp.AsyncClient(
     referer=True,
     proxy=None,
     timeout=None,
+    connect_timeout=None,
+    read_timeout=None,
     impersonate=None,
     impersonate_os=None,
     follow_redirects=True,
@@ -24,6 +26,8 @@ primp.AsyncClient(
     ca_cert_file=None,
     https_only=False,
     http2_only=False,
+    base_url=None,
+    cookies=None,
 )
 ```
 

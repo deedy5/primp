@@ -25,6 +25,12 @@ try:
 except primp.TimeoutError as e:
     print(f"Timeout: {e}")
 
+# Read timeout (max gap between bytes)
+try:
+    client.get("https://httpbin.org/delay/10", read_timeout=2)
+except primp.TimeoutError as e:
+    print(f"Read timeout: {e}")
+
 # Connection errors (DNS, proxy, SSL)
 try:
     client.get("https://nonexistent-domain-12345.com")

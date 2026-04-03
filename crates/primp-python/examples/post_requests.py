@@ -23,3 +23,7 @@ print(f"PUT: {resp.json()['json']}")
 # DELETE request
 resp = client.delete("https://httpbin.org/delete")
 print(f"DELETE: {resp.status_code}")
+
+# Per-request follow_redirects control
+resp = client.post("https://httpbin.org/post", json={"redirect": True}, follow_redirects=False)
+print(f"Status: {resp.status_code}")
