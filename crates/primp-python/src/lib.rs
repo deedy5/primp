@@ -25,7 +25,7 @@ use error::{PrimpErrorEnum, PrimpResult};
 
 mod impersonate;
 mod response;
-use response::{BytesIterator, LinesIterator, Response, StreamResponse, TextIterator};
+use response::{BytesIterator, LinesIterator, Response, TextIterator};
 
 mod r#async;
 
@@ -57,10 +57,17 @@ pub struct Client {
     proxy: Option<String>,
     #[pyo3(get, set)]
     timeout: Option<f64>,
+    #[pyo3(get, set)]
+    connect_timeout: Option<f64>,
+    #[pyo3(get, set)]
+    read_timeout: Option<f64>,
     #[pyo3(get)]
     impersonate: Option<String>,
     #[pyo3(get)]
     impersonate_os: Option<String>,
+    #[pyo3(get, set)]
+    base_url: Option<String>,
+    cookies: Option<IndexMapSSR>,
 }
 
 pub fn extract_cookies_to_indexmap(headers: &http::HeaderMap) -> IndexMapSSR {
@@ -96,7 +103,9 @@ impl Client {
     ///         in additional requests. Default is `true`.
     /// * `referer` - Enable or disable automatic setting of the `Referer` header. Default is `true`.
     /// * `proxy` - An optional proxy URL for HTTP requests.
-    /// * `timeout` - An optional timeout for HTTP requests in seconds.
+    /// * `timeout` - An optional total timeout for HTTP requests in seconds.
+    /// * `connect_timeout` - An optional timeout for establishing connections in seconds.
+    /// * `read_timeout` - An optional timeout for reading the response body in seconds.
     /// * `impersonate` - An optional entity to impersonate. Supported browsers and versions include Chrome, Safari, Edge.
     /// * `impersonate_os` - An optional entity to impersonate OS. Supported OS: android, ios, linux, macos, windows.
     /// * `follow_redirects` - A boolean to enable or disable following redirects. Default is `true`.
@@ -131,8 +140,10 @@ impl Client {
     /// ```
     #[new]
     #[pyo3(signature = (auth=None, auth_bearer=None, params=None, headers=None, cookie_store=true,
-        referer=true, proxy=None, timeout=None, impersonate=None, impersonate_os=None, follow_redirects=true,
-        max_redirects=20, verify=true, ca_cert_file=None, https_only=false, http2_only=false))]
+        referer=true, proxy=None, timeout=None, connect_timeout=None, read_timeout=None,
+        impersonate=None, impersonate_os=None, follow_redirects=true,
+        max_redirects=20, verify=true, ca_cert_file=None, https_only=false, http2_only=false,
+        base_url=None, cookies=None))]
     fn new(
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
@@ -142,6 +153,8 @@ impl Client {
         referer: Option<bool>,
         proxy: Option<String>,
         timeout: Option<f64>,
+        connect_timeout: Option<f64>,
+        read_timeout: Option<f64>,
         impersonate: Option<String>,
         impersonate_os: Option<String>,
         follow_redirects: Option<bool>,
@@ -150,6 +163,8 @@ impl Client {
         ca_cert_file: Option<String>,
         https_only: Option<bool>,
         http2_only: Option<bool>,
+        base_url: Option<String>,
+        cookies: Option<IndexMapSSR>,
     ) -> PrimpResult<Self> {
         let (client_builder, resolved_proxy) = configure_client_builder(
             PrimpClient::builder(),
@@ -158,6 +173,8 @@ impl Client {
             referer,
             proxy,
             timeout,
+            connect_timeout,
+            read_timeout,
             impersonate.as_deref(),
             impersonate_os.as_deref(),
             follow_redirects,
@@ -177,8 +194,12 @@ impl Client {
             params,
             proxy: resolved_proxy,
             timeout,
+            connect_timeout,
+            read_timeout,
             impersonate,
             impersonate_os,
+            base_url,
+            cookies,
         })
     }
 
@@ -266,8 +287,10 @@ impl Client {
     /// * `files` - A map of file fields to file paths to be sent as multipart/form-data. Default is None.
     /// * `auth` - A tuple containing the username and an optional password for basic authentication. Default is None.
     /// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
-    /// * `timeout` - The timeout for the request in seconds. Default is 30.
-    /// * `stream` - If True, returns a StreamResponse for streaming the response body. Default is False.
+    /// * `timeout` - The timeout for the request in seconds. Default is None.
+    /// * `read_timeout` - The read timeout in seconds (max gap between bytes). Default is None.
+    /// * `follow_redirects` - Whether to follow redirects for this request. Default is None (uses client setting).
+    /// * `stream` - If True, returns a Response for streaming the response body. Default is False.
     ///
     /// # Returns
     ///
@@ -277,7 +300,8 @@ impl Client {
     ///
     /// * `PyException` - If there is an error making the request.
     #[pyo3(signature = (method, url, params=None, headers=None, cookies=None, content=None,
-        data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, stream=false))]
+        data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None,
+        read_timeout=None, follow_redirects=None, stream=false))]
     fn request(
         &self,
         py: Python,
@@ -293,6 +317,8 @@ impl Client {
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
+        read_timeout: Option<f64>,
+        follow_redirects: Option<bool>,
         stream: bool,
     ) -> PyResult<Py<PyAny>> {
         let client = Arc::clone(&self.client);
@@ -305,14 +331,48 @@ impl Client {
             .map(depythonize)
             .transpose()
             .map_err(Into::<PrimpErrorEnum>::into)?;
-        let timeout: Option<f64> = timeout.or(self.timeout);
 
-        // Cookies - process outside async block only if cookies provided and non-empty
+        let resolved_timeout: Option<f64> = timeout.or(self.timeout);
+
+        // Resolve URL with base_url
+        let resolved_url = if let Some(ref base_url) = self.base_url {
+            if url.starts_with("http://") || url.starts_with("https://") {
+                url.to_string()
+            } else {
+                let base = base_url.trim_end_matches('/');
+                let path = url.trim_start_matches('/');
+                format!("{}/{}", base, path)
+            }
+        } else {
+            url.to_string()
+        };
+
+        // Apply client-level cookies
+        if let Some(ref client_cookies) = self.cookies {
+            if !client_cookies.is_empty() {
+                let url_parsed = Url::parse(&resolved_url).map_err(Into::<PrimpErrorEnum>::into)?;
+                let cookie_values = cookies_to_header_values(client_cookies);
+                let client_guard = client.read().expect("client lock was poisoned");
+                client_guard.set_cookies(&url_parsed, cookie_values);
+            }
+        }
+
+        // Request-level cookies
         if let Some(cookies) = cookies.filter(|c| !c.is_empty()) {
-            let url = Url::parse(url).map_err(Into::<PrimpErrorEnum>::into)?;
+            let url_parsed = Url::parse(&resolved_url).map_err(Into::<PrimpErrorEnum>::into)?;
             let cookie_values = cookies_to_header_values(&cookies);
-            let client = client.read().expect("client lock was poisoned");
-            client.set_cookies(&url, cookie_values);
+            let client_guard = client.read().expect("client lock was poisoned");
+            client_guard.set_cookies(&url_parsed, cookie_values);
+        }
+
+        // Handle follow_redirects: set policy before cloning client
+        if let Some(fr) = follow_redirects {
+            let mut client_guard = client.write().expect("client lock was poisoned");
+            if fr {
+                client_guard.set_redirect_policy(::primp::redirect::Policy::limited(20));
+            } else {
+                client_guard.set_redirect_policy(::primp::redirect::Policy::none());
+            }
         }
 
         // Clone the inner client to avoid holding the RwLock across await points
@@ -336,7 +396,7 @@ impl Client {
 
         let future = async move {
             // Create request builder using the cloned client
-            let mut request_builder = client_clone.request(method, url);
+            let mut request_builder = client_clone.request(method, &resolved_url);
 
             // Params
             match (&params, self_params) {
@@ -404,8 +464,13 @@ impl Client {
             }
 
             // Timeout
-            if let Some(seconds) = timeout {
+            if let Some(seconds) = resolved_timeout {
                 request_builder = request_builder.timeout(Duration::from_secs_f64(seconds));
+            }
+
+            // Per-request read timeout
+            if let Some(seconds) = read_timeout {
+                request_builder = request_builder.read_timeout(Duration::from_secs_f64(seconds));
             }
 
             // Send the request and await the response
@@ -424,26 +489,29 @@ impl Client {
         // Use Tokio global runtime to block on the future.
         let response: Result<(PrimpResponse, String, u16), PrimpErrorEnum> =
             py.detach(|| RUNTIME.block_on(future));
+
+        // Restore redirect policy if it was changed
+        if follow_redirects.is_some() {
+            let mut client_guard = client.write().expect("client lock was poisoned");
+            client_guard.set_redirect_policy(::primp::redirect::Policy::limited(20));
+        }
+
         let result = response?;
         let resp = result.0;
         let url = result.1;
         let status_code = result.2;
 
         if stream {
-            // Return StreamResponse for streaming
             let headers: IndexMapSSR = resp.headers().to_indexmap();
             let cookies = extract_cookies_to_indexmap(resp.headers());
-
             let encoding = extract_encoding(resp.headers()).name().to_string();
 
-            let stream_response =
-                StreamResponse::new(resp, url, status_code, encoding, headers, cookies);
-            Ok(stream_response.into_pyobject(py)?.into_any().unbind())
+            let response =
+                Response::new_streaming(resp, url, status_code, encoding, headers, cookies);
+            Ok(response.into_pyobject(py)?.into_any().unbind())
         } else {
-            // Return regular Response with pre-computed headers and cookies
             let headers: IndexMapSSR = resp.headers().to_indexmap();
             let cookies = extract_cookies_to_indexmap(resp.headers());
-
             let encoding = extract_encoding(resp.headers()).name().to_string();
 
             let response = Response::new(resp, url, status_code, headers, cookies, encoding);
@@ -452,7 +520,7 @@ impl Client {
     }
 
     /// Send a GET request.
-    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, stream=false))]
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, read_timeout=None, follow_redirects=None, stream=false))]
     fn get(
         &self,
         py: Python,
@@ -467,6 +535,8 @@ impl Client {
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
+        read_timeout: Option<f64>,
+        follow_redirects: Option<bool>,
         stream: bool,
     ) -> PyResult<Py<PyAny>> {
         self.request(
@@ -483,12 +553,14 @@ impl Client {
             auth,
             auth_bearer,
             timeout,
+            read_timeout,
+            follow_redirects,
             stream,
         )
     }
 
     /// Send a HEAD request.
-    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, stream=false))]
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, read_timeout=None, follow_redirects=None, stream=false))]
     fn head(
         &self,
         py: Python,
@@ -503,6 +575,8 @@ impl Client {
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
+        read_timeout: Option<f64>,
+        follow_redirects: Option<bool>,
         stream: bool,
     ) -> PyResult<Py<PyAny>> {
         self.request(
@@ -519,12 +593,14 @@ impl Client {
             auth,
             auth_bearer,
             timeout,
+            read_timeout,
+            follow_redirects,
             stream,
         )
     }
 
     /// Send an OPTIONS request.
-    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, stream=false))]
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, read_timeout=None, follow_redirects=None, stream=false))]
     fn options(
         &self,
         py: Python,
@@ -539,6 +615,8 @@ impl Client {
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
+        read_timeout: Option<f64>,
+        follow_redirects: Option<bool>,
         stream: bool,
     ) -> PyResult<Py<PyAny>> {
         self.request(
@@ -555,12 +633,14 @@ impl Client {
             auth,
             auth_bearer,
             timeout,
+            read_timeout,
+            follow_redirects,
             stream,
         )
     }
 
     /// Send a DELETE request.
-    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, stream=false))]
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, read_timeout=None, follow_redirects=None, stream=false))]
     fn delete(
         &self,
         py: Python,
@@ -575,6 +655,8 @@ impl Client {
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
+        read_timeout: Option<f64>,
+        follow_redirects: Option<bool>,
         stream: bool,
     ) -> PyResult<Py<PyAny>> {
         self.request(
@@ -591,12 +673,14 @@ impl Client {
             auth,
             auth_bearer,
             timeout,
+            read_timeout,
+            follow_redirects,
             stream,
         )
     }
 
     /// Send a POST request.
-    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, stream=false))]
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, read_timeout=None, follow_redirects=None, stream=false))]
     fn post(
         &self,
         py: Python,
@@ -611,6 +695,8 @@ impl Client {
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
+        read_timeout: Option<f64>,
+        follow_redirects: Option<bool>,
         stream: bool,
     ) -> PyResult<Py<PyAny>> {
         self.request(
@@ -627,12 +713,14 @@ impl Client {
             auth,
             auth_bearer,
             timeout,
+            read_timeout,
+            follow_redirects,
             stream,
         )
     }
 
     /// Send a PUT request.
-    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, stream=false))]
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, read_timeout=None, follow_redirects=None, stream=false))]
     fn put(
         &self,
         py: Python,
@@ -647,6 +735,8 @@ impl Client {
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
+        read_timeout: Option<f64>,
+        follow_redirects: Option<bool>,
         stream: bool,
     ) -> PyResult<Py<PyAny>> {
         self.request(
@@ -663,12 +753,14 @@ impl Client {
             auth,
             auth_bearer,
             timeout,
+            read_timeout,
+            follow_redirects,
             stream,
         )
     }
 
     /// Send a PATCH request.
-    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, stream=false))]
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, read_timeout=None, follow_redirects=None, stream=false))]
     fn patch(
         &self,
         py: Python,
@@ -683,6 +775,8 @@ impl Client {
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
+        read_timeout: Option<f64>,
+        follow_redirects: Option<bool>,
         stream: bool,
     ) -> PyResult<Py<PyAny>> {
         self.request(
@@ -699,6 +793,8 @@ impl Client {
             auth,
             auth_bearer,
             timeout,
+            read_timeout,
+            follow_redirects,
             stream,
         )
     }
@@ -733,14 +829,16 @@ impl Client {
 /// * `files` - A map of file fields to file paths to be sent as multipart/form-data. Default is None.
 /// * `auth` - A tuple containing the username and an optional password for basic authentication. Default is None.
 /// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
-/// * `timeout` - The timeout for the request in seconds. Default is 30.
+/// * `timeout` - The total timeout for the request in seconds. Default is None.
+/// * `connect_timeout` - The timeout for establishing a connection in seconds. Default is None.
+/// * `read_timeout` - The timeout for reading the response body in seconds. Default is None.
 /// * `impersonate` - An optional entity to impersonate. Default is None.
 /// * `impersonate_os` - An optional OS to impersonate. Default is None.
 /// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is true.
 /// * `ca_cert_file` - Path to CA certificate store. Default is None.
-/// * `stream` - If True, returns a StreamResponse for streaming the response body. Default is False.
+/// * `stream` - If True, returns a Response for streaming the response body. Default is False.
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, stream=false))]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
 fn get(
     py: Python,
     url: &str,
@@ -754,10 +852,13 @@ fn get(
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
+    connect_timeout: Option<f64>,
+    read_timeout: Option<f64>,
     impersonate: Option<String>,
     impersonate_os: Option<String>,
     verify: Option<bool>,
     ca_cert_file: Option<String>,
+    follow_redirects: Option<bool>,
     stream: bool,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
@@ -769,12 +870,16 @@ fn get(
         None,
         None,
         timeout,
+        connect_timeout,
+        None,
         impersonate,
         impersonate_os,
         None,
         None,
         verify,
         ca_cert_file,
+        None,
+        None,
         None,
         None,
     )?;
@@ -791,6 +896,8 @@ fn get(
         auth,
         auth_bearer,
         timeout,
+        read_timeout,
+        follow_redirects,
         stream,
     )
 }
@@ -809,14 +916,16 @@ fn get(
 /// * `files` - A map of file fields to file paths to be sent as multipart/form-data. Default is None.
 /// * `auth` - A tuple containing the username and an optional password for basic authentication. Default is None.
 /// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
-/// * `timeout` - The timeout for the request in seconds. Default is 30.
+/// * `timeout` - The total timeout for the request in seconds. Default is None.
+/// * `connect_timeout` - The timeout for establishing a connection in seconds. Default is None.
+/// * `read_timeout` - The timeout for reading the response body in seconds. Default is None.
 /// * `impersonate` - An optional entity to impersonate. Default is None.
 /// * `impersonate_os` - An optional OS to impersonate. Default is None.
 /// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is true.
 /// * `ca_cert_file` - Path to CA certificate store. Default is None.
-/// * `stream` - If True, returns a StreamResponse for streaming the response body. Default is False.
+/// * `stream` - If True, returns a Response for streaming the response body. Default is False.
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, stream=false))]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
 fn head(
     py: Python,
     url: &str,
@@ -830,10 +939,13 @@ fn head(
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
+    connect_timeout: Option<f64>,
+    read_timeout: Option<f64>,
     impersonate: Option<String>,
     impersonate_os: Option<String>,
     verify: Option<bool>,
     ca_cert_file: Option<String>,
+    follow_redirects: Option<bool>,
     stream: bool,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
@@ -845,12 +957,16 @@ fn head(
         None,
         None,
         timeout,
+        connect_timeout,
+        None,
         impersonate,
         impersonate_os,
         None,
         None,
         verify,
         ca_cert_file,
+        None,
+        None,
         None,
         None,
     )?;
@@ -867,6 +983,8 @@ fn head(
         auth,
         auth_bearer,
         timeout,
+        read_timeout,
+        follow_redirects,
         stream,
     )
 }
@@ -885,14 +1003,16 @@ fn head(
 /// * `files` - A map of file fields to file paths to be sent as multipart/form-data. Default is None.
 /// * `auth` - A tuple containing the username and an optional password for basic authentication. Default is None.
 /// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
-/// * `timeout` - The timeout for the request in seconds. Default is 30.
+/// * `timeout` - The total timeout for the request in seconds. Default is None.
+/// * `connect_timeout` - The timeout for establishing a connection in seconds. Default is None.
+/// * `read_timeout` - The timeout for reading the response body in seconds. Default is None.
 /// * `impersonate` - An optional entity to impersonate. Default is None.
 /// * `impersonate_os` - An optional OS to impersonate. Default is None.
 /// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is true.
 /// * `ca_cert_file` - Path to CA certificate store. Default is None.
-/// * `stream` - If True, returns a StreamResponse for streaming the response body. Default is False.
+/// * `stream` - If True, returns a Response for streaming the response body. Default is False.
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, stream=false))]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
 fn options(
     py: Python,
     url: &str,
@@ -906,10 +1026,13 @@ fn options(
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
+    connect_timeout: Option<f64>,
+    read_timeout: Option<f64>,
     impersonate: Option<String>,
     impersonate_os: Option<String>,
     verify: Option<bool>,
     ca_cert_file: Option<String>,
+    follow_redirects: Option<bool>,
     stream: bool,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
@@ -921,12 +1044,16 @@ fn options(
         None,
         None,
         timeout,
+        connect_timeout,
+        None,
         impersonate,
         impersonate_os,
         None,
         None,
         verify,
         ca_cert_file,
+        None,
+        None,
         None,
         None,
     )?;
@@ -943,6 +1070,8 @@ fn options(
         auth,
         auth_bearer,
         timeout,
+        read_timeout,
+        follow_redirects,
         stream,
     )
 }
@@ -961,14 +1090,16 @@ fn options(
 /// * `files` - A map of file fields to file paths to be sent as multipart/form-data. Default is None.
 /// * `auth` - A tuple containing the username and an optional password for basic authentication. Default is None.
 /// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
-/// * `timeout` - The timeout for the request in seconds. Default is 30.
+/// * `timeout` - The total timeout for the request in seconds. Default is None.
+/// * `connect_timeout` - The timeout for establishing a connection in seconds. Default is None.
+/// * `read_timeout` - The timeout for reading the response body in seconds. Default is None.
 /// * `impersonate` - An optional entity to impersonate. Default is None.
 /// * `impersonate_os` - An optional OS to impersonate. Default is None.
 /// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is true.
 /// * `ca_cert_file` - Path to CA certificate store. Default is None.
-/// * `stream` - If True, returns a StreamResponse for streaming the response body. Default is False.
+/// * `stream` - If True, returns a Response for streaming the response body. Default is False.
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, stream=false))]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
 fn delete(
     py: Python,
     url: &str,
@@ -982,10 +1113,13 @@ fn delete(
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
+    connect_timeout: Option<f64>,
+    read_timeout: Option<f64>,
     impersonate: Option<String>,
     impersonate_os: Option<String>,
     verify: Option<bool>,
     ca_cert_file: Option<String>,
+    follow_redirects: Option<bool>,
     stream: bool,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
@@ -997,12 +1131,16 @@ fn delete(
         None,
         None,
         timeout,
+        connect_timeout,
+        None,
         impersonate,
         impersonate_os,
         None,
         None,
         verify,
         ca_cert_file,
+        None,
+        None,
         None,
         None,
     )?;
@@ -1019,6 +1157,8 @@ fn delete(
         auth,
         auth_bearer,
         timeout,
+        read_timeout,
+        follow_redirects,
         stream,
     )
 }
@@ -1037,14 +1177,16 @@ fn delete(
 /// * `files` - A map of file fields to file paths to be sent as multipart/form-data. Default is None.
 /// * `auth` - A tuple containing the username and an optional password for basic authentication. Default is None.
 /// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
-/// * `timeout` - The timeout for the request in seconds. Default is 30.
+/// * `timeout` - The total timeout for the request in seconds. Default is None.
+/// * `connect_timeout` - The timeout for establishing a connection in seconds. Default is None.
+/// * `read_timeout` - The timeout for reading the response body in seconds. Default is None.
 /// * `impersonate` - An optional entity to impersonate. Default is None.
 /// * `impersonate_os` - An optional OS to impersonate. Default is None.
 /// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is true.
 /// * `ca_cert_file` - Path to CA certificate store. Default is None.
-/// * `stream` - If True, returns a StreamResponse for streaming the response body. Default is False.
+/// * `stream` - If True, returns a Response for streaming the response body. Default is False.
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, stream=false))]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
 fn post(
     py: Python,
     url: &str,
@@ -1058,10 +1200,13 @@ fn post(
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
+    connect_timeout: Option<f64>,
+    read_timeout: Option<f64>,
     impersonate: Option<String>,
     impersonate_os: Option<String>,
     verify: Option<bool>,
     ca_cert_file: Option<String>,
+    follow_redirects: Option<bool>,
     stream: bool,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
@@ -1073,12 +1218,16 @@ fn post(
         None,
         None,
         timeout,
+        connect_timeout,
+        None,
         impersonate,
         impersonate_os,
         None,
         None,
         verify,
         ca_cert_file,
+        None,
+        None,
         None,
         None,
     )?;
@@ -1095,6 +1244,8 @@ fn post(
         auth,
         auth_bearer,
         timeout,
+        read_timeout,
+        follow_redirects,
         stream,
     )
 }
@@ -1113,14 +1264,16 @@ fn post(
 /// * `files` - A map of file fields to file paths to be sent as multipart/form-data. Default is None.
 /// * `auth` - A tuple containing the username and an optional password for basic authentication. Default is None.
 /// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
-/// * `timeout` - The timeout for the request in seconds. Default is 30.
+/// * `timeout` - The total timeout for the request in seconds. Default is None.
+/// * `connect_timeout` - The timeout for establishing a connection in seconds. Default is None.
+/// * `read_timeout` - The timeout for reading the response body in seconds. Default is None.
 /// * `impersonate` - An optional entity to impersonate. Default is None.
 /// * `impersonate_os` - An optional OS to impersonate. Default is None.
 /// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is true.
 /// * `ca_cert_file` - Path to CA certificate store. Default is None.
-/// * `stream` - If True, returns a StreamResponse for streaming the response body. Default is False.
+/// * `stream` - If True, returns a Response for streaming the response body. Default is False.
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, stream=false))]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
 fn put(
     py: Python,
     url: &str,
@@ -1134,10 +1287,13 @@ fn put(
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
+    connect_timeout: Option<f64>,
+    read_timeout: Option<f64>,
     impersonate: Option<String>,
     impersonate_os: Option<String>,
     verify: Option<bool>,
     ca_cert_file: Option<String>,
+    follow_redirects: Option<bool>,
     stream: bool,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
@@ -1149,12 +1305,16 @@ fn put(
         None,
         None,
         timeout,
+        connect_timeout,
+        None,
         impersonate,
         impersonate_os,
         None,
         None,
         verify,
         ca_cert_file,
+        None,
+        None,
         None,
         None,
     )?;
@@ -1171,6 +1331,8 @@ fn put(
         auth,
         auth_bearer,
         timeout,
+        read_timeout,
+        follow_redirects,
         stream,
     )
 }
@@ -1189,14 +1351,16 @@ fn put(
 /// * `files` - A map of file fields to file paths to be sent as multipart/form-data. Default is None.
 /// * `auth` - A tuple containing the username and an optional password for basic authentication. Default is None.
 /// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
-/// * `timeout` - The timeout for the request in seconds. Default is 30.
+/// * `timeout` - The total timeout for the request in seconds. Default is None.
+/// * `connect_timeout` - The timeout for establishing a connection in seconds. Default is None.
+/// * `read_timeout` - The timeout for reading the response body in seconds. Default is None.
 /// * `impersonate` - An optional entity to impersonate. Default is None.
 /// * `impersonate_os` - An optional OS to impersonate. Default is None.
 /// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is true.
 /// * `ca_cert_file` - Path to CA certificate store. Default is None.
-/// * `stream` - If True, returns a StreamResponse for streaming the response body. Default is False.
+/// * `stream` - If True, returns a Response for streaming the response body. Default is False.
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, stream=false))]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
 fn patch(
     py: Python,
     url: &str,
@@ -1210,10 +1374,13 @@ fn patch(
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
+    connect_timeout: Option<f64>,
+    read_timeout: Option<f64>,
     impersonate: Option<String>,
     impersonate_os: Option<String>,
     verify: Option<bool>,
     ca_cert_file: Option<String>,
+    follow_redirects: Option<bool>,
     stream: bool,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
@@ -1225,12 +1392,16 @@ fn patch(
         None,
         None,
         timeout,
+        connect_timeout,
+        None,
         impersonate,
         impersonate_os,
         None,
         None,
         verify,
         ca_cert_file,
+        None,
+        None,
         None,
         None,
     )?;
@@ -1247,6 +1418,8 @@ fn patch(
         auth,
         auth_bearer,
         timeout,
+        read_timeout,
+        follow_redirects,
         stream,
     )
 }
@@ -1266,14 +1439,16 @@ fn patch(
 /// * `files` - A map of file fields to file paths to be sent as multipart/form-data. Default is None.
 /// * `auth` - A tuple containing the username and an optional password for basic authentication. Default is None.
 /// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
-/// * `timeout` - The timeout for the request in seconds. Default is 30.
+/// * `timeout` - The total timeout for the request in seconds. Default is None.
+/// * `connect_timeout` - The timeout for establishing a connection in seconds. Default is None.
+/// * `read_timeout` - The timeout for reading the response body in seconds. Default is None.
 /// * `impersonate` - An optional entity to impersonate. Default is None.
 /// * `impersonate_os` - An optional OS to impersonate. Default is None.
 /// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is true.
 /// * `ca_cert_file` - Path to CA certificate store. Default is None.
-/// * `stream` - If True, returns a StreamResponse for streaming the response body. Default is False.
+/// * `stream` - If True, returns a Response for streaming the response body. Default is False.
 #[pyfunction]
-#[pyo3(signature = (method, url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, stream=false))]
+#[pyo3(signature = (method, url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
 fn request(
     py: Python,
     method: &str,
@@ -1288,10 +1463,13 @@ fn request(
     auth: Option<(String, Option<String>)>,
     auth_bearer: Option<String>,
     timeout: Option<f64>,
+    connect_timeout: Option<f64>,
+    read_timeout: Option<f64>,
     impersonate: Option<String>,
     impersonate_os: Option<String>,
     verify: Option<bool>,
     ca_cert_file: Option<String>,
+    follow_redirects: Option<bool>,
     stream: bool,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
@@ -1303,12 +1481,16 @@ fn request(
         None,
         None,
         timeout,
+        connect_timeout,
+        None,
         impersonate,
         impersonate_os,
         None,
         None,
         verify,
         ca_cert_file,
+        None,
+        None,
         None,
         None,
     )?;
@@ -1326,6 +1508,8 @@ fn request(
         auth,
         auth_bearer,
         timeout,
+        read_timeout,
+        follow_redirects,
         stream,
     )
 }
@@ -1361,7 +1545,6 @@ fn primp(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Response classes
     m.add_class::<Response>()?;
-    m.add_class::<StreamResponse>()?;
     m.add_class::<BytesIterator>()?;
     m.add_class::<TextIterator>()?;
     m.add_class::<LinesIterator>()?;
@@ -1370,7 +1553,6 @@ fn primp(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Client>()?;
     m.add_class::<r#async::AsyncClient>()?;
     m.add_class::<r#async::AsyncResponse>()?;
-    m.add_class::<r#async::AsyncStreamResponse>()?;
     m.add_class::<r#async::AsyncBytesIterator>()?;
     m.add_class::<r#async::AsyncTextIterator>()?;
     m.add_class::<r#async::AsyncLinesIterator>()?;

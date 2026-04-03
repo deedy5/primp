@@ -33,10 +33,17 @@ pub struct AsyncClient {
     proxy: Option<String>,
     #[pyo3(get, set)]
     timeout: Option<f64>,
+    #[pyo3(get, set)]
+    connect_timeout: Option<f64>,
+    #[pyo3(get, set)]
+    read_timeout: Option<f64>,
     #[pyo3(get)]
     impersonate: Option<String>,
     #[pyo3(get)]
     impersonate_os: Option<String>,
+    #[pyo3(get, set)]
+    base_url: Option<String>,
+    cookies: Option<IndexMapSSR>,
 }
 
 #[pymethods]
@@ -44,8 +51,10 @@ impl AsyncClient {
     /// Initializes an async HTTP client that can impersonate web browsers.
     #[new]
     #[pyo3(signature = (auth=None, auth_bearer=None, params=None, headers=None, cookie_store=true,
-        referer=true, proxy=None, timeout=None, impersonate=None, impersonate_os=None, follow_redirects=true,
-        max_redirects=20, verify=true, ca_cert_file=None, https_only=false, http2_only=false))]
+        referer=true, proxy=None, timeout=None, connect_timeout=None, read_timeout=None,
+        impersonate=None, impersonate_os=None, follow_redirects=true,
+        max_redirects=20, verify=true, ca_cert_file=None, https_only=false, http2_only=false,
+        base_url=None, cookies=None))]
     fn new(
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
@@ -55,6 +64,8 @@ impl AsyncClient {
         referer: Option<bool>,
         proxy: Option<String>,
         timeout: Option<f64>,
+        connect_timeout: Option<f64>,
+        read_timeout: Option<f64>,
         impersonate: Option<String>,
         impersonate_os: Option<String>,
         follow_redirects: Option<bool>,
@@ -63,6 +74,8 @@ impl AsyncClient {
         ca_cert_file: Option<String>,
         https_only: Option<bool>,
         http2_only: Option<bool>,
+        base_url: Option<String>,
+        cookies: Option<IndexMapSSR>,
     ) -> PrimpResult<Self> {
         let (client_builder, resolved_proxy) = configure_client_builder(
             PrimpClient::builder(),
@@ -71,6 +84,8 @@ impl AsyncClient {
             referer,
             proxy,
             timeout,
+            connect_timeout,
+            read_timeout,
             impersonate.as_deref(),
             impersonate_os.as_deref(),
             follow_redirects,
@@ -81,17 +96,21 @@ impl AsyncClient {
             http2_only,
         )?;
 
-        let client = client_builder.build()?;
+        let client = Arc::new(RwLock::new(client_builder.build()?));
 
         Ok(AsyncClient {
-            client: Arc::new(RwLock::new(client)),
+            client,
             auth,
             auth_bearer,
             params,
             proxy: resolved_proxy,
             timeout,
+            connect_timeout,
+            read_timeout,
             impersonate,
             impersonate_os,
+            base_url,
+            cookies,
         })
     }
 
@@ -168,7 +187,8 @@ impl AsyncClient {
     /// Constructs an async HTTP request with the given method, URL, and optionally sets a timeout, headers, and query parameters.
     /// Sends the request and returns a `Response` object containing the server's response.
     #[pyo3(signature = (method, url, params=None, headers=None, cookies=None, content=None,
-        data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, stream=false))]
+        data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None,
+        read_timeout=None, follow_redirects=None, stream=false))]
     fn request<'py>(
         &self,
         py: Python<'py>,
@@ -184,11 +204,29 @@ impl AsyncClient {
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
+        read_timeout: Option<f64>,
+        follow_redirects: Option<bool>,
         stream: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
         use pyo3_async_runtimes::tokio::future_into_py;
 
         let method = Method::from_bytes(method.as_bytes()).map_err(Into::<PrimpErrorEnum>::into)?;
+
+        let resolved_timeout: Option<f64> = timeout.or(self.timeout);
+
+        // Resolve URL with base_url
+        let resolved_url = if let Some(ref base_url) = self.base_url {
+            if url.starts_with("http://") || url.starts_with("https://") {
+                url.to_string()
+            } else {
+                let base = base_url.trim_end_matches('/');
+                let path = url.trim_start_matches('/');
+                format!("{}/{}", base, path)
+            }
+        } else {
+            url.to_string()
+        };
+
         let params = params.or_else(|| self.params.clone());
         let data_value: Option<Value> = data
             .map(depythonize)
@@ -200,15 +238,33 @@ impl AsyncClient {
             .map_err(Into::<PrimpErrorEnum>::into)?;
         let auth = auth.or(self.auth.clone());
         let auth_bearer = auth_bearer.or(self.auth_bearer.clone());
-        let timeout: Option<f64> = timeout.or(self.timeout);
-        let url_owned = url.to_string();
 
-        // Cookies
-        if let Some(cookies) = cookies {
-            let url = Url::parse(&url_owned).map_err(Into::<PrimpErrorEnum>::into)?;
+        // Apply client-level cookies
+        if let Some(ref client_cookies) = self.cookies {
+            if !client_cookies.is_empty() {
+                let url_parsed = Url::parse(&resolved_url).map_err(Into::<PrimpErrorEnum>::into)?;
+                let cookie_values = cookies_to_header_values(client_cookies);
+                let client_guard = self.client.read().expect("client lock was poisoned");
+                client_guard.set_cookies(&url_parsed, cookie_values);
+            }
+        }
+
+        // Request-level cookies
+        if let Some(cookies) = cookies.filter(|c| !c.is_empty()) {
+            let url_parsed = Url::parse(&resolved_url).map_err(Into::<PrimpErrorEnum>::into)?;
             let cookie_values = cookies_to_header_values(&cookies);
-            let client = self.client.read().expect("client lock was poisoned");
-            client.set_cookies(&url, cookie_values);
+            let client_guard = self.client.read().expect("client lock was poisoned");
+            client_guard.set_cookies(&url_parsed, cookie_values);
+        }
+
+        // Handle follow_redirects: set policy before cloning client
+        if let Some(fr) = follow_redirects {
+            let mut client_guard = self.client.write().expect("client lock was poisoned");
+            if fr {
+                client_guard.set_redirect_policy(::primp::redirect::Policy::limited(20));
+            } else {
+                client_guard.set_redirect_policy(::primp::redirect::Policy::none());
+            }
         }
 
         // Clone the client before entering the async block to avoid holding RwLockGuard across await
@@ -219,7 +275,7 @@ impl AsyncClient {
 
         let future = async move {
             // Create request builder
-            let mut request_builder = client.request(method, &url_owned);
+            let mut request_builder = client.request(method, &resolved_url);
 
             // Params
             if let Some(p) = &params {
@@ -266,8 +322,13 @@ impl AsyncClient {
             }
 
             // Timeout
-            if let Some(seconds) = timeout {
+            if let Some(seconds) = resolved_timeout {
                 request_builder = request_builder.timeout(Duration::from_secs_f64(seconds));
+            }
+
+            // Per-request read timeout
+            if let Some(seconds) = read_timeout {
+                request_builder = request_builder.read_timeout(Duration::from_secs_f64(seconds));
             }
 
             // Send the request and await the response
@@ -282,17 +343,22 @@ impl AsyncClient {
             Ok::<(PrimpResponse, String, u16), PrimpErrorEnum>((resp, url, status_code))
         };
 
+        // Restore redirect policy if it was changed
+        if follow_redirects.is_some() {
+            let mut client_guard = self.client.write().expect("client lock was poisoned");
+            client_guard.set_redirect_policy(::primp::redirect::Policy::limited(20));
+        }
+
         // Convert Rust future to Python awaitable
         if stream {
             let py_future = async move {
                 match future.await {
                     Ok((resp, url, status_code)) => {
-                        // Extract headers, cookies, encoding for StreamResponse
                         let headers: IndexMapSSR = resp.headers().to_indexmap();
                         let cookies: IndexMapSSR = extract_cookies_to_indexmap(resp.headers());
                         let encoding = extract_encoding(resp.headers()).name().to_string();
 
-                        Ok(crate::r#async::response::AsyncStreamResponse::new(
+                        Ok(crate::r#async::response::AsyncResponse::new_streaming(
                             resp,
                             url,
                             status_code,
@@ -318,7 +384,7 @@ impl AsyncClient {
         }
     }
 
-    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, stream=false))]
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, read_timeout=None, follow_redirects=None, stream=false))]
     fn get<'py>(
         &self,
         py: Python<'py>,
@@ -333,6 +399,8 @@ impl AsyncClient {
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
+        read_timeout: Option<f64>,
+        follow_redirects: Option<bool>,
         stream: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
         self.request(
@@ -349,11 +417,13 @@ impl AsyncClient {
             auth,
             auth_bearer,
             timeout,
+            read_timeout,
+            follow_redirects,
             stream,
         )
     }
 
-    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, stream=false))]
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, read_timeout=None, follow_redirects=None, stream=false))]
     fn head<'py>(
         &self,
         py: Python<'py>,
@@ -368,6 +438,8 @@ impl AsyncClient {
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
+        read_timeout: Option<f64>,
+        follow_redirects: Option<bool>,
         stream: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
         self.request(
@@ -384,11 +456,13 @@ impl AsyncClient {
             auth,
             auth_bearer,
             timeout,
+            read_timeout,
+            follow_redirects,
             stream,
         )
     }
 
-    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, stream=false))]
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, read_timeout=None, follow_redirects=None, stream=false))]
     fn options<'py>(
         &self,
         py: Python<'py>,
@@ -403,6 +477,8 @@ impl AsyncClient {
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
+        read_timeout: Option<f64>,
+        follow_redirects: Option<bool>,
         stream: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
         self.request(
@@ -419,11 +495,13 @@ impl AsyncClient {
             auth,
             auth_bearer,
             timeout,
+            read_timeout,
+            follow_redirects,
             stream,
         )
     }
 
-    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, stream=false))]
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, read_timeout=None, follow_redirects=None, stream=false))]
     fn delete<'py>(
         &self,
         py: Python<'py>,
@@ -438,6 +516,8 @@ impl AsyncClient {
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
+        read_timeout: Option<f64>,
+        follow_redirects: Option<bool>,
         stream: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
         self.request(
@@ -454,11 +534,13 @@ impl AsyncClient {
             auth,
             auth_bearer,
             timeout,
+            read_timeout,
+            follow_redirects,
             stream,
         )
     }
 
-    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, stream=false))]
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, read_timeout=None, follow_redirects=None, stream=false))]
     fn post<'py>(
         &self,
         py: Python<'py>,
@@ -473,6 +555,8 @@ impl AsyncClient {
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
+        read_timeout: Option<f64>,
+        follow_redirects: Option<bool>,
         stream: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
         self.request(
@@ -489,11 +573,13 @@ impl AsyncClient {
             auth,
             auth_bearer,
             timeout,
+            read_timeout,
+            follow_redirects,
             stream,
         )
     }
 
-    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, stream=false))]
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, read_timeout=None, follow_redirects=None, stream=false))]
     fn put<'py>(
         &self,
         py: Python<'py>,
@@ -508,6 +594,8 @@ impl AsyncClient {
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
+        read_timeout: Option<f64>,
+        follow_redirects: Option<bool>,
         stream: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
         self.request(
@@ -524,11 +612,13 @@ impl AsyncClient {
             auth,
             auth_bearer,
             timeout,
+            read_timeout,
+            follow_redirects,
             stream,
         )
     }
 
-    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, stream=false))]
+    #[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, read_timeout=None, follow_redirects=None, stream=false))]
     fn patch<'py>(
         &self,
         py: Python<'py>,
@@ -543,6 +633,8 @@ impl AsyncClient {
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         timeout: Option<f64>,
+        read_timeout: Option<f64>,
+        follow_redirects: Option<bool>,
         stream: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
         self.request(
@@ -559,6 +651,8 @@ impl AsyncClient {
             auth,
             auth_bearer,
             timeout,
+            read_timeout,
+            follow_redirects,
             stream,
         )
     }

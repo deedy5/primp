@@ -66,6 +66,8 @@ pub fn configure_client_builder(
     referer: Option<bool>,
     proxy: Option<String>,
     timeout: Option<f64>,
+    connect_timeout: Option<f64>,
+    read_timeout: Option<f64>,
     impersonate: Option<&str>,
     impersonate_os: Option<&str>,
     follow_redirects: Option<bool>,
@@ -115,6 +117,16 @@ pub fn configure_client_builder(
     // Timeout
     if let Some(seconds) = timeout {
         builder = builder.timeout(Duration::from_secs_f64(seconds));
+    }
+
+    // Connect timeout
+    if let Some(seconds) = connect_timeout {
+        builder = builder.connect_timeout(Duration::from_secs_f64(seconds));
+    }
+
+    // Read timeout
+    if let Some(seconds) = read_timeout {
+        builder = builder.read_timeout(Duration::from_secs_f64(seconds));
     }
 
     // Redirects
