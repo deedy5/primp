@@ -518,6 +518,14 @@ impl Client {
     pub fn set_proxies(&mut self, proxies: Vec<reqwest::Proxy>) {
         self.inner.set_proxies(proxies)
     }
+
+    /// Set the redirect policy for the client.
+    ///
+    /// This allows changing redirect behavior at runtime without rebuilding the client.
+    /// Use `Policy::none()` to disable redirects, or `Policy::limited(n)` to set a limit.
+    pub fn set_redirect_policy(&mut self, policy: reqwest::redirect::Policy) {
+        self.inner.set_redirect_policy(policy);
+    }
 }
 
 impl Default for Client {
