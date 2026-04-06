@@ -1,6 +1,6 @@
 [package]
 name = "primp-rustls"
-version = "0.23.37"
+version = "0.23.38"
 edition = "2021"
 rust-version = "1.84"
 license = "Apache-2.0 OR ISC OR MIT"
