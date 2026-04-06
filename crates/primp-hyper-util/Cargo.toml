@@ -1,5 +1,5 @@
 [package]
-name = "hyper-util"
+name = "primp-hyper-util"
 version = "0.1.20"
 license = "MIT"
 authors = ["deedy5", "Sean McArthur <sean@seanmonstar.com>"]
@@ -163,7 +163,9 @@ version = "1.0"
 version = "1.0.0"
 
 [dependencies.hyper]
+version = "1.8"
 path = "../primp-hyper"
+package = "primp-hyper"
 
 [dependencies.ipnet]
 version = "2.9"
@@ -216,7 +218,9 @@ default-features = false
 version = "0.1.0"
 
 [dev-dependencies.hyper]
+version = "1.8"
 path = "../primp-hyper"
+package = "primp-hyper"
 features = ["full"]
 
 [dev-dependencies.pretty_env_logger]

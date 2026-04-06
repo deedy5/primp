@@ -5,6 +5,8 @@ members = [
     "crates/primp-reqwest",
     "crates/primp-hyper",
     "crates/primp-hyper-util",
+    "crates/primp-hyper-rustls",
+    "crates/primp-tokio-rustls",
     "crates/primp-rustls/rustls",
     "crates/primp-h2",
     "crates/primp-python",
@@ -17,14 +19,6 @@ rust-version = "1.84"
 license = "MIT"
 repository = "https://github.com/deedy5/primp"
 authors = ["deedy5"]
-
-# Patch crates-io dependencies to use local forks
-[patch.crates-io]
-hyper = { path = "crates/primp-hyper" }
-hyper-util = { path = "crates/primp-hyper-util" }
-h2 = { path = "crates/primp-h2" }
-reqwest = { path = "crates/primp-reqwest" }
-rustls = { path = "crates/primp-rustls/rustls" }
 
 [profile.release]
 codegen-units = 1

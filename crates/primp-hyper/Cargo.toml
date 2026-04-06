@@ -1,5 +1,5 @@
 [package]
-name = "hyper"
+name = "primp-hyper"
 version = "1.8.1"
 description = "Fork of the original hyper HTTP library."
 readme = "README.md"
@@ -117,7 +117,9 @@ optional = true
 default-features = false
 
 [dependencies.h2]
+version = "0.4"
 path = "../primp-h2"
+package = "primp-h2"
 default-features = false
 optional = true
 

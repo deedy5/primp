@@ -17,14 +17,14 @@ pyo3-async-runtimes = { version = "0.28", features = ["tokio-runtime"] }
 anyhow = "1.0.98"
 tracing = { version = "0.1.41", features = ["log-always"] }
 pyo3-log = "0.13.2"
-primp = { path = "../primp", features = [
+primp = { version = "1.2", path = "../primp", features = [
     "impersonate",
     "socks",
 ] }
 bytes = "1"
 encoding_rs = { version = "0.8.35" }
 foldhash = "0.2.0"
-h2 = { version = "0.4", default-features = false, features = ["unstable"] }
+h2 = { version = "0.4", path = "../primp-h2", package = "primp-h2", default-features = false, features = ["unstable"] }
 indexmap = { version = "2.13.0", features = ["serde"] }
 tokio = { version = "1.49.0", features = ["full"] }
 tokio-util = { version = "0.7.18", features = ["codec"] }  # for multipart

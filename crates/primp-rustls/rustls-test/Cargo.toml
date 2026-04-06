@@ -6,4 +6,4 @@ rust-version = "1.84"
 publish = false
 
 [dependencies]
-rustls = { path = "../rustls", default-features = false, features = ["std", "tls12"] }
+rustls = { path = "../rustls", package = "primp-rustls", default-features = false, features = ["std", "tls12"] }
