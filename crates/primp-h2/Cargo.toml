@@ -1,5 +1,5 @@
 [package]
-name = "h2"
+name = "primp-h2"
 version = "0.4.13"
 license = "MIT"
 authors = [
@@ -10,6 +10,11 @@ authors = [
 description = "A fork of the HTTP/2 client and server library from hyperium"
 edition = "2021"
 rust-version = "1.84"
+
+# Aliases
+[lib]
+name = "h2"
+path = "src/lib.rs"
 
 [features]
 unstable = []

@@ -8,7 +8,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-primp = { git = "https://github.com/deedy5/primp", branch = "main" }
+primp = "1.2.2"
 ```
 
 ## Quick Start
@@ -21,10 +21,8 @@ async fn main() -> Result<(), primp::Error> {
     let client = Client::builder()
         .impersonate(Impersonate::ChromeV146)
         .build()?;
-
     let resp = client.get("https://tls.peet.ws/api/all").send().await?;
     println!("Body: {}", resp.text().await?);
-
     Ok(())
 }
 ```

@@ -1,5 +1,5 @@
 [package]
-name = "rustls"
+name = "primp-rustls"
 version = "0.23.37"
 edition = "2021"
 rust-version = "1.84"
@@ -11,6 +11,11 @@ autobenches = false
 autotests = false
 exclude = ["src/testdata", "tests/**"]
 build = "build.rs"
+
+# Aliases
+[lib]
+name = "rustls"
+path = "src/lib.rs"
 
 [features]
 default = ["aws_lc_rs", "logging", "std", "tls12", "impersonate"]

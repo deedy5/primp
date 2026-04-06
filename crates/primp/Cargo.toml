@@ -4,6 +4,7 @@ version = "1.2.2"
 description = "HTTP client with browser impersonation capabilities"
 keywords = ["http", "request", "client", "impersonate"]
 categories = ["web-programming::http-client"]
+repository = "https://github.com/deedy5/primp"
 authors = ["deedy5"]
 readme = "README.md"
 license = "MIT"
@@ -64,14 +65,14 @@ http3 = ["reqwest/http3"]
 rustls-no-provider = ["reqwest/rustls-no-provider"]
 
 [dependencies]
-reqwest = { version = "0.13", default-features = false }
+reqwest = { version = "0.13", path = "../primp-reqwest", package = "primp-reqwest", default-features = false }
 http = "1.1"
 url = "2.4"
 rand = { version = "0.10", optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-h2 = { version = "0.4", features = ["unstable"] }
-rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "impersonate", "zlib"] }
+h2 = { version = "0.4", path = "../primp-h2", package = "primp-h2", features = ["unstable"] }
+rustls = { version = "0.23", path = "../primp-rustls/rustls", package = "primp-rustls", default-features = false, features = ["std", "tls12", "impersonate", "zlib"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 tokio = { version = "1.0", default-features = false, features = ["macros", "rt-multi-thread"] }
