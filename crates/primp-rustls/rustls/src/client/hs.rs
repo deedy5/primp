@@ -13,6 +13,7 @@ use super::{ResolvesClientCert, Tls12Resumption};
 use crate::bs_debug;
 use crate::check::inappropriate_handshake_message;
 use crate::client::client_conn::ClientConnectionData;
+#[cfg(feature = "impersonate")]
 use crate::client::client_emulator::BrowserType;
 use crate::client::common::ClientHelloDetails;
 use crate::client::ech::EchState;
@@ -166,9 +167,14 @@ impl ClientHelloInput {
         let extension_order_seed =
             crate::rand::random_u16(config.provider.secure_random).unwrap_or(0);
 
-        #[cfg(feature = "logging")]
+        #[cfg(all(feature = "logging", feature = "impersonate"))]
         {
             debug!("Browser emulation: {:?}", config.browser_emulation);
+            debug!("Using extension_order_seed: {}", extension_order_seed);
+        }
+
+        #[cfg(all(feature = "logging", not(feature = "impersonate")))]
+        {
             debug!("Using extension_order_seed: {}", extension_order_seed);
         }
 
@@ -273,6 +279,7 @@ fn emit_client_hello_for_retry(
     assert!(supported_versions.any(|_| true));
 
     // Compute named groups, adding X25519MLKEM768 for post-quantum compatibility
+    #[cfg(feature = "impersonate")]
     let mut named_groups_vec: Vec<NamedGroup> = config
         .browser_emulation
         .as_ref()
@@ -287,6 +294,15 @@ fn emit_client_hello_for_retry(
                 .map(|skxg| skxg.name())
                 .collect()
         });
+
+    #[cfg(not(feature = "impersonate"))]
+    let mut named_groups_vec: Vec<NamedGroup> = config
+        .provider
+        .kx_groups
+        .iter()
+        .filter(|skxg| supported_versions.any(|v| skxg.usable_for_version(v)))
+        .map(|skxg| skxg.name())
+        .collect();
 
     // Generate all 4 distinct GREASE values (matching real Chrome behavior)
     #[cfg(feature = "impersonate")]
@@ -310,6 +326,7 @@ fn emit_client_hello_for_retry(
     let mut exts = Box::new(ClientExtensions {
         named_groups: Some(named_groups_vec),
         supported_versions: Some(supported_versions),
+        #[cfg(feature = "impersonate")]
         signature_schemes: Some(
             config
                 .browser_emulation
@@ -318,6 +335,8 @@ fn emit_client_hello_for_retry(
                 .map(|schemes| schemes.to_vec())
                 .unwrap_or_else(|| config.verifier.supported_verify_schemes()),
         ),
+        #[cfg(not(feature = "impersonate"))]
+        signature_schemes: Some(config.verifier.supported_verify_schemes()),
         extended_master_secret_request: Some(()),
         certificate_status_request: Some(CertificateStatusRequest::build_ocsp()),
         protocols: extra_exts.protocols.clone(),
@@ -325,6 +344,7 @@ fn emit_client_hello_for_retry(
     });
 
     // Add browser-specific extensions for browser emulation
+    #[cfg(feature = "impersonate")]
     if let Some(be) = config.browser_emulation.as_ref() {
         match be.browser_type {
             BrowserType::Chrome | BrowserType::Edge | BrowserType::Opera => {
@@ -623,6 +643,7 @@ fn emit_client_hello_for_retry(
     // but they also need to keep the same order as the previous ClientHello
     exts.order_seed = input.hello.extension_order_seed;
 
+    #[cfg(feature = "impersonate")]
     let mut cipher_suites: Vec<_> = config
         .browser_emulation
         .as_ref()
@@ -641,6 +662,17 @@ fn emit_client_hello_for_retry(
                 .collect()
         });
 
+    #[cfg(not(feature = "impersonate"))]
+    let mut cipher_suites: Vec<_> = config
+        .provider
+        .cipher_suites
+        .iter()
+        .filter_map(|cs| match cs.usable_for_protocol(cx.common.protocol) {
+            true => Some(cs.suite()),
+            false => None,
+        })
+        .collect();
+
     // Replace hardcoded GREASE cipher suite (0x0a0a) with dynamic value from random
     #[cfg(feature = "impersonate")]
     if let Some((grease_cs, _, _, _)) = grease_vals {
@@ -653,9 +685,17 @@ fn emit_client_hello_for_retry(
     }
 
     // Debug: Print cipher suites being used
-    #[cfg(feature = "logging")]
+    #[cfg(all(feature = "logging", feature = "impersonate"))]
     {
         debug!("Browser emulation: {:?}", config.browser_emulation);
+        debug!("Cipher suites count: {}", cipher_suites.len());
+        for (i, cs) in cipher_suites.iter().enumerate() {
+            debug!("  [{}] {:?}", i, cs);
+        }
+    }
+
+    #[cfg(all(feature = "logging", not(feature = "impersonate")))]
+    {
         debug!("Cipher suites count: {}", cipher_suites.len());
         for (i, cs) in cipher_suites.iter().enumerate() {
             debug!("  [{}] {:?}", i, cs);
@@ -665,6 +705,13 @@ fn emit_client_hello_for_retry(
     #[cfg(feature = "logging")]
     debug!("Final cipher suites for ClientHello: {:?}", cipher_suites);
 
+    #[cfg(not(feature = "impersonate"))]
+    if supported_versions.tls12 {
+        // We don't do renegotiation at all, in fact.
+        cipher_suites.push(CipherSuite::TLS_EMPTY_RENEGOTIATION_INFO_SCSV);
+    }
+
+    #[cfg(feature = "impersonate")]
     if supported_versions.tls12 && config.browser_emulation.is_none() {
         // We don't do renegotiation at all, in fact.
         cipher_suites.push(CipherSuite::TLS_EMPTY_RENEGOTIATION_INFO_SCSV);
@@ -672,6 +719,7 @@ fn emit_client_hello_for_retry(
 
     // Set the final extension order for Chrome-based browsers
     // This must be done AFTER all extensions are added
+    #[cfg(feature = "impersonate")]
     if let Some(be) = config.browser_emulation.as_ref() {
         if matches!(be.browser_type, BrowserType::Chrome | BrowserType::Edge) {
             // GREASE, ECH, supported_versions, SCT, ALPS(0x44cd), supported_groups,
@@ -962,12 +1010,16 @@ fn prepare_resumption<'a>(
     let resuming = match resuming {
         Some(resuming) if !resuming.ticket().is_empty() => resuming,
         _ => {
+            #[cfg(feature = "impersonate")]
             let is_safari = config
                 .browser_emulation
                 .as_ref()
                 .map(|be| &be.browser_type)
                 .filter(|bt| matches!(bt, BrowserType::Safari))
                 .is_some();
+
+            #[cfg(not(feature = "impersonate"))]
+            let is_safari = false;
 
             if !is_safari
                 && config.supports_version(ProtocolVersion::TLSv1_2)
