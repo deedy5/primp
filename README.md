@@ -1,3 +1,9 @@
+[![GitHub stars](https://img.shields.io/github/stars/deedy5/primp?style=social)](https://github.com/deedy5/primp/stargazers)
+[![Forks](https://img.shields.io/github/forks/deedy5/primp?style=social)](https://github.com/deedy5/primp/forks)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/Rust-1.70%2B-orange.svg?logo=rust)](https://rust-lang.org)
+[![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg?logo=python)](https://python.org)
+
 # 🪞 PRIMP 🦀🐍
 
 > HTTP client that can impersonate web browsers
