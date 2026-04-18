@@ -56,6 +56,7 @@ impl AsyncClient {
         max_redirects=20, verify=true, ca_cert_file=None, https_only=false, http2_only=false,
         base_url=None, cookies=None))]
     fn new(
+        py: Python<'_>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         params: Option<IndexMapSSR>,
@@ -77,40 +78,45 @@ impl AsyncClient {
         base_url: Option<String>,
         cookies: Option<IndexMapSSR>,
     ) -> PrimpResult<Self> {
-        let (client_builder, resolved_proxy) = configure_client_builder(
-            PrimpClient::builder(),
-            headers,
-            cookie_store,
-            referer,
-            proxy,
-            timeout,
-            connect_timeout,
-            read_timeout,
-            impersonate.as_deref(),
-            impersonate_os.as_deref(),
-            follow_redirects,
-            max_redirects,
-            verify,
-            ca_cert_file,
-            https_only,
-            http2_only,
-        )?;
+        // Release the GIL around the reqwest client build — identical
+        // reasoning to `Client::new`. See the comment there and
+        // vorner/pyo3-log#65 for the deadlock mechanism.
+        py.detach(|| {
+            let (client_builder, resolved_proxy) = configure_client_builder(
+                PrimpClient::builder(),
+                headers,
+                cookie_store,
+                referer,
+                proxy,
+                timeout,
+                connect_timeout,
+                read_timeout,
+                impersonate.as_deref(),
+                impersonate_os.as_deref(),
+                follow_redirects,
+                max_redirects,
+                verify,
+                ca_cert_file,
+                https_only,
+                http2_only,
+            )?;
 
-        let client = Arc::new(RwLock::new(client_builder.build()?));
+            let client = Arc::new(RwLock::new(client_builder.build()?));
 
-        Ok(AsyncClient {
-            client,
-            auth,
-            auth_bearer,
-            params,
-            proxy: resolved_proxy,
-            timeout,
-            connect_timeout,
-            read_timeout,
-            impersonate,
-            impersonate_os,
-            base_url,
-            cookies,
+            Ok(AsyncClient {
+                client,
+                auth,
+                auth_bearer,
+                params,
+                proxy: resolved_proxy,
+                timeout,
+                connect_timeout,
+                read_timeout,
+                impersonate,
+                impersonate_os,
+                base_url,
+                cookies,
+            })
         })
     }
 

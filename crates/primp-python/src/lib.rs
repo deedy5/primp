@@ -145,6 +145,7 @@ impl Client {
         max_redirects=20, verify=true, ca_cert_file=None, https_only=false, http2_only=false,
         base_url=None, cookies=None))]
     fn new(
+        py: Python<'_>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         params: Option<IndexMapSSR>,
@@ -166,40 +167,55 @@ impl Client {
         base_url: Option<String>,
         cookies: Option<IndexMapSSR>,
     ) -> PrimpResult<Self> {
-        let (client_builder, resolved_proxy) = configure_client_builder(
-            PrimpClient::builder(),
-            headers,
-            cookie_store,
-            referer,
-            proxy,
-            timeout,
-            connect_timeout,
-            read_timeout,
-            impersonate.as_deref(),
-            impersonate_os.as_deref(),
-            follow_redirects,
-            max_redirects,
-            verify,
-            ca_cert_file,
-            https_only,
-            http2_only,
-        )?;
+        // Release the GIL while building the reqwest client. The build path
+        // runs TLS / root-CA / impersonation initialization which emits
+        // `log::*!` / `tracing::*!` callsites inside primp-reqwest, hyper,
+        // and rustls. Those forward through pyo3-log and need to acquire
+        // the GIL to call `logging.getLogger`. If we held the GIL here,
+        // concurrent threads constructing a Client would deadlock against
+        // Python's `logging._lock` / GIL ordering — classic pyo3-log
+        // pattern documented in vorner/pyo3-log#65, observed downstream in
+        // deedy5/ddgs#452, HKUDS/nanobot#2804, microsoft/amplifier#219.
+        //
+        // Everything inside `allow_threads` is pure Rust; no PyObject is
+        // touched, so releasing the GIL is safe and enforced at compile
+        // time (the closure is `Send`).
+        py.detach(|| {
+            let (client_builder, resolved_proxy) = configure_client_builder(
+                PrimpClient::builder(),
+                headers,
+                cookie_store,
+                referer,
+                proxy,
+                timeout,
+                connect_timeout,
+                read_timeout,
+                impersonate.as_deref(),
+                impersonate_os.as_deref(),
+                follow_redirects,
+                max_redirects,
+                verify,
+                ca_cert_file,
+                https_only,
+                http2_only,
+            )?;
 
-        let client = Arc::new(RwLock::new(client_builder.build()?));
+            let client = Arc::new(RwLock::new(client_builder.build()?));
 
-        Ok(Client {
-            client,
-            auth,
-            auth_bearer,
-            params,
-            proxy: resolved_proxy,
-            timeout,
-            connect_timeout,
-            read_timeout,
-            impersonate,
-            impersonate_os,
-            base_url,
-            cookies,
+            Ok(Client {
+                client,
+                auth,
+                auth_bearer,
+                params,
+                proxy: resolved_proxy,
+                timeout,
+                connect_timeout,
+                read_timeout,
+                impersonate,
+                impersonate_os,
+                base_url,
+                cookies,
+            })
         })
     }
 
@@ -862,6 +878,7 @@ fn get(
     stream: bool,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
+        py,
         None,
         None,
         None,
@@ -949,6 +966,7 @@ fn head(
     stream: bool,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
+        py,
         None,
         None,
         None,
@@ -1036,6 +1054,7 @@ fn options(
     stream: bool,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
+        py,
         None,
         None,
         None,
@@ -1123,6 +1142,7 @@ fn delete(
     stream: bool,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
+        py,
         None,
         None,
         None,
@@ -1210,6 +1230,7 @@ fn post(
     stream: bool,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
+        py,
         None,
         None,
         None,
@@ -1297,6 +1318,7 @@ fn put(
     stream: bool,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
+        py,
         None,
         None,
         None,
@@ -1384,6 +1406,7 @@ fn patch(
     stream: bool,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
+        py,
         None,
         None,
         None,
@@ -1473,6 +1496,7 @@ fn request(
     stream: bool,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
+        py,
         None,
         None,
         None,
@@ -1516,7 +1540,28 @@ fn request(
 
 #[pymodule]
 fn primp(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
-    pyo3_log::init();
+    // Install pyo3-log with per-target `(logger, level)` caching so
+    // tracing/log callsites inside primp (and its transitive deps reqwest /
+    // hyper / rustls) only call back into Python's logging module on the
+    // first emission per target. Subsequent emissions hit a Rust-side cache
+    // and never cross the GIL boundary.
+    //
+    // This complements — but does not replace — the `py.detach` fix
+    // applied to `Client::new` and `AsyncClient::new`. The `allow_threads`
+    // release is what actually prevents the first-call race from deadlocking
+    // against `logging._lock`; caching here is documented pyo3-log best
+    // practice and keeps steady-state hot paths GIL-free for logging.
+    match pyo3_log::Logger::new(_py, pyo3_log::Caching::LoggersAndLevels) {
+        Ok(logger) => {
+            let _ = logger.install();
+        }
+        Err(_) => {
+            // Fall back to the uncached default if LoggersAndLevels is
+            // unavailable for some reason; allow_threads still keeps us
+            // deadlock-free.
+            pyo3_log::init();
+        }
+    }
 
     // Re-export exception types from error module - new hierarchy
     use error::{
