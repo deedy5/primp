@@ -56,6 +56,7 @@ impl AsyncClient {
         max_redirects=20, verify=true, ca_cert_file=None, https_only=false, http2_only=false,
         base_url=None, cookies=None))]
     fn new(
+        py: Python<'_>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         params: Option<IndexMapSSR>,
@@ -77,26 +78,29 @@ impl AsyncClient {
         base_url: Option<String>,
         cookies: Option<IndexMapSSR>,
     ) -> PrimpResult<Self> {
-        let (client_builder, resolved_proxy) = configure_client_builder(
-            PrimpClient::builder(),
-            headers,
-            cookie_store,
-            referer,
-            proxy,
-            timeout,
-            connect_timeout,
-            read_timeout,
-            impersonate.as_deref(),
-            impersonate_os.as_deref(),
-            follow_redirects,
-            max_redirects,
-            verify,
-            ca_cert_file,
-            https_only,
-            http2_only,
-        )?;
+        let (resolved_proxy, client) = py.detach(|| -> PrimpResult<_> {
+            let (client_builder, resolved_proxy) = configure_client_builder(
+                PrimpClient::builder(),
+                headers,
+                cookie_store,
+                referer,
+                proxy,
+                timeout,
+                connect_timeout,
+                read_timeout,
+                impersonate.as_deref(),
+                impersonate_os.as_deref(),
+                follow_redirects,
+                max_redirects,
+                verify,
+                ca_cert_file,
+                https_only,
+                http2_only,
+            )?;
 
-        let client = Arc::new(RwLock::new(client_builder.build()?));
+            let client = Arc::new(RwLock::new(client_builder.build()?));
+            Ok((resolved_proxy, client))
+        })?;
 
         Ok(AsyncClient {
             client,

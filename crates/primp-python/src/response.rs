@@ -20,7 +20,6 @@ use crate::client_builder::IndexMapSSR;
 use crate::error::{body_collection_error, convert_reqwest_error, BodyError, PrimpErrorEnum};
 use crate::traits::HeadersTraits;
 use crate::utils::extract_encoding;
-use crate::RUNTIME;
 
 /// Collect body bytes from a response using a pre-allocated buffer.
 /// Uses `Vec::with_capacity(8 * 1024)` for efficient buffer allocation.
@@ -131,7 +130,8 @@ impl Response {
             }
         }
 
-        let bytes: Bytes = py.detach(|| RUNTIME.block_on(self.read_bytes()))?;
+        let runtime = crate::get_runtime(py);
+        let bytes: Bytes = py.detach(|| runtime.block_on(self.read_bytes()))?;
         let content = PyBytes::new(py, &bytes);
 
         if !self.streaming {
@@ -147,8 +147,9 @@ impl Response {
         }
 
         let resp = Arc::clone(&self.resp);
+        let runtime = crate::get_runtime(py);
         let encoding = py.detach(|| {
-            RUNTIME.block_on(async {
+            runtime.block_on(async {
                 let resp_guard = resp.lock().await;
                 match resp_guard.as_ref() {
                     Some(r) => Ok(extract_encoding(r.headers()).name().to_string()),
@@ -206,8 +207,9 @@ impl Response {
         }
 
         let resp = Arc::clone(&self.resp);
+        let runtime = crate::get_runtime(py);
         let new_headers = py.detach(|| {
-            RUNTIME.block_on(async {
+            runtime.block_on(async {
                 let resp_guard = resp.lock().await;
                 match resp_guard.as_ref() {
                     Some(r) => Ok(r.headers().to_indexmap()),
@@ -230,8 +232,9 @@ impl Response {
         }
 
         let resp = Arc::clone(&self.resp);
+        let runtime = crate::get_runtime(py);
         let cookie_map = py.detach(|| {
-            RUNTIME.block_on(async {
+            runtime.block_on(async {
                 let resp_guard = resp.lock().await;
                 match resp_guard.as_ref() {
                     Some(r) => Ok(crate::extract_cookies_to_indexmap(r.headers())),
@@ -330,7 +333,8 @@ impl Response {
     }
 
     fn next<'rs>(&mut self, py: Python<'rs>) -> PyResult<Option<Bound<'rs, PyBytes>>> {
-        let chunk = py.detach(|| RUNTIME.block_on(self.next_chunk()))?;
+        let runtime = crate::get_runtime(py);
+        let chunk = py.detach(|| runtime.block_on(self.next_chunk()))?;
         match chunk {
             Some(data) => Ok(Some(PyBytes::new(py, &data))),
             None => Ok(None),
@@ -339,8 +343,9 @@ impl Response {
 
     fn close(&mut self, py: Python<'_>) -> PyResult<()> {
         let resp = Arc::clone(&self.resp);
+        let runtime = crate::get_runtime(py);
         py.detach(|| {
-            RUNTIME.block_on(async {
+            runtime.block_on(async {
                 let mut resp_guard = resp.lock().await;
                 resp_guard.take();
             })
@@ -395,8 +400,9 @@ impl BytesIterator {
         }
 
         let resp = Arc::clone(&self.resp);
+        let runtime = crate::get_runtime(py);
         let chunk = py.detach(|| {
-            RUNTIME.block_on(async {
+            runtime.block_on(async {
                 let mut resp_guard = resp.lock().await;
                 match resp_guard.as_mut() {
                     Some(r) => match r.chunk().await {
@@ -475,8 +481,9 @@ impl TextIterator {
         }
 
         let resp = Arc::clone(&self.resp);
+        let runtime = crate::get_runtime(py);
         let chunk = py.detach(|| {
-            RUNTIME.block_on(async {
+            runtime.block_on(async {
                 let mut resp_guard = resp.lock().await;
                 match resp_guard.as_mut() {
                     Some(r) => match r.chunk().await {
@@ -565,8 +572,9 @@ impl LinesIterator {
             }
 
             let resp = Arc::clone(&self.resp);
+            let runtime = crate::get_runtime(py);
             let chunk = py.detach(|| {
-                RUNTIME.block_on(async {
+                runtime.block_on(async {
                     let mut resp_guard = resp.lock().await;
                     match resp_guard.as_mut() {
                         Some(r) => match r.chunk().await {
