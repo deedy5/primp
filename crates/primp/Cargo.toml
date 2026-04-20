@@ -1,6 +1,6 @@
 [package]
 name = "primp"
-version = "1.2.2"
+version = "1.2.3"
 description = "HTTP client with browser impersonation capabilities"
 keywords = ["http", "request", "client", "impersonate"]
 categories = ["web-programming::http-client"]
