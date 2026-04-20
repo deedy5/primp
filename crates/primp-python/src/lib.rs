@@ -1,11 +1,12 @@
 #![allow(clippy::too_many_arguments)]
-use std::sync::{Arc, LazyLock, RwLock};
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use ::primp::{
     multipart, Body, Client as PrimpClient, Method, Proxy, Response as PrimpResponse, Url,
 };
 use pyo3::prelude::*;
+use pyo3::sync::PyOnceLock;
 use pythonize::depythonize;
 use serde_json::Value;
 use tokio::{
@@ -36,12 +37,18 @@ mod utils;
 use utils::extract_encoding;
 
 // Tokio global one-thread runtime
-static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
-    runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("Failed to create Tokio runtime")
-});
+static RUNTIME: PyOnceLock<Runtime> = PyOnceLock::new();
+
+/// Get the global Tokio runtime, initializing it if necessary.
+#[inline(always)]
+pub(crate) fn get_runtime(py: Python<'_>) -> &Runtime {
+    RUNTIME.get_or_init(py, || {
+        runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to create Tokio runtime")
+    })
+}
 
 #[pyclass(subclass)]
 /// HTTP client that can impersonate web browsers.
@@ -145,6 +152,7 @@ impl Client {
         max_redirects=20, verify=true, ca_cert_file=None, https_only=false, http2_only=false,
         base_url=None, cookies=None))]
     fn new(
+        py: Python<'_>,
         auth: Option<(String, Option<String>)>,
         auth_bearer: Option<String>,
         params: Option<IndexMapSSR>,
@@ -166,26 +174,29 @@ impl Client {
         base_url: Option<String>,
         cookies: Option<IndexMapSSR>,
     ) -> PrimpResult<Self> {
-        let (client_builder, resolved_proxy) = configure_client_builder(
-            PrimpClient::builder(),
-            headers,
-            cookie_store,
-            referer,
-            proxy,
-            timeout,
-            connect_timeout,
-            read_timeout,
-            impersonate.as_deref(),
-            impersonate_os.as_deref(),
-            follow_redirects,
-            max_redirects,
-            verify,
-            ca_cert_file,
-            https_only,
-            http2_only,
-        )?;
+        let (resolved_proxy, client) = py.detach(|| -> PrimpResult<_> {
+            let (client_builder, resolved_proxy) = configure_client_builder(
+                PrimpClient::builder(),
+                headers,
+                cookie_store,
+                referer,
+                proxy,
+                timeout,
+                connect_timeout,
+                read_timeout,
+                impersonate.as_deref(),
+                impersonate_os.as_deref(),
+                follow_redirects,
+                max_redirects,
+                verify,
+                ca_cert_file,
+                https_only,
+                http2_only,
+            )?;
 
-        let client = Arc::new(RwLock::new(client_builder.build()?));
+            let client = Arc::new(RwLock::new(client_builder.build()?));
+            Ok((resolved_proxy, client))
+        })?;
 
         Ok(Client {
             client,
@@ -487,8 +498,9 @@ impl Client {
 
         // Execute an async future, releasing the Python GIL for concurrency.
         // Use Tokio global runtime to block on the future.
+        let runtime = get_runtime(py);
         let response: Result<(PrimpResponse, String, u16), PrimpErrorEnum> =
-            py.detach(|| RUNTIME.block_on(future));
+            py.detach(move || runtime.block_on(future));
 
         // Restore redirect policy if it was changed
         if follow_redirects.is_some() {
@@ -862,6 +874,7 @@ fn get(
     stream: bool,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
+        py,
         None,
         None,
         None,
@@ -949,6 +962,7 @@ fn head(
     stream: bool,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
+        py,
         None,
         None,
         None,
@@ -1036,6 +1050,7 @@ fn options(
     stream: bool,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
+        py,
         None,
         None,
         None,
@@ -1123,6 +1138,7 @@ fn delete(
     stream: bool,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
+        py,
         None,
         None,
         None,
@@ -1210,6 +1226,7 @@ fn post(
     stream: bool,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
+        py,
         None,
         None,
         None,
@@ -1297,6 +1314,7 @@ fn put(
     stream: bool,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
+        py,
         None,
         None,
         None,
@@ -1384,6 +1402,7 @@ fn patch(
     stream: bool,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
+        py,
         None,
         None,
         None,
@@ -1473,6 +1492,7 @@ fn request(
     stream: bool,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
+        py,
         None,
         None,
         None,

@@ -20,7 +20,6 @@ use crate::client_builder::IndexMapSSR;
 use crate::error::{body_collection_error, convert_reqwest_error, BodyError, PrimpErrorEnum};
 use crate::traits::HeadersTraits;
 use crate::utils::extract_encoding;
-use crate::RUNTIME;
 
 /// Collect body bytes from a response using a pre-allocated buffer.
 /// Uses `Vec::with_capacity(8 * 1024)` for efficient buffer allocation.
@@ -102,8 +101,9 @@ impl AsyncResponse {
         }
 
         let resp = Arc::clone(&self.resp);
+        let runtime = crate::get_runtime(py);
         let bytes: Bytes = py.detach(|| {
-            RUNTIME.block_on(async {
+            runtime.block_on(async {
                 let mut resp_guard = resp.lock().await;
                 match resp_guard.as_mut() {
                     Some(r) => collect_body_bytes(r).await,
@@ -124,20 +124,25 @@ impl AsyncResponse {
 
     /// Get character encoding (sync)
     #[getter]
-    fn get_encoding(&mut self, _py: Python<'_>) -> PyResult<String> {
+    fn get_encoding(&mut self, py: Python<'_>) -> PyResult<String> {
         if let Some(encoding) = self._encoding.as_ref() {
             return Ok(encoding.clone());
         }
 
         let resp = Arc::clone(&self.resp);
-        let encoding = RUNTIME.block_on(async {
-            let resp_guard = resp.lock().await;
-            match resp_guard.as_ref() {
-                Some(r) => Ok::<String, PyErr>(extract_encoding(r.headers()).name().to_string()),
-                None => Err(BodyError::new_err(
-                    "Response body already consumed or moved",
-                )),
-            }
+        let runtime = crate::get_runtime(py);
+        let encoding = py.detach(|| {
+            runtime.block_on(async {
+                let resp_guard = resp.lock().await;
+                match resp_guard.as_ref() {
+                    Some(r) => {
+                        Ok::<String, PyErr>(extract_encoding(r.headers()).name().to_string())
+                    }
+                    None => Err(BodyError::new_err(
+                        "Response body already consumed or moved",
+                    )),
+                }
+            })
         })?;
 
         self._encoding = Some(encoding.clone());
@@ -172,7 +177,8 @@ impl AsyncResponse {
         }
 
         let resp = Arc::clone(&self.resp);
-        let headers: IndexMapSSR = RUNTIME.block_on(async {
+        let runtime = crate::get_runtime(py);
+        let headers: IndexMapSSR = runtime.block_on(async {
             let resp_guard = resp.lock().await;
             match resp_guard.as_ref() {
                 Some(r) => Ok(r.headers().to_indexmap()),
@@ -195,7 +201,8 @@ impl AsyncResponse {
         }
 
         let resp = Arc::clone(&self.resp);
-        let cookies: IndexMapSSR = RUNTIME.block_on(async {
+        let runtime = crate::get_runtime(py);
+        let cookies: IndexMapSSR = runtime.block_on(async {
             let resp_guard = resp.lock().await;
             match resp_guard.as_ref() {
                 Some(r) => Ok(crate::extract_cookies_to_indexmap(r.headers())),
