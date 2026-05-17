@@ -3,6 +3,7 @@
 //! This module eliminates code duplication by providing shared configuration
 //! structures and functions used by both `Client` and `AsyncClient`.
 
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use foldhash::fast::RandomState;
@@ -10,15 +11,15 @@ use indexmap::IndexMap;
 use primp::{
     header::{HeaderMap, HeaderValue},
     redirect::Policy,
-    ClientBuilder, Proxy, Url,
+    Client as PrimpClient, ClientBuilder, Proxy, Url,
 };
 
-use crate::error::PrimpResult;
+use crate::error::{PrimpErrorEnum, PrimpResult};
 use crate::impersonate::{
     get_random_element, parse_impersonate_os_with_fallback, parse_impersonate_with_fallback,
     IMPERSONATEOS_LIST,
 };
-use crate::traits::HeadersTraits;
+use crate::traits::{HeaderMapExt, HeadersTraits};
 use crate::utils::load_ca_certs;
 
 /// Type alias for IndexMap with String keys and values.
@@ -210,4 +211,72 @@ pub fn headers_without_cookie(headers: &HeaderMap) -> IndexMapSSR {
     let mut headers_map = headers.to_indexmap();
     headers_map.swap_remove("cookie");
     headers_map
+}
+
+pub fn client_headers(client: &Arc<RwLock<PrimpClient>>) -> PrimpResult<IndexMapSSR> {
+    let c = client.read().unwrap_or_else(|e| e.into_inner());
+    Ok(headers_without_cookie(c.headers()))
+}
+
+pub fn client_set_headers(
+    client: &Arc<RwLock<PrimpClient>>,
+    new_headers: Option<IndexMapSSR>,
+) -> PrimpResult<()> {
+    let mut c = client.write().unwrap_or_else(|e| e.into_inner());
+    let headers = c.headers_mut();
+    headers.clear();
+    if let Some(new_headers) = new_headers {
+        for (k, v) in new_headers {
+            headers.insert_key_value(k, v)?;
+        }
+    }
+    Ok(())
+}
+
+pub fn client_headers_update(
+    client: &Arc<RwLock<PrimpClient>>,
+    new_headers: Option<IndexMapSSR>,
+) -> PrimpResult<()> {
+    let mut c = client.write().unwrap_or_else(|e| e.into_inner());
+    let headers = c.headers_mut();
+    if let Some(new_headers) = new_headers {
+        for (k, v) in new_headers {
+            headers.insert_key_value(k, v)?;
+        }
+    }
+    Ok(())
+}
+
+pub fn client_set_proxy(client: &Arc<RwLock<PrimpClient>>, proxy: String) -> PrimpResult<String> {
+    let rproxy = Proxy::all(proxy.clone())?;
+    let mut c = client.write().unwrap_or_else(|e| e.into_inner());
+    c.set_proxies(vec![rproxy]);
+    Ok(proxy)
+}
+
+pub fn client_get_cookies(
+    client: &Arc<RwLock<PrimpClient>>,
+    url: &str,
+) -> PrimpResult<IndexMapSSR> {
+    let parsed = Url::parse(url).map_err(|e| PrimpErrorEnum::InvalidURL(e.to_string()))?;
+    let c = client.read().unwrap_or_else(|e| e.into_inner());
+    let cookie = c
+        .get_cookies(&parsed)
+        .ok_or_else(|| PrimpErrorEnum::Custom("No cookies found for URL".to_string()))?;
+    let cookie_str = cookie.to_str()?;
+    Ok(parse_cookies_from_header(cookie_str))
+}
+
+pub fn client_set_cookies(
+    client: &Arc<RwLock<PrimpClient>>,
+    url: &str,
+    cookies: Option<IndexMapSSR>,
+) -> PrimpResult<()> {
+    let parsed = parse_url_or_domain(url).map_err(|e| PrimpErrorEnum::InvalidURL(e.to_string()))?;
+    if let Some(cookies) = cookies {
+        let header_values = cookies_to_header_values(&cookies);
+        let c = client.read().unwrap_or_else(|e| e.into_inner());
+        c.set_cookies(&parsed, header_values);
+    }
+    Ok(())
 }

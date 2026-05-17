@@ -2,9 +2,7 @@
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use ::primp::{
-    multipart, Body, Client as PrimpClient, Method, Proxy, Response as PrimpResponse, Url,
-};
+use ::primp::{multipart, Body, Client as PrimpClient, Method, Response as PrimpResponse, Url};
 use pyo3::prelude::*;
 use pyo3::sync::PyOnceLock;
 use pythonize::depythonize;
@@ -16,10 +14,7 @@ use tokio::{
 use tokio_util::codec::{BytesCodec, FramedRead};
 
 mod client_builder;
-use client_builder::{
-    configure_client_builder, cookies_to_header_values, headers_without_cookie,
-    parse_cookies_from_header, parse_url_or_domain, IndexMapSSR,
-};
+use client_builder::{configure_client_builder, cookies_to_header_values, IndexMapSSR};
 
 mod error;
 use error::{PrimpErrorEnum, PrimpResult};
@@ -31,7 +26,7 @@ use response::{BytesIterator, LinesIterator, Response, TextIterator};
 mod r#async;
 
 mod traits;
-use traits::{HeaderMapExt, HeadersTraits};
+use traits::HeadersTraits;
 
 mod utils;
 use utils::extract_encoding;
@@ -216,32 +211,16 @@ impl Client {
 
     #[getter]
     pub fn get_headers(&self) -> PrimpResult<IndexMapSSR> {
-        let client = self.client.read().expect("client lock was poisoned");
-        Ok(headers_without_cookie(client.headers()))
+        client_builder::client_headers(&self.client)
     }
 
     #[setter]
     pub fn set_headers(&self, new_headers: Option<IndexMapSSR>) -> PrimpResult<()> {
-        let mut client = self.client.write().expect("client lock was poisoned");
-        let headers = client.headers_mut();
-        headers.clear();
-        if let Some(new_headers) = new_headers {
-            for (k, v) in new_headers {
-                headers.insert_key_value(k, v)?;
-            }
-        }
-        Ok(())
+        client_builder::client_set_headers(&self.client, new_headers)
     }
 
     pub fn headers_update(&self, new_headers: Option<IndexMapSSR>) -> PrimpResult<()> {
-        let mut client = self.client.write().expect("client lock was poisoned");
-        let headers = client.headers_mut();
-        if let Some(new_headers) = new_headers {
-            for (k, v) in new_headers {
-                headers.insert_key_value(k, v)?;
-            }
-        }
-        Ok(())
+        client_builder::client_headers_update(&self.client, new_headers)
     }
 
     #[getter]
@@ -251,35 +230,18 @@ impl Client {
 
     #[setter]
     pub fn set_proxy(&mut self, proxy: String) -> PrimpResult<()> {
-        let rproxy = Proxy::all(proxy.clone())?;
-        let mut client = self.client.write().expect("client lock was poisoned");
-        let client_ref = &mut *client;
-        client_ref.set_proxies(vec![rproxy]);
-        self.proxy = Some(proxy);
+        self.proxy = Some(client_builder::client_set_proxy(&self.client, proxy)?);
         Ok(())
     }
 
     #[pyo3(signature = (url))]
     fn get_cookies(&self, url: &str) -> PrimpResult<IndexMapSSR> {
-        let url = Url::parse(url).map_err(|e| PrimpErrorEnum::InvalidURL(e.to_string()))?;
-        let client = self.client.read().expect("client lock was poisoned");
-        let cookie = client
-            .get_cookies(&url)
-            .ok_or_else(|| PrimpErrorEnum::Custom("No cookies found for URL".to_string()))?;
-        let cookie_str = cookie.to_str()?;
-        Ok(parse_cookies_from_header(cookie_str))
+        client_builder::client_get_cookies(&self.client, url)
     }
 
     #[pyo3(signature = (url, cookies))]
     fn set_cookies(&self, url: &str, cookies: Option<IndexMapSSR>) -> PrimpResult<()> {
-        let url =
-            parse_url_or_domain(url).map_err(|e| PrimpErrorEnum::InvalidURL(e.to_string()))?;
-        if let Some(cookies) = cookies {
-            let header_values = cookies_to_header_values(&cookies);
-            let client = self.client.read().expect("client lock was poisoned");
-            client.set_cookies(&url, header_values);
-        }
-        Ok(())
+        client_builder::client_set_cookies(&self.client, url, cookies)
     }
 
     /// Constructs an HTTP request with the given method, URL, and optionally sets a timeout, headers, and query parameters.
@@ -363,7 +325,7 @@ impl Client {
             if !client_cookies.is_empty() {
                 let url_parsed = Url::parse(&resolved_url).map_err(Into::<PrimpErrorEnum>::into)?;
                 let cookie_values = cookies_to_header_values(client_cookies);
-                let client_guard = client.read().expect("client lock was poisoned");
+                let client_guard = client.read().unwrap_or_else(|e| e.into_inner());
                 client_guard.set_cookies(&url_parsed, cookie_values);
             }
         }
@@ -372,13 +334,13 @@ impl Client {
         if let Some(cookies) = cookies.filter(|c| !c.is_empty()) {
             let url_parsed = Url::parse(&resolved_url).map_err(Into::<PrimpErrorEnum>::into)?;
             let cookie_values = cookies_to_header_values(&cookies);
-            let client_guard = client.read().expect("client lock was poisoned");
+            let client_guard = client.read().unwrap_or_else(|e| e.into_inner());
             client_guard.set_cookies(&url_parsed, cookie_values);
         }
 
         // Handle follow_redirects: set policy before cloning client
         if let Some(fr) = follow_redirects {
-            let mut client_guard = client.write().expect("client lock was poisoned");
+            let mut client_guard = client.write().unwrap_or_else(|e| e.into_inner());
             if fr {
                 client_guard.set_redirect_policy(::primp::redirect::Policy::limited(20));
             } else {
@@ -387,7 +349,7 @@ impl Client {
         }
 
         // Clone the inner client to avoid holding the RwLock across await points
-        let client_clone = client.read().expect("client lock was poisoned").clone();
+        let client_clone = client.read().unwrap_or_else(|e| e.into_inner()).clone();
 
         let future = async move {
             // Create request builder using the cloned client
@@ -467,7 +429,7 @@ impl Client {
 
         // Restore redirect policy if it was changed
         if follow_redirects.is_some() {
-            let mut client_guard = client.write().expect("client lock was poisoned");
+            let mut client_guard = client.write().unwrap_or_else(|e| e.into_inner());
             client_guard.set_redirect_policy(::primp::redirect::Policy::limited(20));
         }
 
@@ -863,7 +825,7 @@ fn get(
         py,
         url,
         params,
-        headers,
+        None,
         cookies,
         content,
         data,
@@ -951,7 +913,7 @@ fn head(
         py,
         url,
         params,
-        headers,
+        None,
         cookies,
         content,
         data,
@@ -1039,7 +1001,7 @@ fn options(
         py,
         url,
         params,
-        headers,
+        None,
         cookies,
         content,
         data,
@@ -1127,7 +1089,7 @@ fn delete(
         py,
         url,
         params,
-        headers,
+        None,
         cookies,
         content,
         data,
@@ -1215,7 +1177,7 @@ fn post(
         py,
         url,
         params,
-        headers,
+        None,
         cookies,
         content,
         data,
@@ -1303,7 +1265,7 @@ fn put(
         py,
         url,
         params,
-        headers,
+        None,
         cookies,
         content,
         data,
@@ -1391,7 +1353,7 @@ fn patch(
         py,
         url,
         params,
-        headers,
+        None,
         cookies,
         content,
         data,
@@ -1482,7 +1444,7 @@ fn request(
         method,
         url,
         params,
-        headers,
+        None,
         cookies,
         content,
         data,
