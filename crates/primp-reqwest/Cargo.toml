@@ -1,6 +1,6 @@
 [package]
 name = "primp-reqwest"
-version = "0.13.2"
+version = "0.13.3"
 description = "Fork of the original reqwest library"
 keywords = ["http", "request", "client"]
 categories = ["web-programming::http-client", "wasm"]

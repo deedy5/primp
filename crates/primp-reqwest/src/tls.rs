@@ -453,7 +453,8 @@ impl CertificateRevocationList {
     pub fn from_pem(pem: &[u8]) -> crate::Result<CertificateRevocationList> {
         Ok(CertificateRevocationList {
             #[cfg(feature = "__rustls")]
-            inner: rustls_pki_types::CertificateRevocationListDer::from(pem.to_vec()),
+            inner: rustls_pki_types::CertificateRevocationListDer::from_pem_slice(pem)
+                .map_err(|_| crate::error::builder("invalid crl encoding"))?,
         })
     }
 
