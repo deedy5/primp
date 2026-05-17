@@ -137,7 +137,7 @@ fn new_builder(config: &Config) -> Builder {
         builder.max_pending_accept_reset_streams(max);
     }
     if let Some(max) = config.max_local_error_reset_streams {
-        builder.max_local_error_reset_streams(max);
+        builder.max_local_error_reset_streams(Some(max));
     }
     if let Some(size) = config.header_table_size {
         builder.header_table_size(size);
