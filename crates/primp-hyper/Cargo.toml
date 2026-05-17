@@ -1,6 +1,6 @@
 [package]
 name = "primp-hyper"
-version = "1.8.1"
+version = "1.9.0"
 description = "Fork of the original hyper HTTP library."
 readme = "README.md"
 license = "MIT"
@@ -76,7 +76,6 @@ http1 = [
     "dep:futures-core",
     "dep:httparse",
     "dep:itoa",
-    "dep:pin-utils",
 ]
 http2 = [
     "dep:futures-channel",
@@ -147,10 +146,6 @@ optional = true
 
 [dependencies.pin-project-lite]
 version = "0.2.4"
-optional = true
-
-[dependencies.pin-utils]
-version = "0.1"
 optional = true
 
 [dependencies.smallvec]
