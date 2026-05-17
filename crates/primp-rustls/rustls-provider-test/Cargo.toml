@@ -2,7 +2,7 @@
 name = "rustls-provider-test"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.84"
+rust-version = "1.89"
 license = "Apache-2.0 OR ISC OR MIT"
 description = "Integration tests for Rustls cryptography providers"
 publish = false

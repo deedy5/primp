@@ -2,7 +2,7 @@
 name = "primp-rustls"
 version = "0.23.40"
 edition = "2021"
-rust-version = "1.84"
+rust-version = "1.89"
 license = "Apache-2.0 OR ISC OR MIT"
 readme = "README.md"
 description = "A fork of the original rustls crate."

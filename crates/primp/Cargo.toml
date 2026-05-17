@@ -9,7 +9,7 @@ authors = ["deedy5"]
 readme = "README.md"
 license = "MIT"
 edition = "2021"
-rust-version = "1.84"
+rust-version = "1.89"
 autotests = true
 include = [
     "README.md",

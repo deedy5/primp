@@ -2,7 +2,7 @@
 name = "primp-hyper-rustls"
 version = "0.27.9"
 edition = "2021"
-rust-version = "1.84"
+rust-version = "1.89"
 license = "Apache-2.0 OR ISC OR MIT"
 description = "Fork of hyper-rustls"
 

@@ -5,7 +5,7 @@ license = "MIT OR Apache-2.0"
 description = "Fork of tokio-rustls"
 categories = ["asynchronous", "cryptography", "network-programming"]
 edition = "2021"
-rust-version = "1.84"
+rust-version = "1.89"
 
 # Aliases
 [lib]

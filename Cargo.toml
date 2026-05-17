@@ -15,7 +15,7 @@ members = [
 [workspace.package]
 version = "1.2.3"
 edition = "2021"
-rust-version = "1.84"
+rust-version = "1.89"
 license = "MIT"
 repository = "https://github.com/deedy5/primp"
 authors = ["deedy5"]

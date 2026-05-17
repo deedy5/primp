@@ -389,35 +389,13 @@ impl Client {
         // Clone the inner client to avoid holding the RwLock across await points
         let client_clone = client.read().expect("client lock was poisoned").clone();
 
-        let self_params = params
-            .as_ref()
-            .is_none()
-            .then_some(self.params.as_ref())
-            .flatten();
-        let self_auth = auth
-            .as_ref()
-            .is_none()
-            .then_some(self.auth.as_ref())
-            .flatten();
-        let self_auth_bearer = auth_bearer
-            .as_ref()
-            .is_none()
-            .then_some(self.auth_bearer.as_ref())
-            .flatten();
-
         let future = async move {
             // Create request builder using the cloned client
             let mut request_builder = client_clone.request(method, &resolved_url);
 
             // Params
-            match (&params, self_params) {
-                (Some(p), _) => {
-                    request_builder = request_builder.query(p);
-                }
-                (None, Some(sp)) => {
-                    request_builder = request_builder.query(sp);
-                }
-                (None, None) => {}
+            if let Some(p) = params.as_ref().or(self.params.as_ref()) {
+                request_builder = request_builder.query(p);
             }
 
             // Headers
@@ -453,25 +431,10 @@ impl Client {
             }
 
             // Auth
-            match (&auth, self_auth) {
-                (Some((u, p)), _) => {
-                    request_builder = request_builder.basic_auth(u, p.as_deref());
-                }
-                (None, Some((u, p))) => {
-                    request_builder = request_builder.basic_auth(u, p.as_deref());
-                }
-                (None, None) => {
-                    // Try bearer auth if no basic auth
-                    match (&auth_bearer, self_auth_bearer) {
-                        (Some(t), _) => {
-                            request_builder = request_builder.bearer_auth(t);
-                        }
-                        (None, Some(t)) => {
-                            request_builder = request_builder.bearer_auth(t);
-                        }
-                        (None, None) => {}
-                    }
-                }
+            if let Some((u, p)) = auth.as_ref().or(self.auth.as_ref()) {
+                request_builder = request_builder.basic_auth(u, p.as_deref());
+            } else if let Some(t) = auth_bearer.as_ref().or(self.auth_bearer.as_ref()) {
+                request_builder = request_builder.bearer_auth(t);
             }
 
             // Timeout

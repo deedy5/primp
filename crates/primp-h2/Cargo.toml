@@ -9,7 +9,7 @@ authors = [
 ]
 description = "A fork of the HTTP/2 client and server library from hyperium"
 edition = "2021"
-rust-version = "1.84"
+rust-version = "1.89"
 
 # Aliases
 [lib]

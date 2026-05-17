@@ -6,7 +6,7 @@ readme = "README.md"
 license = "MIT"
 authors = ["deedy5", "Sean McArthur <sean@seanmonstar.com>"]
 edition = "2021"
-rust-version = "1.84"
+rust-version = "1.89"
 build = false
 include = [
     "Cargo.toml",

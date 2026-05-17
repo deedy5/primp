@@ -2,7 +2,7 @@
 name = "primp-python"
 version = "1.2.3"
 edition = "2021"
-rust-version = "1.84"
+rust-version = "1.89"
 description = "HTTP client that can impersonate web browsers"
 authors = ["deedy5"]
 

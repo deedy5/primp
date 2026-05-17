@@ -8,7 +8,7 @@ authors = ["deedy5", "Sean McArthur <sean@seanmonstar.com>"]
 readme = "README.md"
 license = "MIT OR Apache-2.0"
 edition = "2021"
-rust-version = "1.84"
+rust-version = "1.89"
 autotests = true
 include = [
     "README.md",
