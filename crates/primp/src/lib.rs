@@ -571,6 +571,9 @@ fn apply_impersonation(
     if !settings.zstd {
         builder = builder.no_zstd();
     }
+    if !settings.deflate {
+        builder = builder.no_deflate();
+    }
 
     builder.build()
 }

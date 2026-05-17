@@ -127,6 +127,7 @@ pub(crate) fn build_safari_settings(
         gzip: true,
         brotli: true,
         zstd: false,
+        deflate: true,
     }
 }
 

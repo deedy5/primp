@@ -133,6 +133,7 @@ pub(crate) fn build_chrome_settings(
         gzip: true,
         brotli: true,
         zstd: true,
+        deflate: true,
     }
 }
 

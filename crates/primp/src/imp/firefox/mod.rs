@@ -108,6 +108,7 @@ pub(crate) fn build_firefox_settings(
         gzip: true,
         brotli: true,
         zstd: true,
+        deflate: true,
     }
 }
 

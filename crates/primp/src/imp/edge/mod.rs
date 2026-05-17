@@ -134,6 +134,7 @@ pub(crate) fn build_edge_settings(
         gzip: true,
         brotli: true,
         zstd: true,
+        deflate: true,
     }
 }
 

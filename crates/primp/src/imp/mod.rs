@@ -59,6 +59,8 @@ pub struct BrowserSettings {
     pub brotli: bool,
     /// Whether to enable zstd compression
     pub zstd: bool,
+    /// Whether to enable deflate compression
+    pub deflate: bool,
 }
 
 impl std::fmt::Debug for BrowserSettings {
@@ -70,6 +72,7 @@ impl std::fmt::Debug for BrowserSettings {
             .field("gzip", &self.gzip)
             .field("brotli", &self.brotli)
             .field("zstd", &self.zstd)
+            .field("deflate", &self.deflate)
             .finish()
     }
 }
@@ -346,6 +349,7 @@ pub fn random_impersonate_os() -> ImpersonateOS {
 /// # Returns
 ///
 /// BrowserSettings with TLS, HTTP/2, and header configuration
+#[cfg(feature = "impersonate")]
 pub fn get_browser_settings(
     version: Impersonate,
     os_type: Option<ImpersonateOS>,

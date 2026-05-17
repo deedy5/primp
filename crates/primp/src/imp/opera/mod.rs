@@ -150,6 +150,7 @@ pub(crate) fn build_opera_settings(
         gzip: true,
         brotli: true,
         zstd: true,
+        deflate: true,
     }
 }
 
