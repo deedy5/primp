@@ -28,7 +28,7 @@ pub mod imp;
 pub use imp::{BrowserSettings, Http2Data, Impersonate, ImpersonateOS};
 
 /// Re-export h2 frame types used in the public HTTP/2 API
-#[cfg(feature = "http2")]
+#[cfg(all(feature = "http2", not(target_arch = "wasm32")))]
 pub use h2::frame::{
     PseudoId, PseudoOrder, PseudoOrderBuilder, SettingId, SettingsOrder, SettingsOrderBuilder,
 };
@@ -181,6 +181,7 @@ impl ClientBuilder {
     }
 
     /// Disable auto deflate decompression.
+    #[cfg(feature = "deflate")]
     pub fn no_deflate(mut self) -> Self {
         self.inner = self.inner.no_deflate();
         self
@@ -349,12 +350,14 @@ impl ClientBuilder {
     }
 
     /// Sets the HTTP/2 SETTINGS frame order for fingerprinting.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn http2_settings_order(mut self, order: h2::frame::SettingsOrder) -> Self {
         self.inner = self.inner.http2_settings_order(order);
         self
     }
 
     /// Sets the HTTP/2 pseudo-header order for fingerprinting.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn http2_headers_pseudo_order(mut self, order: h2::frame::PseudoOrder) -> Self {
         self.inner = self.inner.http2_headers_pseudo_order(order);
         self
