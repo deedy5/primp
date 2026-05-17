@@ -63,14 +63,12 @@ jobs:
           target: ${{ matrix.platform.target }}
           args: --release --out dist --manifest-path crates/primp-python/Cargo.toml
           manylinux: auto
-          maturin-version: 1.12.4
       - name: Build free-threaded wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.14t --manifest-path crates/primp-python/Cargo.toml
           manylinux: auto
-          maturin-version: 1.12.4
       - name: Upload wheels
         uses: actions/upload-artifact@v6
         with:
@@ -144,14 +142,12 @@ jobs:
           target: ${{ matrix.platform.target }}
           args: --release --out dist --manifest-path crates/primp-python/Cargo.toml
           manylinux: musllinux_1_2
-          maturin-version: 1.12.4
       - name: Build free-threaded wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.14t --manifest-path crates/primp-python/Cargo.toml
           manylinux: musllinux_1_2
-          maturin-version: 1.12.4
       - name: Upload wheels
         uses: actions/upload-artifact@v6
         with:
@@ -218,7 +214,6 @@ jobs:
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist --manifest-path crates/primp-python/Cargo.toml
-          maturin-version: 1.12.4
       - uses: actions/setup-python@v6
         with:
           python-version: 3.14t
@@ -228,7 +223,6 @@ jobs:
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.14t --manifest-path crates/primp-python/Cargo.toml
-          maturin-version: 1.12.4
       - name: Upload wheels
         uses: actions/upload-artifact@v6
         with:
@@ -270,13 +264,11 @@ jobs:
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist --manifest-path crates/primp-python/Cargo.toml
-          maturin-version: 1.12.4
       - name: Build free-threaded wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.14t --manifest-path crates/primp-python/Cargo.toml
-          maturin-version: 1.12.4
       - name: Upload wheels
         uses: actions/upload-artifact@v6
         with:
@@ -306,7 +298,6 @@ jobs:
         with:
           command: sdist
           args: --out dist --manifest-path crates/primp-python/Cargo.toml
-          maturin-version: 1.12.4
       - name: Upload sdist
         uses: actions/upload-artifact@v6
         with:
@@ -325,7 +316,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v7
       - name: Generate artifact attestation
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest@v4
         with:
           subject-path: 'wheels-*/*'
       - name: Install uv
