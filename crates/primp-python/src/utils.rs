@@ -1,14 +1,14 @@
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::LazyLock;
 use std::sync::Mutex;
 
 use ::primp::Certificate;
 use mime::Mime;
-use once_cell::sync::Lazy;
 
 /// Thread-safe cache for CA certificates, keyed by file path
-static CA_CERT_CACHE: Lazy<Mutex<Option<PathBuf>>> = Lazy::new(|| Mutex::new(None));
-static CA_CERTS: Lazy<Mutex<Option<Vec<Certificate>>>> = Lazy::new(|| Mutex::new(None));
+static CA_CERT_CACHE: LazyLock<Mutex<Option<PathBuf>>> = LazyLock::new(|| Mutex::new(None));
+static CA_CERTS: LazyLock<Mutex<Option<Vec<Certificate>>>> = LazyLock::new(|| Mutex::new(None));
 
 /// Environment variables to check for CA certificate paths (in order).
 const CA_CERT_ENV_VARS: &[&str] = &["PRIMP_CA_BUNDLE", "SSL_CERT_FILE", "CURL_CA_BUNDLE"];
@@ -18,8 +18,8 @@ const CA_CERT_ENV_VARS: &[&str] = &["PRIMP_CA_BUNDLE", "SSL_CERT_FILE", "CURL_CA
 /// The certificates are loaded once and cached in memory.
 /// Subsequent calls with the same path return the cached certificates.
 pub fn load_ca_certs_from_file(ca_cert_path: &Path) -> Option<Vec<Certificate>> {
-    let mut cache_path = CA_CERT_CACHE.lock().unwrap();
-    let mut cache_certs = CA_CERTS.lock().unwrap();
+    let mut cache_path = CA_CERT_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    let mut cache_certs = CA_CERTS.lock().unwrap_or_else(|e| e.into_inner());
 
     let input_path_buf = ca_cert_path.to_path_buf();
 
