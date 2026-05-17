@@ -16,7 +16,7 @@ use super::{DefaultServerNameResolver, HttpsConnector, ResolveServerName};
     feature = "rustls-platform-verifier"
 ))]
 use crate::config::ConfigBuilderExt;
-use pki_types::ServerName;
+use rustls::pki_types::ServerName;
 
 /// A builder for an [`HttpsConnector`]
 ///
@@ -108,7 +108,7 @@ impl ConnectorBuilder<WantsTlsConfig> {
             ClientConfig::builder_with_provider(provider.into())
                 .with_safe_default_protocol_versions()
                 .and_then(|builder| builder.try_with_platform_verifier())
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+                .map_err(std::io::Error::other)?
                 .with_no_client_auth(),
         ))
     }

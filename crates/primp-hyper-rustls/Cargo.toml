@@ -1,6 +1,6 @@
 [package]
 name = "primp-hyper-rustls"
-version = "0.27.7"
+version = "0.27.9"
 edition = "2021"
 rust-version = "1.84"
 license = "Apache-2.0 OR ISC OR MIT"
@@ -28,9 +28,8 @@ http = "1"
 hyper = { version = "1.8", path = "../primp-hyper", package = "primp-hyper", default-features = false }
 hyper-util = { version = "0.1", path = "../primp-hyper-util", package = "primp-hyper-util", default-features = false, features = ["client-legacy", "tokio"] }
 log = { version = "0.4.4", optional = true }
-pki-types = { package = "rustls-pki-types", version = "1" }
 rustls-native-certs = { version = "0.8", optional = true }
-rustls-platform-verifier = { version = "0.6", optional = true }
+rustls-platform-verifier = { version = "0.7", optional = true }
 rustls = { version = "0.23", path = "../primp-rustls/rustls", package = "primp-rustls", default-features = false }
 tokio = "1.0"
 tokio-rustls = { version = "0.26", path = "../primp-tokio-rustls", package = "primp-tokio-rustls", default-features = false }
@@ -42,7 +41,6 @@ cfg-if = "1"
 http-body-util = "0.1"
 hyper-util = { version = "0.1", path = "../primp-hyper-util", package = "primp-hyper-util", default-features = false, features = ["server-auto"] }
 rustls = { version = "0.23", path = "../primp-rustls/rustls", package = "primp-rustls", default-features = false, features = ["tls12"] }
-rustls-pemfile = "2"
 tokio = { version = "1.0", features = ["io-std", "macros", "net", "rt-multi-thread"] }
 
 [package.metadata.docs.rs]
