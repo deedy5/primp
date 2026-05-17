@@ -1,7 +1,6 @@
 use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
-use core::iter;
 
 use pki_types::{DnsName, EchConfigListBytes, ServerName};
 use subtle::ConstantTimeEq;
@@ -14,7 +13,7 @@ use crate::hash_hs::{HandshakeHash, HandshakeHashBuffer};
 use crate::log::{debug, trace, warn};
 use crate::msgs::base::{Payload, PayloadU16};
 use crate::msgs::codec::{Codec, Reader};
-use crate::msgs::enums::{ExtensionType, HpkeKem};
+use crate::msgs::enums::ExtensionType;
 use crate::msgs::handshake::{
     ClientExtensions, ClientHelloPayload, EchConfigContents, EchConfigPayload, Encoding,
     EncryptedClientHello, EncryptedClientHelloOuter, HandshakeMessagePayload, HandshakePayload,
@@ -683,12 +682,12 @@ impl EchState {
             // "This is the length of a "server_name" extension with an L-byte name."
             _ => max_name_len + 9,
         };
-        encoded_hello.extend(iter::repeat(0).take(name_padding_len));
+        encoded_hello.extend(core::iter::repeat_n(0, name_padding_len));
 
         // Let L be the length of the EncodedClientHelloInner with all the padding computed so far
         // Let N = 31 - ((L - 1) % 32) and add N bytes of padding.
         let padding_len = 31 - ((encoded_hello.len() - 1) % 32);
-        encoded_hello.extend(iter::repeat(0).take(padding_len));
+        encoded_hello.extend(core::iter::repeat_n(0, padding_len));
 
         // Construct the inner hello message that will be used for the transcript.
         let inner_hello_msg = Message {

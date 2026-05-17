@@ -607,7 +607,7 @@ impl Server {
                     ref mut current,
                     title_case_headers,
                 } = *self;
-                if current.as_ref().map_or(true, |(last, _)| last != name) {
+                if current.as_ref().is_none_or(|(last, _)| last != name) {
                     *current = None;
                 }
                 let (_, values) =

@@ -264,25 +264,22 @@ mod internal {
                             future::Either::Left((Ok(pool_got), connecting)) => {
                                 events.on_race_lost(BackgroundConnect {
                                     future: connecting,
-                                    shared: Arc::downgrade(&shared),
+                                    shared: Arc::downgrade(shared),
                                 });
                                 return Poll::Ready(Ok(Cached::new(
                                     pool_got,
-                                    Arc::downgrade(&shared),
+                                    Arc::downgrade(shared),
                                 )));
                             }
                             future::Either::Right((connected, _waiter)) => {
                                 let inner = connected?;
-                                return Poll::Ready(Ok(Cached::new(
-                                    inner,
-                                    Arc::downgrade(&shared),
-                                )));
+                                return Poll::Ready(Ok(Cached::new(inner, Arc::downgrade(shared))));
                             }
                         }
                     }
                     CacheFuture::Connecting { shared, future } => {
                         let inner = ready!(Pin::new(future).poll(cx))?;
-                        return Poll::Ready(Ok(Cached::new(inner, Arc::downgrade(&shared))));
+                        return Poll::Ready(Ok(Cached::new(inner, Arc::downgrade(shared))));
                     }
                     CacheFuture::Cached { svc } => {
                         return Poll::Ready(Ok(svc.take().unwrap()));
