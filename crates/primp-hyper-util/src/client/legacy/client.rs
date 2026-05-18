@@ -1375,6 +1375,24 @@ impl Builder {
         self
     }
 
+    /// Sets extra receive window capacity to add to new locally-initiated streams.
+    ///
+    /// When set, after creating a new stream, a WINDOW_UPDATE frame will be
+    /// sent to increase the stream's receive window by this amount.
+    /// This is used for browser fingerprinting (e.g. Firefox adds 12451840
+    /// to the first stream's receive window).
+    #[cfg(feature = "http2")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "http2")))]
+    pub fn http2_initial_stream_window_size_increment(
+        &mut self,
+        sz: impl Into<Option<u32>>,
+    ) -> &mut Self {
+        if let Some(sz) = sz.into() {
+            self.h2_builder.initial_stream_window_size_increment(sz);
+        }
+        self
+    }
+
     /// Sets the initial maximum of locally initiated (send) streams.
     ///
     /// This value will be overwritten by the value included in the initial

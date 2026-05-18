@@ -84,6 +84,7 @@ pub(crate) struct Config {
     pub(crate) headers_priority: Option<(u8, u32, bool)>,
     pub(crate) headers_order: Option<Vec<http::HeaderName>>,
     pub(crate) initial_stream_id: Option<u32>,
+    pub(crate) initial_stream_window_increment: Option<u32>,
 }
 
 impl Default for Config {
@@ -112,6 +113,7 @@ impl Default for Config {
             headers_priority: None,
             headers_order: None,
             initial_stream_id: None,
+            initial_stream_window_increment: None,
         }
     }
 }
@@ -165,6 +167,9 @@ fn new_builder(config: &Config) -> Builder {
     }
     if let Some(stream_id) = config.initial_stream_id {
         builder.initial_stream_id(stream_id);
+    }
+    if let Some(incr) = config.initial_stream_window_increment {
+        builder.initial_stream_window_size_increment(incr);
     }
     builder
 }

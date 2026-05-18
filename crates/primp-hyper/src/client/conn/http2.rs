@@ -564,6 +564,17 @@ where
         self
     }
 
+    /// Sets extra receive window capacity to add to new locally-initiated streams.
+    ///
+    /// When set, after creating a new stream, a WINDOW_UPDATE frame will be
+    /// sent to increase the stream's receive window by this amount.
+    /// This is used for browser fingerprinting (e.g. Firefox adds 12451840
+    /// to the first stream's receive window).
+    pub fn initial_stream_window_size_increment(&mut self, size: u32) -> &mut Self {
+        self.h2_builder.initial_stream_window_increment = Some(size);
+        self
+    }
+
     /// Configures the maximum number of local resets due to protocol errors made by the remote end.
     ///
     /// See the documentation of [`h2::client::Builder::max_local_error_reset_streams`] for more

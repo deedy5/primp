@@ -21,7 +21,7 @@ where
     P: Peer,
 {
     /// Read / write frame values
-    codec: Codec<T, Prioritized<B>>,
+    pub(crate) codec: Codec<T, Prioritized<B>>,
 
     inner: ConnectionInner<P, B>,
 }
@@ -86,6 +86,7 @@ pub(crate) struct Config {
     pub headers_pseudo_order: Option<crate::frame::PseudoOrder>,
     pub headers_priority: Option<(u8, u32, bool)>,
     pub headers_order: Option<Vec<http::HeaderName>>,
+    pub initial_stream_window_increment: Option<u32>,
 }
 
 #[derive(Debug)]
@@ -129,6 +130,7 @@ where
                 headers_pseudo_order: config.headers_pseudo_order.clone(),
                 headers_priority: config.headers_priority,
                 headers_order: config.headers_order.clone(),
+                initial_stream_window_increment: config.initial_stream_window_increment,
             }
         }
         let streams = Streams::new(streams_config(&config));

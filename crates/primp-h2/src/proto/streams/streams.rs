@@ -85,6 +85,9 @@ struct Inner {
     /// Whether to include PRIORITY flag in HEADERS frames
     headers_priority: Option<(u8, u32, bool)>,
     headers_order: Option<Vec<http::HeaderName>>,
+
+    /// Extra receive window capacity to add to new locally-initiated streams.
+    initial_stream_window_increment: Option<WindowSize>,
 }
 
 #[derive(Debug)]
@@ -179,6 +182,19 @@ where
         me.actions
             .recv
             .clear_expired_reset_streams(&mut me.store, &mut me.counts);
+    }
+
+    /// Returns the unclaimed connection window capacity, if any.
+    pub fn unclaimed_connection_window(&self) -> Option<WindowSize> {
+        let me = self.inner.lock().unwrap();
+        me.actions.recv.unclaimed_connection_window()
+    }
+
+    /// Increments the connection window by the given amount (matching a
+    /// WINDOW_UPDATE frame that was already buffered).
+    pub fn inc_connection_window(&self, incr: WindowSize) {
+        let mut me = self.inner.lock().unwrap();
+        let _ = me.actions.recv.inc_connection_window(incr);
     }
 
     pub fn poll_complete<T>(
@@ -321,6 +337,13 @@ where
         // closed state.
         debug_assert!(!stream.state.is_closed());
 
+        // Apply initial stream window increment, if configured.
+        // This sends a WINDOW_UPDATE frame to bump the stream's receive window
+        // (e.g. Firefox adds 12451840 to the first stream's receive window).
+        if let Some(incr) = me.initial_stream_window_increment {
+            me.actions.recv.add_stream_window(incr, &mut stream, &mut me.actions.task);
+        }
+
         // TODO: ideally, OpaqueStreamRefs::new would do this, but we're holding
         // the lock, so it can't.
         me.refs += 1;
@@ -441,6 +464,7 @@ impl Inner {
             headers_pseudo_order: config.headers_pseudo_order,
             headers_priority: config.headers_priority,
             headers_order: config.headers_order,
+            initial_stream_window_increment: config.initial_stream_window_increment,
         }))
     }
 
@@ -920,10 +944,7 @@ impl Inner {
         T: AsyncWrite + Unpin,
         B: Buf,
     {
-        let mut send_buffer = send_buffer.inner.lock().unwrap();
-        let send_buffer = &mut *send_buffer;
-
-        // Send WINDOW_UPDATE frames first
+        // Send WINDOW_UPDATE frames first for normal flow control updates
         //
         // TODO: It would probably be better to interleave updates w/ data
         // frames.
@@ -932,14 +953,31 @@ impl Inner {
             .recv
             .poll_complete(cx, &mut self.store, &mut self.counts, dst))?;
 
-        // Send any other pending frames
-        ready!(self.actions.send.poll_complete(
-            cx,
-            send_buffer,
-            &mut self.store,
-            &mut self.counts,
-            dst
-        ))?;
+        // Send any other pending frames (HEADERS, DATA, etc.)
+        {
+            let mut send_buffer = send_buffer.inner.lock().unwrap();
+            let send_buffer = &mut *send_buffer;
+            ready!(self.actions.send.poll_complete(
+                cx,
+                send_buffer,
+                &mut self.store,
+                &mut self.counts,
+                dst
+            ))?;
+        }
+
+        // Send initial stream window updates AFTER HEADERS to ensure ordering:
+        // SETTINGS, WU(conn), HEADERS, WU(stream) — matching real browsers
+        ready!(self
+            .actions
+            .recv
+            .send_initial_window_update(cx, dst, &mut self.store))?;
+
+        // Flush the initial stream WU to the wire immediately.
+        // Without this, the WU sits in the codec buffer and the next poll
+        // may process the server's response (and close the stream) before
+        // the WU is ever flushed.
+        ready!(dst.flush(cx))?;
 
         // Nothing else to do, track the task
         self.actions.task = Some(cx.waker().clone());

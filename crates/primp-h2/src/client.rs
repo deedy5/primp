@@ -137,7 +137,7 @@
 
 use crate::codec::{Codec, SendError, UserError};
 use crate::ext::Protocol;
-use crate::frame::{Headers, Pseudo, Reason, Settings, StreamId};
+use crate::frame::{Headers, Pseudo, Reason, Settings, StreamId, WindowUpdate};
 use crate::proto::{self, Error};
 use crate::{FlowControl, PingPong, RecvStream, SendStream};
 
@@ -320,6 +320,12 @@ pub struct Builder {
 
     /// Initial target window size for new connections.
     initial_target_connection_window_size: Option<u32>,
+
+    /// Extra receive window capacity to add to new streams.
+    ///
+    /// When set, after creating a new locally-initiated stream, a WINDOW_UPDATE
+    /// frame will be sent to increase the stream's receive window by this amount.
+    initial_stream_window_increment: Option<u32>,
 
     /// Maximum amount of bytes to "buffer" for writing per stream.
     max_send_buffer_size: usize,
@@ -670,6 +676,7 @@ impl Builder {
             reset_stream_max: proto::DEFAULT_RESET_STREAM_MAX,
             pending_accept_reset_stream_max: proto::DEFAULT_REMOTE_RESET_STREAM_MAX,
             initial_target_connection_window_size: None,
+            initial_stream_window_increment: None,
             initial_max_send_streams: usize::MAX,
             settings: Default::default(),
             stream_id: 1.into(),
@@ -747,6 +754,22 @@ impl Builder {
     /// ```
     pub fn initial_connection_window_size(&mut self, size: u32) -> &mut Self {
         self.initial_target_connection_window_size = Some(size);
+        self
+    }
+
+    /// Sets extra receive window capacity to add to new locally-initiated streams.
+    ///
+    /// When set, after creating a new stream, a `WINDOW_UPDATE` frame will be
+    /// sent to increase the stream's receive window by this amount.
+    ///
+    /// This is used for browser fingerprinting (e.g. Firefox sends a stream-level
+    /// WINDOW_UPDATE of 12451840 on the first stream).
+    ///
+    /// # Default
+    ///
+    /// Default is `None`.
+    pub fn initial_stream_window_size_increment(&mut self, size: u32) -> &mut Self {
+        self.initial_stream_window_increment = Some(size);
         self
     }
 
@@ -1418,6 +1441,7 @@ where
                 headers_pseudo_order: builder.headers_pseudo_order.clone(),
                 headers_priority: builder.headers_priority,
                 headers_order: builder.headers_order.clone(),
+                initial_stream_window_increment: builder.initial_stream_window_increment,
             },
         );
         let send_request = SendRequest {
@@ -1427,7 +1451,13 @@ where
 
         let mut connection = Connection { inner };
         if let Some(sz) = builder.initial_target_connection_window_size {
-            connection.set_target_window_size(sz);
+            connection.inner.set_target_window_size(sz);
+            // Buffer connection WU immediately so it's sent before any HEADERS frames
+            if let Some(incr) = connection.inner.streams().unclaimed_connection_window() {
+                let frame = WindowUpdate::new(StreamId::zero(), incr);
+                connection.inner.codec.buffer(frame.into()).expect("invalid WINDOW_UPDATE frame");
+                connection.inner.streams().inc_connection_window(incr);
+            }
         }
 
         Ok((send_request, connection))

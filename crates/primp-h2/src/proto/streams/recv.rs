@@ -30,14 +30,16 @@ pub(super) struct Recv {
     /// Any streams with a higher ID are ignored.
     ///
     /// This starts as MAX, but is lowered when a GOAWAY is received.
-    ///
-    /// > After sending a GOAWAY frame, the sender can discard frames for
-    /// > streams initiated by the receiver with identifiers higher than
-    /// > the identified last stream.
     max_stream_id: StreamId,
 
     /// Streams that have pending window updates
     pending_window_updates: store::Queue<stream::NextWindowUpdate>,
+
+    /// A pending initial WINDOW_UPDATE for a newly created stream.
+    /// Set by add_stream_window, consumed in send_initial_window_update.
+    /// Uses a separate path from pending_window_updates to avoid
+    /// setting is_pending_window_update (which would prevent stream release).
+    initial_window_update: Option<(store::Key, WindowSize)>,
 
     /// New streams to be accepted
     pending_accept: store::Queue<stream::NextAccept>,
@@ -99,6 +101,7 @@ impl Recv {
             in_flight_data: 0 as WindowSize,
             next_stream_id: Ok(next_stream_id.into()),
             pending_window_updates: store::Queue::new(),
+            initial_window_update: None,
             last_processed_id: StreamId::ZERO,
             max_stream_id: StreamId::MAX,
             pending_accept: store::Queue::new(),
@@ -500,6 +503,41 @@ impl Recv {
         stream.in_flight_recv_data = 0;
 
         self.clear_recv_buffer(stream);
+    }
+
+    /// Assign extra receive window capacity to a stream.
+    ///
+    /// This queues a WINDOW_UPDATE frame to increase the stream's receive
+    /// window by `incr`. Used for browser fingerprinting (e.g. Firefox adds
+    /// 12451840 to the first stream's receive window).
+    ///
+    /// Unlike `release_capacity`, this does not use the `pending_window_updates`
+    /// queue (which sets `is_pending_window_update` and prevents stream release).
+    /// Instead, it stores a key that will be checked in `send_stream_window_updates`.
+    pub fn add_stream_window(
+        &mut self,
+        incr: WindowSize,
+        stream: &mut store::Ptr,
+        _task: &mut Option<Waker>,
+    ) {
+        tracing::trace!(
+            "add_stream_window; stream={:?}; incr={}; available={}, in_flight={}",
+            stream.id,
+            incr,
+            stream.recv_flow.available(),
+            stream.in_flight_recv_data,
+        );
+
+        // Assign capacity and immediately inc_window to keep the flow control
+        // state balanced (unclaimed stays at 0 so release_capacity doesn't
+        // try to queue a WU for this). The WU frame will be sent later via
+        // initial_window_update in send_stream_window_updates.
+        let _res = stream.recv_flow.assign_capacity(incr);
+        debug_assert!(_res.is_ok());
+        let _res = stream.recv_flow.inc_window(incr);
+        debug_assert!(_res.is_ok());
+
+        self.initial_window_update = Some((stream.key(), incr));
     }
 
     /// Set the "target" connection window size.
@@ -1048,7 +1086,7 @@ impl Recv {
         }
     }
 
-    fn clear_stream_window_update_queue(&mut self, store: &mut Store, counts: &mut Counts) {
+    pub(super) fn clear_stream_window_update_queue(&mut self, store: &mut Store, counts: &mut Counts) {
         while let Some(stream) = self.pending_window_updates.pop(store) {
             counts.transition(stream, |_, stream| {
                 tracing::trace!("clear_stream_window_update_queue; stream={:?}", stream.id);
@@ -1067,6 +1105,14 @@ impl Recv {
         while let Some(stream) = self.pending_accept.pop(store) {
             counts.transition_after(stream, false);
         }
+    }
+
+    pub fn unclaimed_connection_window(&self) -> Option<WindowSize> {
+        self.flow.unclaimed_capacity()
+    }
+
+    pub fn inc_connection_window(&mut self, incr: WindowSize) {
+        self.flow.inc_window(incr).expect("connection window overflow");
     }
 
     pub fn poll_complete<T, B>(
@@ -1171,6 +1217,28 @@ impl Recv {
                 }
             })
         }
+    }
+
+    /// Send any buffered initial stream WINDOW_UPDATE for a newly created
+    /// stream (from `initial_stream_window_increment`).
+    pub fn send_initial_window_update<T, B>(
+        &mut self,
+        cx: &mut Context,
+        dst: &mut Codec<T, Prioritized<B>>,
+        store: &mut Store,
+    ) -> Poll<io::Result<()>>
+    where
+        T: AsyncWrite + Unpin,
+        B: Buf,
+    {
+        if let Some((key, incr)) = self.initial_window_update.take() {
+            ready!(dst.poll_ready(cx))?;
+            let stream = &mut store[key];
+            let frame = frame::WindowUpdate::new(stream.id, incr);
+            dst.buffer(frame.into())
+                .expect("invalid WINDOW_UPDATE frame");
+        }
+        Poll::Ready(Ok(()))
     }
 
     pub fn next_incoming(&mut self, store: &mut Store) -> Option<store::Key> {

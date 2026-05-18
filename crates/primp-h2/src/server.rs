@@ -1496,6 +1496,7 @@ where
                             headers_pseudo_order: None,
                             headers_priority: None,
                             headers_order: None,
+                            initial_stream_window_increment: None,
                         },
                     );
 

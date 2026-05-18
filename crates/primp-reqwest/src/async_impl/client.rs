@@ -242,6 +242,8 @@ struct Config {
     http2_headers_order: Option<Vec<http::HeaderName>>,
     #[cfg(feature = "http2")]
     http2_initial_stream_id: Option<u32>,
+    #[cfg(feature = "http2")]
+    http2_initial_stream_window_size_increment: Option<u32>,
     local_address: Option<IpAddr>,
     #[cfg(any(
         target_os = "android",
@@ -386,6 +388,8 @@ impl ClientBuilder {
                 http2_headers_order: None,
                 #[cfg(feature = "http2")]
                 http2_initial_stream_id: None,
+                #[cfg(feature = "http2")]
+                http2_initial_stream_window_size_increment: None,
                 local_address: None,
                 #[cfg(any(
                     target_os = "android",
@@ -1007,6 +1011,9 @@ impl ClientBuilder {
             }
             if let Some(stream_id) = config.http2_initial_stream_id {
                 builder.http2_initial_stream_id(stream_id);
+            }
+            if let Some(incr) = config.http2_initial_stream_window_size_increment {
+                builder.http2_initial_stream_window_size_increment(incr);
             }
         }
 
@@ -1787,6 +1794,22 @@ impl ClientBuilder {
     #[cfg_attr(docsrs, doc(cfg(feature = "http2")))]
     pub fn http2_initial_stream_id(mut self, stream_id: u32) -> ClientBuilder {
         self.config.http2_initial_stream_id = Some(stream_id);
+        self
+    }
+
+    /// Sets extra receive window capacity to add to new locally-initiated streams.
+    ///
+    /// When set, after creating a new stream, a WINDOW_UPDATE frame will be sent
+    /// to increase the stream's receive window by this amount.
+    /// This is used for browser fingerprinting (e.g. Firefox adds 12451840
+    /// to the first stream's receive window).
+    #[cfg(feature = "http2")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "http2")))]
+    pub fn http2_initial_stream_window_size_increment(
+        mut self,
+        sz: impl Into<Option<u32>>,
+    ) -> ClientBuilder {
+        self.config.http2_initial_stream_window_size_increment = sz.into();
         self
     }
 

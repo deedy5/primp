@@ -693,6 +693,9 @@ fn apply_http2_settings(
     if let Some(stream_id) = http2.initial_stream_id {
         builder = builder.http2_initial_stream_id(stream_id);
     }
+    if let Some(incr) = http2.initial_stream_window_size_increment {
+        builder = builder.http2_initial_stream_window_size_increment(incr);
+    }
 
     builder
 }

@@ -135,6 +135,7 @@ fn build_http2_settings() -> crate::imp::Http2Data {
         headers_priority: Some((41, 0, false)),
         headers_order: Some(firefox_headers_order().clone()),
         initial_stream_id: Some(3),
+        initial_stream_window_size_increment: Some(12451840),
         ..Default::default()
     }
 }

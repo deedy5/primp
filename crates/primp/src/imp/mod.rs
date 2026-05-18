@@ -160,6 +160,14 @@ pub struct Http2Data {
     /// Default: 1 (standard HTTP/2 behavior)
     /// Firefox uses 3 (skips stream 1)
     pub initial_stream_id: Option<u32>,
+
+    /// Extra receive window capacity to add to new locally-initiated streams.
+    ///
+    /// When set, after creating a new stream, a WINDOW_UPDATE frame will be sent
+    /// to increase the stream's receive window by this amount.
+    /// This is used for browser fingerprinting (e.g. Firefox adds 12451840
+    /// to the first stream's receive window).
+    pub initial_stream_window_size_increment: Option<u32>,
 }
 
 impl Default for Http2Data {
@@ -179,6 +187,7 @@ impl Default for Http2Data {
             headers_priority: None,
             headers_order: None,
             initial_stream_id: None,
+            initial_stream_window_size_increment: None,
         }
     }
 }

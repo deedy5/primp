@@ -79,6 +79,12 @@ pub struct Config {
     /// Whether to include PRIORITY flag in HEADERS frames
     pub headers_priority: Option<(u8, u32, bool)>,
     pub headers_order: Option<Vec<http::HeaderName>>,
+
+    /// Extra receive window capacity to add to new locally-initiated streams.
+    ///
+    /// When set, after creating a new stream, a WINDOW_UPDATE frame will be
+    /// buffered to increase the stream's receive window by this amount.
+    pub initial_stream_window_increment: Option<WindowSize>,
 }
 
 trait DebugStructExt<'a, 'b> {
