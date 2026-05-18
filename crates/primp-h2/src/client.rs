@@ -1455,7 +1455,11 @@ where
             // Buffer connection WU immediately so it's sent before any HEADERS frames
             if let Some(incr) = connection.inner.streams().unclaimed_connection_window() {
                 let frame = WindowUpdate::new(StreamId::zero(), incr);
-                connection.inner.codec.buffer(frame.into()).expect("invalid WINDOW_UPDATE frame");
+                connection
+                    .inner
+                    .codec
+                    .buffer(frame.into())
+                    .expect("invalid WINDOW_UPDATE frame");
                 connection.inner.streams().inc_connection_window(incr);
             }
         }

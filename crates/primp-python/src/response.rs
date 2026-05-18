@@ -108,7 +108,13 @@ impl Response {
 
     #[getter]
     fn text<'rs>(&mut self, py: Python<'rs>) -> PyResult<Bound<'rs, PyString>> {
-        response_shared::text(&self.resp, &mut self._content, &mut self._encoding, self.streaming, py)
+        response_shared::text(
+            &self.resp,
+            &mut self._content,
+            &mut self._encoding,
+            self.streaming,
+            py,
+        )
     }
 
     fn json<'rs>(&mut self, py: Python<'rs>) -> PyResult<Bound<'rs, PyAny>> {

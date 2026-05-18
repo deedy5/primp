@@ -16,19 +16,23 @@ pub(crate) fn build_firefox_settings(
     let browser_emulator = match firefox {
         Impersonate::FirefoxV140 => {
             static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
-            EMU.get_or_init(|| Arc::new(new_firefox_emulator(140))).clone()
+            EMU.get_or_init(|| Arc::new(new_firefox_emulator(140)))
+                .clone()
         }
         Impersonate::FirefoxV146 => {
             static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
-            EMU.get_or_init(|| Arc::new(new_firefox_emulator(146))).clone()
+            EMU.get_or_init(|| Arc::new(new_firefox_emulator(146)))
+                .clone()
         }
         Impersonate::FirefoxV147 => {
             static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
-            EMU.get_or_init(|| Arc::new(new_firefox_emulator(147))).clone()
+            EMU.get_or_init(|| Arc::new(new_firefox_emulator(147)))
+                .clone()
         }
         Impersonate::FirefoxV148 => {
             static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
-            EMU.get_or_init(|| Arc::new(new_firefox_emulator(148))).clone()
+            EMU.get_or_init(|| Arc::new(new_firefox_emulator(148)))
+                .clone()
         }
         _ => unreachable!(),
     };
@@ -96,14 +100,26 @@ fn firefox_base_headers() -> &'static http::HeaderMap {
     static BASE: OnceLock<http::HeaderMap> = OnceLock::new();
     BASE.get_or_init(|| {
         let mut headers = http::HeaderMap::with_capacity(12);
-        headers.insert(http::header::ACCEPT, http::HeaderValue::from_static(
-            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        ));
-        headers.insert("accept-language", http::HeaderValue::from_static("en-US,en;q=0.5"));
-        headers.insert("accept-encoding", http::HeaderValue::from_static("gzip, deflate, br, zstd"));
+        headers.insert(
+            http::header::ACCEPT,
+            http::HeaderValue::from_static(
+                "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            ),
+        );
+        headers.insert(
+            "accept-language",
+            http::HeaderValue::from_static("en-US,en;q=0.5"),
+        );
+        headers.insert(
+            "accept-encoding",
+            http::HeaderValue::from_static("gzip, deflate, br, zstd"),
+        );
         headers.insert("dnt", http::HeaderValue::from_static("1"));
         headers.insert("sec-gpc", http::HeaderValue::from_static("1"));
-        headers.insert("upgrade-insecure-requests", http::HeaderValue::from_static("1"));
+        headers.insert(
+            "upgrade-insecure-requests",
+            http::HeaderValue::from_static("1"),
+        );
         headers.insert("sec-fetch-dest", http::HeaderValue::from_static("document"));
         headers.insert("sec-fetch-mode", http::HeaderValue::from_static("navigate"));
         headers.insert("sec-fetch-site", http::HeaderValue::from_static("none"));
@@ -117,7 +133,10 @@ fn firefox_base_headers() -> &'static http::HeaderMap {
 /// Builds default headers for Firefox.
 fn build_headers(user_agent: &'static str) -> http::HeaderMap {
     let mut headers = firefox_base_headers().clone();
-    headers.insert(http::header::USER_AGENT, http::HeaderValue::from_static(user_agent));
+    headers.insert(
+        http::header::USER_AGENT,
+        http::HeaderValue::from_static(user_agent),
+    );
     headers
 }
 

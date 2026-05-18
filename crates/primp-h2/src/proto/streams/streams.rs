@@ -341,7 +341,9 @@ where
         // This sends a WINDOW_UPDATE frame to bump the stream's receive window
         // (e.g. Firefox adds 12451840 to the first stream's receive window).
         if let Some(incr) = me.initial_stream_window_increment {
-            me.actions.recv.add_stream_window(incr, &mut stream, &mut me.actions.task);
+            me.actions
+                .recv
+                .add_stream_window(incr, &mut stream, &mut me.actions.task);
         }
 
         // TODO: ideally, OpaqueStreamRefs::new would do this, but we're holding

@@ -94,7 +94,13 @@ impl AsyncResponse {
     /// Get response text (sync - blocks until content is read)
     #[getter]
     fn text<'rs>(&mut self, py: Python<'rs>) -> PyResult<Bound<'rs, PyString>> {
-        response_shared::text(&self.resp, &mut self._content, &mut self._encoding, self.streaming, py)
+        response_shared::text(
+            &self.resp,
+            &mut self._content,
+            &mut self._encoding,
+            self.streaming,
+            py,
+        )
     }
 
     /// Get response headers (sync)

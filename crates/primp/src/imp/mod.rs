@@ -396,62 +396,68 @@ pub(crate) fn os_platform(os: ImpersonateOS) -> &'static str {
 /// Standard Chrome/Edge/Opera header order with sec-ch-ua first.
 pub(crate) fn header_order_sec_chua_first() -> &'static Vec<http::HeaderName> {
     static ORDER: OnceLock<Vec<http::HeaderName>> = OnceLock::new();
-    ORDER.get_or_init(|| vec![
-        http::HeaderName::from_static("sec-ch-ua"),
-        http::HeaderName::from_static("sec-ch-ua-mobile"),
-        http::HeaderName::from_static("sec-ch-ua-platform"),
-        http::HeaderName::from_static("upgrade-insecure-requests"),
-        http::HeaderName::from_static("user-agent"),
-        http::HeaderName::from_static("accept"),
-        http::HeaderName::from_static("sec-fetch-site"),
-        http::HeaderName::from_static("sec-fetch-mode"),
-        http::HeaderName::from_static("sec-fetch-user"),
-        http::HeaderName::from_static("sec-fetch-dest"),
-        http::HeaderName::from_static("accept-encoding"),
-        http::HeaderName::from_static("accept-language"),
-        http::HeaderName::from_static("priority"),
-    ])
+    ORDER.get_or_init(|| {
+        vec![
+            http::HeaderName::from_static("sec-ch-ua"),
+            http::HeaderName::from_static("sec-ch-ua-mobile"),
+            http::HeaderName::from_static("sec-ch-ua-platform"),
+            http::HeaderName::from_static("upgrade-insecure-requests"),
+            http::HeaderName::from_static("user-agent"),
+            http::HeaderName::from_static("accept"),
+            http::HeaderName::from_static("sec-fetch-site"),
+            http::HeaderName::from_static("sec-fetch-mode"),
+            http::HeaderName::from_static("sec-fetch-user"),
+            http::HeaderName::from_static("sec-fetch-dest"),
+            http::HeaderName::from_static("accept-encoding"),
+            http::HeaderName::from_static("accept-language"),
+            http::HeaderName::from_static("priority"),
+        ]
+    })
 }
 
 /// Chrome 148+ / Edge 146+ header order with sec-ch-ua after sec-fetch-*.
 pub(crate) fn header_order_upgrade_first_sec_chua_last() -> &'static Vec<http::HeaderName> {
     static ORDER: OnceLock<Vec<http::HeaderName>> = OnceLock::new();
-    ORDER.get_or_init(|| vec![
-        http::HeaderName::from_static("upgrade-insecure-requests"),
-        http::HeaderName::from_static("user-agent"),
-        http::HeaderName::from_static("accept"),
-        http::HeaderName::from_static("sec-fetch-site"),
-        http::HeaderName::from_static("sec-fetch-mode"),
-        http::HeaderName::from_static("sec-fetch-user"),
-        http::HeaderName::from_static("sec-fetch-dest"),
-        http::HeaderName::from_static("sec-ch-ua"),
-        http::HeaderName::from_static("sec-ch-ua-mobile"),
-        http::HeaderName::from_static("sec-ch-ua-platform"),
-        http::HeaderName::from_static("accept-encoding"),
-        http::HeaderName::from_static("accept-language"),
-        http::HeaderName::from_static("priority"),
-    ])
+    ORDER.get_or_init(|| {
+        vec![
+            http::HeaderName::from_static("upgrade-insecure-requests"),
+            http::HeaderName::from_static("user-agent"),
+            http::HeaderName::from_static("accept"),
+            http::HeaderName::from_static("sec-fetch-site"),
+            http::HeaderName::from_static("sec-fetch-mode"),
+            http::HeaderName::from_static("sec-fetch-user"),
+            http::HeaderName::from_static("sec-fetch-dest"),
+            http::HeaderName::from_static("sec-ch-ua"),
+            http::HeaderName::from_static("sec-ch-ua-mobile"),
+            http::HeaderName::from_static("sec-ch-ua-platform"),
+            http::HeaderName::from_static("accept-encoding"),
+            http::HeaderName::from_static("accept-language"),
+            http::HeaderName::from_static("priority"),
+        ]
+    })
 }
 
 /// Opera 131+ header order with cache-control first.
 pub(crate) fn header_order_cache_control_first() -> &'static Vec<http::HeaderName> {
     static ORDER: OnceLock<Vec<http::HeaderName>> = OnceLock::new();
-    ORDER.get_or_init(|| vec![
-        http::HeaderName::from_static("cache-control"),
-        http::HeaderName::from_static("sec-ch-ua"),
-        http::HeaderName::from_static("sec-ch-ua-mobile"),
-        http::HeaderName::from_static("sec-ch-ua-platform"),
-        http::HeaderName::from_static("upgrade-insecure-requests"),
-        http::HeaderName::from_static("user-agent"),
-        http::HeaderName::from_static("accept"),
-        http::HeaderName::from_static("sec-fetch-site"),
-        http::HeaderName::from_static("sec-fetch-mode"),
-        http::HeaderName::from_static("sec-fetch-user"),
-        http::HeaderName::from_static("sec-fetch-dest"),
-        http::HeaderName::from_static("accept-encoding"),
-        http::HeaderName::from_static("accept-language"),
-        http::HeaderName::from_static("priority"),
-    ])
+    ORDER.get_or_init(|| {
+        vec![
+            http::HeaderName::from_static("cache-control"),
+            http::HeaderName::from_static("sec-ch-ua"),
+            http::HeaderName::from_static("sec-ch-ua-mobile"),
+            http::HeaderName::from_static("sec-ch-ua-platform"),
+            http::HeaderName::from_static("upgrade-insecure-requests"),
+            http::HeaderName::from_static("user-agent"),
+            http::HeaderName::from_static("accept"),
+            http::HeaderName::from_static("sec-fetch-site"),
+            http::HeaderName::from_static("sec-fetch-mode"),
+            http::HeaderName::from_static("sec-fetch-user"),
+            http::HeaderName::from_static("sec-fetch-dest"),
+            http::HeaderName::from_static("accept-encoding"),
+            http::HeaderName::from_static("accept-language"),
+            http::HeaderName::from_static("priority"),
+        ]
+    })
 }
 
 /// Gets browser settings for impersonation.
@@ -477,16 +483,12 @@ pub fn get_browser_settings(
         | Impersonate::ChromeV145
         | Impersonate::ChromeV146
         | Impersonate::ChromeV147
-        | Impersonate::ChromeV148 => {
-            chrome::build_chrome_settings(version, os_type)
-        }
+        | Impersonate::ChromeV148 => chrome::build_chrome_settings(version, os_type),
         Impersonate::EdgeV144
         | Impersonate::EdgeV145
         | Impersonate::EdgeV146
         | Impersonate::EdgeV147
-        | Impersonate::EdgeV148 => {
-            edge::build_edge_settings(version, os_type)
-        }
+        | Impersonate::EdgeV148 => edge::build_edge_settings(version, os_type),
         Impersonate::OperaV126
         | Impersonate::OperaV127
         | Impersonate::OperaV128

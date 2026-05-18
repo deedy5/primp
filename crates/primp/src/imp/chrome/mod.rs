@@ -21,12 +21,12 @@
 //! ```
 
 pub use crate::imp::Impersonate;
+#[cfg(feature = "http2")]
+use crate::imp::{PseudoId, PseudoOrder, SettingId, SettingsOrder};
 use http::header::*;
 use rustls::client::{BrowserEmulator, BrowserType, BrowserVersion};
 use rustls::crypto::emulation;
 use std::sync::{Arc, OnceLock};
-#[cfg(feature = "http2")]
-use crate::imp::{PseudoId, PseudoOrder, SettingId, SettingsOrder};
 
 /// Builds browser settings for a specific Chrome version and OS.
 pub(crate) fn build_chrome_settings(
@@ -123,11 +123,21 @@ fn build_user_agent(chrome: Impersonate, os: crate::imp::ImpersonateOS) -> &'sta
 /// Builds a sec-ch-ua header value for a Chrome version and OS.
 fn build_sec_ch_ua(chrome: Impersonate, _os: crate::imp::ImpersonateOS) -> &'static str {
     match chrome {
-        Impersonate::ChromeV144 => r#""Not(A:Brand";v="8", "Chromium";v="144", "Google Chrome";v="144""#,
-        Impersonate::ChromeV145 => r#""Not:A-Brand";v="99", "Google Chrome";v="145", "Chromium";v="145""#,
-        Impersonate::ChromeV146 => r#""Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146""#,
-        Impersonate::ChromeV147 => r#""Google Chrome";v="147", "Not.A/Brand";v="8", "Chromium";v="147""#,
-        Impersonate::ChromeV148 => r#""Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99""#,
+        Impersonate::ChromeV144 => {
+            r#""Not(A:Brand";v="8", "Chromium";v="144", "Google Chrome";v="144""#
+        }
+        Impersonate::ChromeV145 => {
+            r#""Not:A-Brand";v="99", "Google Chrome";v="145", "Chromium";v="145""#
+        }
+        Impersonate::ChromeV146 => {
+            r#""Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146""#
+        }
+        Impersonate::ChromeV147 => {
+            r#""Google Chrome";v="147", "Not.A/Brand";v="8", "Chromium";v="147""#
+        }
+        Impersonate::ChromeV148 => {
+            r#""Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99""#
+        }
         _ => unreachable!(),
     }
 }
@@ -159,23 +169,28 @@ fn chrome_emulator(chrome: Impersonate) -> Arc<BrowserEmulator> {
     match chrome {
         Impersonate::ChromeV144 => {
             static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
-            EMU.get_or_init(|| Arc::new(new_chrome_emulator(144))).clone()
+            EMU.get_or_init(|| Arc::new(new_chrome_emulator(144)))
+                .clone()
         }
         Impersonate::ChromeV145 => {
             static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
-            EMU.get_or_init(|| Arc::new(new_chrome_emulator(145))).clone()
+            EMU.get_or_init(|| Arc::new(new_chrome_emulator(145)))
+                .clone()
         }
         Impersonate::ChromeV146 => {
             static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
-            EMU.get_or_init(|| Arc::new(new_chrome_emulator(146))).clone()
+            EMU.get_or_init(|| Arc::new(new_chrome_emulator(146)))
+                .clone()
         }
         Impersonate::ChromeV147 => {
             static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
-            EMU.get_or_init(|| Arc::new(new_chrome_emulator(147))).clone()
+            EMU.get_or_init(|| Arc::new(new_chrome_emulator(147)))
+                .clone()
         }
         Impersonate::ChromeV148 => {
             static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
-            EMU.get_or_init(|| Arc::new(new_chrome_emulator(148))).clone()
+            EMU.get_or_init(|| Arc::new(new_chrome_emulator(148)))
+                .clone()
         }
         _ => unreachable!(),
     }

@@ -1086,7 +1086,11 @@ impl Recv {
         }
     }
 
-    pub(super) fn clear_stream_window_update_queue(&mut self, store: &mut Store, counts: &mut Counts) {
+    pub(super) fn clear_stream_window_update_queue(
+        &mut self,
+        store: &mut Store,
+        counts: &mut Counts,
+    ) {
         while let Some(stream) = self.pending_window_updates.pop(store) {
             counts.transition(stream, |_, stream| {
                 tracing::trace!("clear_stream_window_update_queue; stream={:?}", stream.id);
@@ -1112,7 +1116,9 @@ impl Recv {
     }
 
     pub fn inc_connection_window(&mut self, incr: WindowSize) {
-        self.flow.inc_window(incr).expect("connection window overflow");
+        self.flow
+            .inc_window(incr)
+            .expect("connection window overflow");
     }
 
     pub fn poll_complete<T, B>(

@@ -22,12 +22,12 @@
 //! ```
 
 pub use crate::imp::Impersonate;
+#[cfg(feature = "http2")]
+use crate::imp::{PseudoId, PseudoOrder, SettingId, SettingsOrder};
 use http::header::*;
 use rustls::client::{BrowserEmulator, BrowserType, BrowserVersion};
 use rustls::crypto::emulation;
 use std::sync::{Arc, OnceLock};
-#[cfg(feature = "http2")]
-use crate::imp::{PseudoId, PseudoOrder, SettingId, SettingsOrder};
 
 /// Builds browser settings for a specific Opera version and OS.
 pub(crate) fn build_opera_settings(
@@ -180,27 +180,33 @@ fn opera_emulator(opera: Impersonate) -> Arc<BrowserEmulator> {
     match opera {
         Impersonate::OperaV126 => {
             static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
-            EMU.get_or_init(|| Arc::new(new_opera_emulator(126))).clone()
+            EMU.get_or_init(|| Arc::new(new_opera_emulator(126)))
+                .clone()
         }
         Impersonate::OperaV127 => {
             static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
-            EMU.get_or_init(|| Arc::new(new_opera_emulator(127))).clone()
+            EMU.get_or_init(|| Arc::new(new_opera_emulator(127)))
+                .clone()
         }
         Impersonate::OperaV128 => {
             static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
-            EMU.get_or_init(|| Arc::new(new_opera_emulator(128))).clone()
+            EMU.get_or_init(|| Arc::new(new_opera_emulator(128)))
+                .clone()
         }
         Impersonate::OperaV129 => {
             static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
-            EMU.get_or_init(|| Arc::new(new_opera_emulator(129))).clone()
+            EMU.get_or_init(|| Arc::new(new_opera_emulator(129)))
+                .clone()
         }
         Impersonate::OperaV130 => {
             static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
-            EMU.get_or_init(|| Arc::new(new_opera_emulator(130))).clone()
+            EMU.get_or_init(|| Arc::new(new_opera_emulator(130)))
+                .clone()
         }
         Impersonate::OperaV131 => {
             static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
-            EMU.get_or_init(|| Arc::new(new_opera_emulator(131))).clone()
+            EMU.get_or_init(|| Arc::new(new_opera_emulator(131)))
+                .clone()
         }
         _ => unreachable!(),
     }

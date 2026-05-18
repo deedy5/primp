@@ -21,11 +21,11 @@
 //! ```
 
 pub use crate::imp::Impersonate;
+#[cfg(feature = "http2")]
+use crate::imp::{PseudoId, PseudoOrder, SettingId, SettingsOrder};
 use rustls::client::{BrowserEmulator, BrowserEmulatorOS, BrowserType, BrowserVersion};
 use rustls::crypto::emulation;
 use std::sync::{Arc, OnceLock};
-#[cfg(feature = "http2")]
-use crate::imp::{PseudoId, PseudoOrder, SettingId, SettingsOrder};
 
 /// Builds browser settings for a specific Safari version and OS.
 pub(crate) fn build_safari_settings(
@@ -87,7 +87,10 @@ fn build_user_agent(safari: Impersonate, os: crate::imp::ImpersonateOS) -> &'sta
 /// Builds default headers for Safari using cached base.
 fn build_safari_base_headers(user_agent: &'static str) -> http::HeaderMap {
     let mut headers = safari_base_headers().clone();
-    headers.insert(http::header::USER_AGENT, http::HeaderValue::from_static(user_agent));
+    headers.insert(
+        http::header::USER_AGENT,
+        http::HeaderValue::from_static(user_agent),
+    );
     headers
 }
 
@@ -122,7 +125,9 @@ fn safari_emulator(safari: Impersonate, browser_os: BrowserEmulatorOS) -> Browse
                 EMU_IOS.get_or_init(new_safari_26_3_ios_emulator).clone()
             } else {
                 static EMU_MACOS: OnceLock<BrowserEmulator> = OnceLock::new();
-                EMU_MACOS.get_or_init(new_safari_26_3_macos_emulator).clone()
+                EMU_MACOS
+                    .get_or_init(new_safari_26_3_macos_emulator)
+                    .clone()
             }
         }
         _ => unreachable!(),
@@ -171,11 +176,20 @@ fn safari_base_headers() -> &'static http::HeaderMap {
     static BASE: OnceLock<http::HeaderMap> = OnceLock::new();
     BASE.get_or_init(|| {
         let mut headers = http::HeaderMap::with_capacity(8);
-        headers.insert(http::header::ACCEPT, http::HeaderValue::from_static(
-            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        ));
-        headers.insert(http::header::ACCEPT_LANGUAGE, http::HeaderValue::from_static("en-US,en;q=0.9"));
-        headers.insert("accept-encoding", http::HeaderValue::from_static("gzip, deflate, br"));
+        headers.insert(
+            http::header::ACCEPT,
+            http::HeaderValue::from_static(
+                "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            ),
+        );
+        headers.insert(
+            http::header::ACCEPT_LANGUAGE,
+            http::HeaderValue::from_static("en-US,en;q=0.9"),
+        );
+        headers.insert(
+            "accept-encoding",
+            http::HeaderValue::from_static("gzip, deflate, br"),
+        );
         headers.insert("sec-fetch-dest", http::HeaderValue::from_static("document"));
         headers.insert("sec-fetch-mode", http::HeaderValue::from_static("navigate"));
         headers.insert("sec-fetch-site", http::HeaderValue::from_static("none"));

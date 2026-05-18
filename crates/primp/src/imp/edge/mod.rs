@@ -22,12 +22,12 @@
 //! ```
 
 pub use crate::imp::Impersonate;
+#[cfg(feature = "http2")]
+use crate::imp::{PseudoId, PseudoOrder, SettingId, SettingsOrder};
 use http::header::*;
 use rustls::client::{BrowserEmulator, BrowserType, BrowserVersion};
 use rustls::crypto::emulation;
 use std::sync::{Arc, OnceLock};
-#[cfg(feature = "http2")]
-use crate::imp::{PseudoId, PseudoOrder, SettingId, SettingsOrder};
 
 /// Builds browser settings for a specific Edge version and OS.
 pub(crate) fn build_edge_settings(
