@@ -27,7 +27,9 @@ use crate::enums::{
 use crate::error::{Error, PeerIncompatible, PeerMisbehaved};
 use crate::hash_hs::HandshakeHashBuffer;
 use crate::log::{debug, trace};
-use crate::msgs::base::{Payload, PayloadU16, PayloadU8};
+use crate::msgs::base::Payload;
+#[cfg(feature = "impersonate")]
+use crate::msgs::base::{PayloadU16, PayloadU8};
 use crate::msgs::enums::{Compression, ExtensionType};
 use crate::msgs::handshake::{
     CertificateStatusRequest, ClientExtensions, ClientExtensionsInput, ClientHelloPayload,
@@ -51,10 +53,12 @@ use crate::SupportedCipherSuite;
 ///
 /// Placeholder for the first/trailing GREASE extension type.
 /// Must match the value used in contiguous_extensions and unknown_extensions.
+#[cfg(feature = "impersonate")]
 const GREASE_EXT_FIRST_PLACEHOLDER: u16 = 0x6a6a;
 
 /// Placeholder for the last GREASE extension type.
 /// Must match the value used in contiguous_extensions and unknown_extensions.
+#[cfg(feature = "impersonate")]
 const GREASE_EXT_LAST_PLACEHOLDER: u16 = 0x0a0a;
 
 #[cfg(feature = "impersonate")]
@@ -256,10 +260,16 @@ fn emit_client_hello_for_retry(
     // builder semantics.
     let forbids_tls12 = cx.common.is_quic() || ech_state.is_some();
 
+    #[cfg(not(feature = "impersonate"))]
+    let supported_versions = SupportedProtocolVersions {
+        tls12: config.supports_version(ProtocolVersion::TLSv1_2) && !forbids_tls12,
+        tls13: config.supports_version(ProtocolVersion::TLSv1_3),
+    };
+
+    #[cfg(feature = "impersonate")]
     let mut supported_versions = SupportedProtocolVersions {
         tls12: config.supports_version(ProtocolVersion::TLSv1_2) && !forbids_tls12,
         tls13: config.supports_version(ProtocolVersion::TLSv1_3),
-        #[cfg(feature = "impersonate")]
         grease: false,
     };
 
@@ -296,7 +306,7 @@ fn emit_client_hello_for_retry(
         });
 
     #[cfg(not(feature = "impersonate"))]
-    let mut named_groups_vec: Vec<NamedGroup> = config
+    let named_groups_vec: Vec<NamedGroup> = config
         .provider
         .kx_groups
         .iter()
@@ -532,6 +542,7 @@ fn emit_client_hello_for_retry(
             // see if we can send a second KeyShare for "free".  We only do this if the same
             // algorithm is also supported separately by our provider for this version
             // (`find_kx_group` looks that up).
+            #[cfg(feature = "impersonate")]
             let hybrid_group = key_share.hybrid_component().map(|(g, _)| g);
             if let Some((component_group, component_share)) =
                 key_share.hybrid_component().filter(|(group, _)| {

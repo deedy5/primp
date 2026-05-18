@@ -196,7 +196,7 @@ async fn stream_good_impl(vectored: bool, bufread: bool) -> io::Result<()> {
     }
 
     let mut buf = String::new();
-    dbg!(server.process_new_packets()).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    dbg!(server.process_new_packets()).map_err(io::Error::other)?;
     dbg!(server.reader().read_to_string(&mut buf))?;
     assert_eq!(buf, "Hello World!");
 
