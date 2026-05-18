@@ -22,26 +22,23 @@
 //! ```
 
 pub use crate::imp::Impersonate;
+use http::header::*;
+use rustls::client::{BrowserEmulator, BrowserType, BrowserVersion};
+use rustls::crypto::emulation;
+use std::sync::{Arc, OnceLock};
+#[cfg(feature = "http2")]
+use crate::imp::{PseudoId, PseudoOrder, SettingId, SettingsOrder};
 
 /// Builds browser settings for a specific Edge version and OS.
 pub(crate) fn build_edge_settings(
     edge: Impersonate,
     os: crate::imp::ImpersonateOS,
 ) -> crate::imp::BrowserSettings {
-    use http::header::*;
-    use rustls::client::{BrowserEmulator, BrowserType, BrowserVersion};
-    use rustls::crypto::emulation;
-    use std::sync::{Arc, OnceLock};
-
     let user_agent = build_user_agent(edge, os);
     let sec_ch_ua = build_sec_ch_ua(edge, os);
 
-    let mut headers = http::HeaderMap::with_capacity(13);
+    let mut headers = base_edge_headers().clone();
     headers.insert(USER_AGENT, http::HeaderValue::from_static(user_agent));
-    headers.insert(
-        "upgrade-insecure-requests",
-        http::HeaderValue::from_static("1"),
-    );
     headers.insert("sec-ch-ua", http::HeaderValue::from_static(sec_ch_ua));
     headers.insert(
         "sec-ch-ua-mobile",
@@ -58,107 +55,16 @@ pub(crate) fn build_edge_settings(
     );
     headers.insert(
         "sec-ch-ua-platform",
-        http::HeaderValue::from_static(os_platform(os)),
+        http::HeaderValue::from_static(crate::imp::os_platform(os)),
     );
-    headers.insert("sec-fetch-dest", http::HeaderValue::from_static("document"));
-    headers.insert("sec-fetch-mode", http::HeaderValue::from_static("navigate"));
-    headers.insert("sec-fetch-site", http::HeaderValue::from_static("none"));
-    headers.insert("sec-fetch-user", http::HeaderValue::from_static("?1"));
-    headers.insert(ACCEPT, http::HeaderValue::from_static("text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"));
-    headers.insert(
-        "accept-encoding",
-        http::HeaderValue::from_static("gzip, deflate, br, zstd"),
-    );
-    headers.insert(
-        "accept-language",
-        http::HeaderValue::from_static("en-US,en;q=0.9"),
-    );
-    headers.insert("priority", http::HeaderValue::from_static("u=0, i"));
 
     // Get cached browser emulator for Edge (avoids Vec allocations on each call)
-    let browser_emulator = match edge {
-        Impersonate::EdgeV144 => {
-            static EDGE_144: OnceLock<BrowserEmulator> = OnceLock::new();
-            EDGE_144
-                .get_or_init(|| {
-                    let mut emulator =
-                        BrowserEmulator::new(BrowserType::Edge, BrowserVersion::new(144, 0, 0));
-                    emulator.cipher_suites = Some(emulation::cipher_suites::EDGE.to_vec());
-                    emulator.signature_algorithms =
-                        Some(emulation::signature_algorithms::EDGE.to_vec());
-                    emulator.named_groups = Some(emulation::named_groups::EDGE.to_vec());
-                    emulator.extension_order_seed = Some(emulation::extension_order::EDGE);
-                    emulator
-                })
-                .clone()
-        }
-        Impersonate::EdgeV145 => {
-            static EDGE_145: OnceLock<BrowserEmulator> = OnceLock::new();
-            EDGE_145
-                .get_or_init(|| {
-                    let mut emulator =
-                        BrowserEmulator::new(BrowserType::Edge, BrowserVersion::new(145, 0, 0));
-                    emulator.cipher_suites = Some(emulation::cipher_suites::EDGE.to_vec());
-                    emulator.signature_algorithms =
-                        Some(emulation::signature_algorithms::EDGE.to_vec());
-                    emulator.named_groups = Some(emulation::named_groups::EDGE.to_vec());
-                    emulator.extension_order_seed = Some(emulation::extension_order::EDGE);
-                    emulator
-                })
-                .clone()
-        }
-        Impersonate::EdgeV146 => {
-            static EDGE_146: OnceLock<BrowserEmulator> = OnceLock::new();
-            EDGE_146
-                .get_or_init(|| {
-                    let mut emulator =
-                        BrowserEmulator::new(BrowserType::Edge, BrowserVersion::new(146, 0, 0));
-                    emulator.cipher_suites = Some(emulation::cipher_suites::EDGE.to_vec());
-                    emulator.signature_algorithms =
-                        Some(emulation::signature_algorithms::EDGE.to_vec());
-                    emulator.named_groups = Some(emulation::named_groups::EDGE.to_vec());
-                    emulator.extension_order_seed = Some(emulation::extension_order::EDGE);
-                    emulator
-                })
-                .clone()
-        }
-        Impersonate::EdgeV147 => {
-            static EDGE_147: OnceLock<BrowserEmulator> = OnceLock::new();
-            EDGE_147
-                .get_or_init(|| {
-                    let mut emulator =
-                        BrowserEmulator::new(BrowserType::Edge, BrowserVersion::new(147, 0, 0));
-                    emulator.cipher_suites = Some(emulation::cipher_suites::EDGE.to_vec());
-                    emulator.signature_algorithms =
-                        Some(emulation::signature_algorithms::EDGE.to_vec());
-                    emulator.named_groups = Some(emulation::named_groups::EDGE.to_vec());
-                    emulator.extension_order_seed = Some(emulation::extension_order::EDGE);
-                    emulator
-                })
-                .clone()
-        }
-        Impersonate::EdgeV148 => {
-            static EDGE_148: OnceLock<BrowserEmulator> = OnceLock::new();
-            EDGE_148
-                .get_or_init(|| {
-                    let mut emulator =
-                        BrowserEmulator::new(BrowserType::Edge, BrowserVersion::new(148, 0, 0));
-                    emulator.cipher_suites = Some(emulation::cipher_suites::EDGE.to_vec());
-                    emulator.signature_algorithms =
-                        Some(emulation::signature_algorithms::EDGE.to_vec());
-                    emulator.named_groups = Some(emulation::named_groups::EDGE.to_vec());
-                    emulator.extension_order_seed = Some(emulation::extension_order::EDGE);
-                    emulator
-                })
-                .clone()
-        }
-        _ => unreachable!(),
-    };
+    let browser_emulator = edge_emulator(edge);
 
     let http2 = build_http2_settings(edge);
 
     crate::imp::BrowserSettings {
-        browser_emulator: Arc::new(browser_emulator),
+        browser_emulator,
         http2,
         headers,
         gzip: true,
@@ -237,73 +143,98 @@ fn build_sec_ch_ua(edge: Impersonate, _os: crate::imp::ImpersonateOS) -> &'stati
     }
 }
 
-/// Returns a platform string for sec-ch-ua-platform header.
-fn os_platform(os: crate::imp::ImpersonateOS) -> &'static str {
-    match os {
-        crate::imp::ImpersonateOS::Windows => r#""Windows""#,
-        crate::imp::ImpersonateOS::MacOS => r#""macOS""#,
-        crate::imp::ImpersonateOS::Linux => r#""Linux""#,
-        crate::imp::ImpersonateOS::Android => r#""Android""#,
-        crate::imp::ImpersonateOS::IOS => r#""iOS""#,
-        _ => os_platform(crate::imp::random_impersonate_os()),
-    }
-}
-
 /// Builds HTTP/2 settings for an Edge version.
 #[cfg(feature = "http2")]
 fn build_http2_settings(_edge: Impersonate) -> crate::imp::Http2Data {
-    use crate::imp::{PseudoId, PseudoOrder, SettingId, SettingsOrder};
+    crate::imp::Http2Data {
+        settings_order: Some(edge_settings_order().clone()),
+        headers_pseudo_order: Some(edge_pseudo_order().clone()),
+        headers_order: Some(crate::imp::header_order_sec_chua_first().clone()),
+        headers_priority: Some((255, 0, true)),
+        initial_stream_window_size: Some(crate::imp::CHROME_INITIAL_STREAM_WINDOW),
+        initial_connection_window_size: Some(crate::imp::CHROME_INITIAL_CONNECTION_WINDOW),
+        max_header_list_size: Some(crate::imp::CHROME_MAX_HEADER_LIST_SIZE),
+        header_table_size: Some(crate::imp::CHROME_HEADER_TABLE_SIZE),
+        ..Default::default()
+    }
+}
 
-    // Edge 144 sends only settings: 1, 2, 4, 6 (same as Chrome)
-    // Expected fingerprint: 1:65536;2:0;4:6291456;6:262144
-    let settings_order = Some(
+fn edge_emulator(edge: Impersonate) -> Arc<BrowserEmulator> {
+    match edge {
+        Impersonate::EdgeV144 => {
+            static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
+            EMU.get_or_init(|| Arc::new(new_edge_emulator(144))).clone()
+        }
+        Impersonate::EdgeV145 => {
+            static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
+            EMU.get_or_init(|| Arc::new(new_edge_emulator(145))).clone()
+        }
+        Impersonate::EdgeV146 => {
+            static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
+            EMU.get_or_init(|| Arc::new(new_edge_emulator(146))).clone()
+        }
+        Impersonate::EdgeV147 => {
+            static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
+            EMU.get_or_init(|| Arc::new(new_edge_emulator(147))).clone()
+        }
+        Impersonate::EdgeV148 => {
+            static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
+            EMU.get_or_init(|| Arc::new(new_edge_emulator(148))).clone()
+        }
+        _ => unreachable!(),
+    }
+}
+
+fn new_edge_emulator(major: u16) -> BrowserEmulator {
+    let mut emulator = BrowserEmulator::new(BrowserType::Edge, BrowserVersion::new(major, 0, 0));
+    emulator.cipher_suites = Some(emulation::cipher_suites::EDGE.to_vec());
+    emulator.signature_algorithms = Some(emulation::signature_algorithms::EDGE.to_vec());
+    emulator.named_groups = Some(emulation::named_groups::EDGE.to_vec());
+    emulator.extension_order_seed = Some(emulation::extension_order::EDGE);
+    emulator
+}
+
+fn base_edge_headers() -> &'static http::HeaderMap {
+    static BASE: OnceLock<http::HeaderMap> = OnceLock::new();
+    BASE.get_or_init(|| {
+        let mut headers = http::HeaderMap::with_capacity(13);
+        headers.insert(ACCEPT, http::HeaderValue::from_static("text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"));
+        headers.insert("accept-encoding", http::HeaderValue::from_static("gzip, deflate, br, zstd"));
+        headers.insert("accept-language", http::HeaderValue::from_static("en-US,en;q=0.9"));
+        headers.insert("upgrade-insecure-requests", http::HeaderValue::from_static("1"));
+        headers.insert("sec-fetch-site", http::HeaderValue::from_static("none"));
+        headers.insert("sec-fetch-mode", http::HeaderValue::from_static("navigate"));
+        headers.insert("sec-fetch-dest", http::HeaderValue::from_static("document"));
+        headers.insert("sec-fetch-user", http::HeaderValue::from_static("?1"));
+        headers.insert("priority", http::HeaderValue::from_static("u=0, i"));
+        headers
+    })
+}
+
+#[cfg(feature = "http2")]
+fn edge_settings_order() -> &'static SettingsOrder {
+    static ORDER: OnceLock<SettingsOrder> = OnceLock::new();
+    ORDER.get_or_init(|| {
         SettingsOrder::builder()
-            .push(SettingId::HeaderTableSize) // 1: 65536
-            .push(SettingId::EnablePush) // 2: 0
-            .push(SettingId::InitialWindowSize) // 4: 6291456
-            .push(SettingId::MaxHeaderListSize) // 6: 262144
-            .build_without_extend(),
-    );
+            .push(SettingId::HeaderTableSize)
+            .push(SettingId::EnablePush)
+            .push(SettingId::InitialWindowSize)
+            .push(SettingId::MaxHeaderListSize)
+            .build_without_extend()
+    })
+}
 
-    let headers_pseudo_order = Some(
+#[cfg(feature = "http2")]
+fn edge_pseudo_order() -> &'static PseudoOrder {
+    static ORDER: OnceLock<PseudoOrder> = OnceLock::new();
+    ORDER.get_or_init(|| {
         PseudoOrder::builder()
             .push(PseudoId::Method)
             .push(PseudoId::Authority)
             .push(PseudoId::Scheme)
             .push(PseudoId::Path)
-            .build(),
-    );
-
-    crate::imp::Http2Data {
-        initial_stream_window_size: Some(6291456),
-        initial_connection_window_size: Some(15728640),
-        max_concurrent_streams: None,
-        max_frame_size: None,
-        max_header_list_size: Some(262144),
-        header_table_size: Some(65536),
-        enable_push: Some(false),
-        enable_connect_protocol: None,
-        no_rfc7540_priorities: None,
-        settings_order,
-        headers_pseudo_order,
-        headers_priority: Some((255, 0, true)),
-        headers_order: Some(vec![
-            http::HeaderName::from_static("sec-ch-ua"),
-            http::HeaderName::from_static("sec-ch-ua-mobile"),
-            http::HeaderName::from_static("sec-ch-ua-platform"),
-            http::HeaderName::from_static("upgrade-insecure-requests"),
-            http::HeaderName::from_static("user-agent"),
-            http::HeaderName::from_static("accept"),
-            http::HeaderName::from_static("sec-fetch-site"),
-            http::HeaderName::from_static("sec-fetch-mode"),
-            http::HeaderName::from_static("sec-fetch-user"),
-            http::HeaderName::from_static("sec-fetch-dest"),
-            http::HeaderName::from_static("accept-encoding"),
-            http::HeaderName::from_static("accept-language"),
-            http::HeaderName::from_static("priority"),
-        ]),
-        initial_stream_id: None,
-    }
+            .build()
+    })
 }
 
 #[cfg(test)]

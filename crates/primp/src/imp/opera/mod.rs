@@ -22,26 +22,23 @@
 //! ```
 
 pub use crate::imp::Impersonate;
+use http::header::*;
+use rustls::client::{BrowserEmulator, BrowserType, BrowserVersion};
+use rustls::crypto::emulation;
+use std::sync::{Arc, OnceLock};
+#[cfg(feature = "http2")]
+use crate::imp::{PseudoId, PseudoOrder, SettingId, SettingsOrder};
 
 /// Builds browser settings for a specific Opera version and OS.
 pub(crate) fn build_opera_settings(
     opera: Impersonate,
     os: crate::imp::ImpersonateOS,
 ) -> crate::imp::BrowserSettings {
-    use http::header::*;
-    use rustls::client::{BrowserEmulator, BrowserType, BrowserVersion};
-    use rustls::crypto::emulation;
-    use std::sync::{Arc, OnceLock};
-
     let user_agent = build_user_agent(opera, os);
     let sec_ch_ua = build_sec_ch_ua(opera, os);
 
-    let mut headers = http::HeaderMap::with_capacity(13);
+    let mut headers = base_opera_headers().clone();
     headers.insert(USER_AGENT, http::HeaderValue::from_static(user_agent));
-    headers.insert(
-        "upgrade-insecure-requests",
-        http::HeaderValue::from_static("1"),
-    );
     headers.insert("sec-ch-ua", http::HeaderValue::from_static(sec_ch_ua));
     headers.insert(
         "sec-ch-ua-mobile",
@@ -58,22 +55,8 @@ pub(crate) fn build_opera_settings(
     );
     headers.insert(
         "sec-ch-ua-platform",
-        http::HeaderValue::from_static(os_platform(os)),
+        http::HeaderValue::from_static(crate::imp::os_platform(os)),
     );
-    headers.insert("sec-fetch-dest", http::HeaderValue::from_static("document"));
-    headers.insert("sec-fetch-mode", http::HeaderValue::from_static("navigate"));
-    headers.insert("sec-fetch-site", http::HeaderValue::from_static("none"));
-    headers.insert("sec-fetch-user", http::HeaderValue::from_static("?1"));
-    headers.insert(ACCEPT, http::HeaderValue::from_static("text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"));
-    headers.insert(
-        "accept-encoding",
-        http::HeaderValue::from_static("gzip, deflate, br, zstd"),
-    );
-    headers.insert(
-        "accept-language",
-        http::HeaderValue::from_static("en-US,en;q=0.9"),
-    );
-    headers.insert("priority", http::HeaderValue::from_static("u=0, i"));
 
     // Opera 131+ adds cache-control as the first header
     if matches!(opera, Impersonate::OperaV131) {
@@ -81,105 +64,12 @@ pub(crate) fn build_opera_settings(
     }
 
     // Get cached browser emulator for Opera (avoids Vec allocations on each call)
-    // Opera is Chrome-based, so use Chrome fingerprints for all versions
-    let browser_emulator = match opera {
-        Impersonate::OperaV126 => {
-            static OPERA_126: OnceLock<BrowserEmulator> = OnceLock::new();
-            OPERA_126
-                .get_or_init(|| {
-                    let mut emulator =
-                        BrowserEmulator::new(BrowserType::Opera, BrowserVersion::new(126, 0, 0));
-                    emulator.cipher_suites = Some(emulation::cipher_suites::CHROME.to_vec());
-                    emulator.signature_algorithms =
-                        Some(emulation::signature_algorithms::CHROME.to_vec());
-                    emulator.named_groups = Some(emulation::named_groups::CHROME.to_vec());
-                    emulator.extension_order_seed = Some(emulation::extension_order::CHROME);
-                    emulator
-                })
-                .clone()
-        }
-        Impersonate::OperaV127 => {
-            static OPERA_127: OnceLock<BrowserEmulator> = OnceLock::new();
-            OPERA_127
-                .get_or_init(|| {
-                    let mut emulator =
-                        BrowserEmulator::new(BrowserType::Opera, BrowserVersion::new(127, 0, 0));
-                    emulator.cipher_suites = Some(emulation::cipher_suites::CHROME.to_vec());
-                    emulator.signature_algorithms =
-                        Some(emulation::signature_algorithms::CHROME.to_vec());
-                    emulator.named_groups = Some(emulation::named_groups::CHROME.to_vec());
-                    emulator.extension_order_seed = Some(emulation::extension_order::CHROME);
-                    emulator
-                })
-                .clone()
-        }
-        Impersonate::OperaV128 => {
-            static OPERA_128: OnceLock<BrowserEmulator> = OnceLock::new();
-            OPERA_128
-                .get_or_init(|| {
-                    let mut emulator =
-                        BrowserEmulator::new(BrowserType::Opera, BrowserVersion::new(128, 0, 0));
-                    emulator.cipher_suites = Some(emulation::cipher_suites::CHROME.to_vec());
-                    emulator.signature_algorithms =
-                        Some(emulation::signature_algorithms::CHROME.to_vec());
-                    emulator.named_groups = Some(emulation::named_groups::CHROME.to_vec());
-                    emulator.extension_order_seed = Some(emulation::extension_order::CHROME);
-                    emulator
-                })
-                .clone()
-        }
-        Impersonate::OperaV129 => {
-            static OPERA_129: OnceLock<BrowserEmulator> = OnceLock::new();
-            OPERA_129
-                .get_or_init(|| {
-                    let mut emulator =
-                        BrowserEmulator::new(BrowserType::Opera, BrowserVersion::new(129, 0, 0));
-                    emulator.cipher_suites = Some(emulation::cipher_suites::CHROME.to_vec());
-                    emulator.signature_algorithms =
-                        Some(emulation::signature_algorithms::CHROME.to_vec());
-                    emulator.named_groups = Some(emulation::named_groups::CHROME.to_vec());
-                    emulator.extension_order_seed = Some(emulation::extension_order::CHROME);
-                    emulator
-                })
-                .clone()
-        }
-        Impersonate::OperaV130 => {
-            static OPERA_130: OnceLock<BrowserEmulator> = OnceLock::new();
-            OPERA_130
-                .get_or_init(|| {
-                    let mut emulator =
-                        BrowserEmulator::new(BrowserType::Opera, BrowserVersion::new(130, 0, 0));
-                    emulator.cipher_suites = Some(emulation::cipher_suites::CHROME.to_vec());
-                    emulator.signature_algorithms =
-                        Some(emulation::signature_algorithms::CHROME.to_vec());
-                    emulator.named_groups = Some(emulation::named_groups::CHROME.to_vec());
-                    emulator.extension_order_seed = Some(emulation::extension_order::CHROME);
-                    emulator
-                })
-                .clone()
-        }
-        Impersonate::OperaV131 => {
-            static OPERA_131: OnceLock<BrowserEmulator> = OnceLock::new();
-            OPERA_131
-                .get_or_init(|| {
-                    let mut emulator =
-                        BrowserEmulator::new(BrowserType::Opera, BrowserVersion::new(131, 0, 0));
-                    emulator.cipher_suites = Some(emulation::cipher_suites::CHROME.to_vec());
-                    emulator.signature_algorithms =
-                        Some(emulation::signature_algorithms::CHROME.to_vec());
-                    emulator.named_groups = Some(emulation::named_groups::CHROME.to_vec());
-                    emulator.extension_order_seed = Some(emulation::extension_order::CHROME);
-                    emulator
-                })
-                .clone()
-        }
-        _ => unreachable!(),
-    };
+    let browser_emulator = opera_emulator(opera);
 
     let http2 = build_http2_settings(opera);
 
     crate::imp::BrowserSettings {
-        browser_emulator: Arc::new(browser_emulator),
+        browser_emulator,
         http2,
         headers,
         gzip: true,
@@ -263,93 +153,109 @@ fn build_sec_ch_ua(opera: Impersonate, _os: crate::imp::ImpersonateOS) -> &'stat
     }
 }
 
-/// Returns a platform string for sec-ch-ua-platform header.
-fn os_platform(os: crate::imp::ImpersonateOS) -> &'static str {
-    match os {
-        crate::imp::ImpersonateOS::Windows => r#""Windows""#,
-        crate::imp::ImpersonateOS::MacOS => r#""macOS""#,
-        crate::imp::ImpersonateOS::Linux => r#""Linux""#,
-        crate::imp::ImpersonateOS::Android => r#""Android""#,
-        crate::imp::ImpersonateOS::IOS => r#""iOS""#,
-        _ => os_platform(crate::imp::random_impersonate_os()),
-    }
-}
-
 /// Builds HTTP/2 settings for an Opera version.
 #[cfg(feature = "http2")]
 fn build_http2_settings(opera: Impersonate) -> crate::imp::Http2Data {
-    use crate::imp::{PseudoId, PseudoOrder, SettingId, SettingsOrder};
+    // Opera 131 uses cache-control-first header order
+    let headers_order = if matches!(opera, Impersonate::OperaV131) {
+        Some(crate::imp::header_order_cache_control_first().clone())
+    } else {
+        Some(crate::imp::header_order_sec_chua_first().clone())
+    };
 
-    let settings_order = Some(
+    crate::imp::Http2Data {
+        settings_order: Some(opera_settings_order().clone()),
+        headers_pseudo_order: Some(opera_pseudo_order().clone()),
+        headers_order,
+        headers_priority: Some((255, 0, true)),
+        initial_stream_window_size: Some(crate::imp::CHROME_INITIAL_STREAM_WINDOW),
+        initial_connection_window_size: Some(crate::imp::CHROME_INITIAL_CONNECTION_WINDOW),
+        max_header_list_size: Some(crate::imp::CHROME_MAX_HEADER_LIST_SIZE),
+        header_table_size: Some(crate::imp::CHROME_HEADER_TABLE_SIZE),
+        ..Default::default()
+    }
+}
+
+fn opera_emulator(opera: Impersonate) -> Arc<BrowserEmulator> {
+    match opera {
+        Impersonate::OperaV126 => {
+            static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
+            EMU.get_or_init(|| Arc::new(new_opera_emulator(126))).clone()
+        }
+        Impersonate::OperaV127 => {
+            static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
+            EMU.get_or_init(|| Arc::new(new_opera_emulator(127))).clone()
+        }
+        Impersonate::OperaV128 => {
+            static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
+            EMU.get_or_init(|| Arc::new(new_opera_emulator(128))).clone()
+        }
+        Impersonate::OperaV129 => {
+            static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
+            EMU.get_or_init(|| Arc::new(new_opera_emulator(129))).clone()
+        }
+        Impersonate::OperaV130 => {
+            static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
+            EMU.get_or_init(|| Arc::new(new_opera_emulator(130))).clone()
+        }
+        Impersonate::OperaV131 => {
+            static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
+            EMU.get_or_init(|| Arc::new(new_opera_emulator(131))).clone()
+        }
+        _ => unreachable!(),
+    }
+}
+
+fn new_opera_emulator(major: u16) -> BrowserEmulator {
+    let mut emulator = BrowserEmulator::new(BrowserType::Opera, BrowserVersion::new(major, 0, 0));
+    emulator.cipher_suites = Some(emulation::cipher_suites::CHROME.to_vec());
+    emulator.signature_algorithms = Some(emulation::signature_algorithms::CHROME.to_vec());
+    emulator.named_groups = Some(emulation::named_groups::CHROME.to_vec());
+    emulator.extension_order_seed = Some(emulation::extension_order::CHROME);
+    emulator
+}
+
+fn base_opera_headers() -> &'static http::HeaderMap {
+    static BASE: OnceLock<http::HeaderMap> = OnceLock::new();
+    BASE.get_or_init(|| {
+        let mut headers = http::HeaderMap::with_capacity(13);
+        headers.insert(ACCEPT, http::HeaderValue::from_static("text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"));
+        headers.insert("accept-encoding", http::HeaderValue::from_static("gzip, deflate, br, zstd"));
+        headers.insert("accept-language", http::HeaderValue::from_static("en-US,en;q=0.9"));
+        headers.insert("upgrade-insecure-requests", http::HeaderValue::from_static("1"));
+        headers.insert("sec-fetch-site", http::HeaderValue::from_static("none"));
+        headers.insert("sec-fetch-mode", http::HeaderValue::from_static("navigate"));
+        headers.insert("sec-fetch-dest", http::HeaderValue::from_static("document"));
+        headers.insert("sec-fetch-user", http::HeaderValue::from_static("?1"));
+        headers.insert("priority", http::HeaderValue::from_static("u=0, i"));
+        headers
+    })
+}
+
+#[cfg(feature = "http2")]
+fn opera_settings_order() -> &'static SettingsOrder {
+    static ORDER: OnceLock<SettingsOrder> = OnceLock::new();
+    ORDER.get_or_init(|| {
         SettingsOrder::builder()
-            .push(SettingId::HeaderTableSize) // 1: 65536
-            .push(SettingId::EnablePush) // 2: 0
-            .push(SettingId::InitialWindowSize) // 4: 6291456
-            .push(SettingId::MaxHeaderListSize) // 6: 262144
-            .build_without_extend(),
-    );
+            .push(SettingId::HeaderTableSize)
+            .push(SettingId::EnablePush)
+            .push(SettingId::InitialWindowSize)
+            .push(SettingId::MaxHeaderListSize)
+            .build_without_extend()
+    })
+}
 
-    let headers_pseudo_order = Some(
+#[cfg(feature = "http2")]
+fn opera_pseudo_order() -> &'static PseudoOrder {
+    static ORDER: OnceLock<PseudoOrder> = OnceLock::new();
+    ORDER.get_or_init(|| {
         PseudoOrder::builder()
             .push(PseudoId::Method)
             .push(PseudoId::Authority)
             .push(PseudoId::Scheme)
             .push(PseudoId::Path)
-            .build(),
-    );
-
-    // Opera 131+ adds cache-control as the first header
-    let headers_order = if matches!(opera, Impersonate::OperaV131) {
-        Some(vec![
-            http::HeaderName::from_static("cache-control"),
-            http::HeaderName::from_static("sec-ch-ua"),
-            http::HeaderName::from_static("sec-ch-ua-mobile"),
-            http::HeaderName::from_static("sec-ch-ua-platform"),
-            http::HeaderName::from_static("upgrade-insecure-requests"),
-            http::HeaderName::from_static("user-agent"),
-            http::HeaderName::from_static("accept"),
-            http::HeaderName::from_static("sec-fetch-site"),
-            http::HeaderName::from_static("sec-fetch-mode"),
-            http::HeaderName::from_static("sec-fetch-user"),
-            http::HeaderName::from_static("sec-fetch-dest"),
-            http::HeaderName::from_static("accept-encoding"),
-            http::HeaderName::from_static("accept-language"),
-            http::HeaderName::from_static("priority"),
-        ])
-    } else {
-        Some(vec![
-            http::HeaderName::from_static("sec-ch-ua"),
-            http::HeaderName::from_static("sec-ch-ua-mobile"),
-            http::HeaderName::from_static("sec-ch-ua-platform"),
-            http::HeaderName::from_static("upgrade-insecure-requests"),
-            http::HeaderName::from_static("user-agent"),
-            http::HeaderName::from_static("accept"),
-            http::HeaderName::from_static("sec-fetch-site"),
-            http::HeaderName::from_static("sec-fetch-mode"),
-            http::HeaderName::from_static("sec-fetch-user"),
-            http::HeaderName::from_static("sec-fetch-dest"),
-            http::HeaderName::from_static("accept-encoding"),
-            http::HeaderName::from_static("accept-language"),
-            http::HeaderName::from_static("priority"),
-        ])
-    };
-
-    crate::imp::Http2Data {
-        initial_stream_window_size: Some(6291456),
-        initial_connection_window_size: Some(15728640),
-        max_concurrent_streams: None,
-        max_frame_size: None,
-        max_header_list_size: Some(262144),
-        header_table_size: Some(65536),
-        enable_push: Some(false),
-        enable_connect_protocol: None,
-        no_rfc7540_priorities: None,
-        settings_order,
-        headers_pseudo_order,
-        headers_priority: Some((255, 0, true)),
-        headers_order,
-        initial_stream_id: None,
-    }
+            .build()
+    })
 }
 
 #[cfg(test)]
