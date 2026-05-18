@@ -123,9 +123,9 @@ fn build_user_agent(chrome: Impersonate, os: crate::imp::ImpersonateOS) -> &'sta
 /// Builds a sec-ch-ua header value for a Chrome version and OS.
 fn build_sec_ch_ua(chrome: Impersonate, _os: crate::imp::ImpersonateOS) -> &'static str {
     match chrome {
-        Impersonate::ChromeV144 => r#""Not-A.Brand";v="24", "Chromium";v="144""#,
-        Impersonate::ChromeV145 => r#""Not-A.Brand";v="24", "Chromium";v="145""#,
-        Impersonate::ChromeV146 => r#""Not-A.Brand";v="24", "Chromium";v="146""#,
+        Impersonate::ChromeV144 => r#""Not(A:Brand";v="8", "Chromium";v="144", "Google Chrome";v="144""#,
+        Impersonate::ChromeV145 => r#""Not:A-Brand";v="99", "Google Chrome";v="145", "Chromium";v="145""#,
+        Impersonate::ChromeV146 => r#""Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146""#,
         Impersonate::ChromeV147 => r#""Google Chrome";v="147", "Not.A/Brand";v="8", "Chromium";v="147""#,
         Impersonate::ChromeV148 => r#""Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99""#,
         _ => unreachable!(),
@@ -135,9 +135,9 @@ fn build_sec_ch_ua(chrome: Impersonate, _os: crate::imp::ImpersonateOS) -> &'sta
 /// Builds HTTP/2 settings for a Chrome version.
 #[cfg(feature = "http2")]
 fn build_http2_settings(chrome: Impersonate) -> crate::imp::Http2Data {
-    // Chrome 148 uses different header order
+    // Chrome 148 uses different header order (sec-ch-ua after sec-fetch-*)
     let headers_order = if matches!(chrome, Impersonate::ChromeV148) {
-        Some(crate::imp::header_order_upgrade_first().clone())
+        Some(crate::imp::header_order_upgrade_first_sec_chua_last().clone())
     } else {
         Some(crate::imp::header_order_sec_chua_first().clone())
     };

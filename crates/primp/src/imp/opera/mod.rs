@@ -143,11 +143,11 @@ fn build_user_agent(opera: Impersonate, os: crate::imp::ImpersonateOS) -> &'stat
 /// Builds a sec-ch-ua header value for an Opera version and OS.
 fn build_sec_ch_ua(opera: Impersonate, _os: crate::imp::ImpersonateOS) -> &'static str {
     match opera {
-        Impersonate::OperaV126 => r#""Not:A-Brand";v="99", "Opera";v="126", "Chromium";v="142""#,
-        Impersonate::OperaV127 => r#""Not:A-Brand";v="99", "Opera";v="127", "Chromium";v="143""#,
-        Impersonate::OperaV128 => r#""Not:A-Brand";v="99", "Opera";v="128", "Chromium";v="144""#,
+        Impersonate::OperaV126 => r#""Chromium";v="142", "Opera";v="126", "Not_A Brand";v="99""#,
+        Impersonate::OperaV127 => r#""Opera";v="127", "Chromium";v="143", "Not A(Brand";v="24""#,
+        Impersonate::OperaV128 => r#""Not(A:Brand";v="8", "Chromium";v="144", "Opera";v="128""#,
         Impersonate::OperaV129 => r#""Not:A-Brand";v="99", "Opera";v="129", "Chromium";v="145""#,
-        Impersonate::OperaV130 => r#""Not:A-Brand";v="99", "Opera";v="130", "Chromium";v="146""#,
+        Impersonate::OperaV130 => r#""Chromium";v="146", "Not-A.Brand";v="24", "Opera";v="130""#,
         Impersonate::OperaV131 => r#""Opera";v="131", "Not.A/Brand";v="8", "Chromium";v="147""#,
         _ => unreachable!(),
     }

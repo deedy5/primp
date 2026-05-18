@@ -125,10 +125,10 @@ fn build_user_agent(edge: Impersonate, os: crate::imp::ImpersonateOS) -> &'stati
 fn build_sec_ch_ua(edge: Impersonate, _os: crate::imp::ImpersonateOS) -> &'static str {
     match edge {
         Impersonate::EdgeV144 => {
-            r#""Chromium";v="144", "Not-A.Brand";v="24", "Microsoft Edge";v="144""#
+            r#""Not(A:Brand";v="8", "Chromium";v="144", "Microsoft Edge";v="144""#
         }
         Impersonate::EdgeV145 => {
-            r#""Chromium";v="145", "Not-A.Brand";v="24", "Microsoft Edge";v="145""#
+            r#""Not:A-Brand";v="99", "Microsoft Edge";v="145", "Chromium";v="145""#
         }
         Impersonate::EdgeV146 => {
             r#""Chromium";v="146", "Not-A.Brand";v="24", "Microsoft Edge";v="146""#
@@ -145,11 +145,21 @@ fn build_sec_ch_ua(edge: Impersonate, _os: crate::imp::ImpersonateOS) -> &'stati
 
 /// Builds HTTP/2 settings for an Edge version.
 #[cfg(feature = "http2")]
-fn build_http2_settings(_edge: Impersonate) -> crate::imp::Http2Data {
+fn build_http2_settings(edge: Impersonate) -> crate::imp::Http2Data {
+    // Edge 146+ uses different header order (sec-ch-ua after sec-fetch-*)
+    let headers_order = if matches!(
+        edge,
+        Impersonate::EdgeV146 | Impersonate::EdgeV147 | Impersonate::EdgeV148
+    ) {
+        Some(crate::imp::header_order_upgrade_first_sec_chua_last().clone())
+    } else {
+        Some(crate::imp::header_order_sec_chua_first().clone())
+    };
+
     crate::imp::Http2Data {
         settings_order: Some(edge_settings_order().clone()),
         headers_pseudo_order: Some(edge_pseudo_order().clone()),
-        headers_order: Some(crate::imp::header_order_sec_chua_first().clone()),
+        headers_order,
         headers_priority: Some((255, 0, true)),
         initial_stream_window_size: Some(crate::imp::CHROME_INITIAL_STREAM_WINDOW),
         initial_connection_window_size: Some(crate::imp::CHROME_INITIAL_CONNECTION_WINDOW),
