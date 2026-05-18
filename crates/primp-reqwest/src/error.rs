@@ -440,7 +440,7 @@ mod tests {
 
     #[test]
     fn from_unknown_io_error() {
-        let orig = io::Error::new(io::ErrorKind::Other, "orly");
+        let orig = io::Error::other("orly");
         let err = super::decode_io(orig);
         match err.inner.kind {
             Kind::Decode => (),

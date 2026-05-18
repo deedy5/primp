@@ -385,6 +385,7 @@ impl ClientBuilder {
                 http2_headers_pseudo_order: None,
                 #[cfg(feature = "http2")]
                 http2_headers_priority: None,
+                #[cfg(feature = "http2")]
                 http2_headers_order: None,
                 #[cfg(feature = "http2")]
                 http2_initial_stream_id: None,
@@ -3315,8 +3316,8 @@ impl fmt::Debug for Pending {
 }
 
 #[cfg(test)]
+#[cfg(not(feature = "rustls-no-provider"))]
 mod tests {
-    #![cfg(not(feature = "rustls-no-provider"))]
 
     #[tokio::test]
     async fn execute_request_rejects_invalid_urls() {

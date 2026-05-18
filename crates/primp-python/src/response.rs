@@ -1,38 +1,16 @@
 use std::sync::Arc;
 
-use anyhow::Result;
-use bytes::Bytes;
 use encoding_rs::{Encoding, UTF_8};
-use html2text::{
-    from_read, from_read_with_decorator,
-    render::{RichDecorator, TrivialDecorator},
-};
 use pyo3::{
     prelude::*,
     types::{PyBytes, PyDict, PyString},
     IntoPyObjectExt,
 };
-use pythonize::pythonize;
-use serde_json::from_slice;
 use tokio::sync::Mutex as TMutex;
 
 use crate::client_builder::IndexMapSSR;
-use crate::error::{body_collection_error, convert_reqwest_error, BodyError, PrimpErrorEnum};
-use crate::traits::HeadersTraits;
-use crate::utils::extract_encoding;
-
-/// Collect body bytes from a response using a pre-allocated buffer.
-/// Uses `Vec::with_capacity(8 * 1024)` for efficient buffer allocation.
-async fn collect_body_bytes(resp: &mut ::primp::Response) -> Result<Bytes, PyErr> {
-    let mut buf = Vec::with_capacity(8 * 1024);
-    loop {
-        match resp.chunk().await {
-            Ok(Some(chunk)) => buf.extend_from_slice(&chunk),
-            Ok(None) => break Ok(Bytes::from(buf)),
-            Err(e) => return Err(body_collection_error(&e.to_string())),
-        }
-    }
-}
+use crate::error::convert_reqwest_error;
+use crate::response_shared;
 
 /// A struct representing an HTTP response.
 ///
@@ -94,17 +72,6 @@ impl Response {
         }
     }
 
-    async fn read_bytes(&self) -> Result<Bytes, PyErr> {
-        let resp = Arc::clone(&self.resp);
-        let mut resp_guard = resp.lock().await;
-        match resp_guard.as_mut() {
-            Some(r) => collect_body_bytes(r).await,
-            None => Err(BodyError::new_err(
-                "Response body already consumed or moved",
-            )),
-        }
-    }
-
     async fn next_chunk(&self) -> Result<Option<Vec<u8>>, PyErr> {
         let resp = Arc::clone(&self.resp);
         let mut resp_guard = resp.lock().await;
@@ -122,50 +89,17 @@ impl Response {
 #[pymethods]
 impl Response {
     #[getter]
-    fn get_content<'rs>(&mut self, py: Python<'rs>) -> Result<Bound<'rs, PyBytes>> {
-        if !self.streaming {
-            if let Some(content) = &self._content {
-                let cloned = content.clone_ref(py);
-                return Ok(cloned.into_bound(py));
-            }
-        }
-
-        let runtime = crate::get_runtime(py);
-        let bytes: Bytes = py.detach(|| runtime.block_on(self.read_bytes()))?;
-        let content = PyBytes::new(py, &bytes);
-
-        if !self.streaming {
-            self._content = Some(content.clone().unbind());
-        }
-        Ok(content)
+    fn get_content<'rs>(&mut self, py: Python<'rs>) -> PyResult<Bound<'rs, PyBytes>> {
+        response_shared::get_content(&self.resp, &mut self._content, self.streaming, py)
     }
 
     #[getter]
-    fn get_encoding(&mut self, py: Python<'_>) -> Result<String> {
-        if let Some(encoding) = self._encoding.as_ref() {
-            return Ok(encoding.clone());
-        }
-
-        let resp = Arc::clone(&self.resp);
-        let runtime = crate::get_runtime(py);
-        let encoding = py.detach(|| {
-            runtime.block_on(async {
-                let resp_guard = resp.lock().await;
-                match resp_guard.as_ref() {
-                    Some(r) => Ok(extract_encoding(r.headers()).name().to_string()),
-                    None => Err(BodyError::new_err(
-                        "Response body already consumed or moved",
-                    )),
-                }
-            })
-        })?;
-
-        self._encoding = Some(encoding.clone());
-        Ok(encoding)
+    fn get_encoding(&mut self, py: Python<'_>) -> PyResult<String> {
+        response_shared::get_encoding(&self.resp, &mut self._encoding, py)
     }
 
     #[setter]
-    fn set_encoding(&mut self, encoding: Option<String>) -> Result<()> {
+    fn set_encoding(&mut self, encoding: Option<String>) -> PyResult<()> {
         if let Some(encoding) = encoding {
             self._encoding = Some(encoding);
         }
@@ -173,138 +107,45 @@ impl Response {
     }
 
     #[getter]
-    fn text<'rs>(&mut self, py: Python<'rs>) -> Result<Bound<'rs, PyString>> {
-        let content = self.get_content(py)?.unbind();
-        let encoding = self.get_encoding(py)?;
-        let raw_bytes = content.as_bytes(py);
-        let encoding = Encoding::for_label(encoding.as_bytes()).unwrap_or(UTF_8);
-        let (text, _, _) = encoding.decode(raw_bytes);
-        Ok(text.into_pyobject_or_pyerr(py)?)
+    fn text<'rs>(&mut self, py: Python<'rs>) -> PyResult<Bound<'rs, PyString>> {
+        response_shared::text(&self.resp, &mut self._content, &mut self._encoding, self.streaming, py)
     }
 
     fn json<'rs>(&mut self, py: Python<'rs>) -> PyResult<Bound<'rs, PyAny>> {
-        let content = self.get_content(py)?.unbind();
-        let raw_bytes = content.as_bytes(py);
-        let json_value: serde_json::Value = match from_slice(raw_bytes) {
-            Ok(v) => v,
-            Err(e) => {
-                let json_module = py.import("json")?;
-                let error_type = json_module.getattr("JSONDecodeError")?;
-                let doc = String::from_utf8_lossy(raw_bytes).to_string();
-                let msg = e.to_string();
-                let pos = e.line().saturating_sub(1);
-                return Err(PyErr::from_value(error_type.call1((&msg, &doc, pos))?));
-            }
-        };
-        let result = pythonize(py, &json_value)?;
-        Ok(result)
+        response_shared::json(&self.resp, &mut self._content, self.streaming, py)
     }
 
     #[getter]
-    fn get_headers<'rs>(&mut self, py: Python<'rs>) -> Result<Bound<'rs, PyDict>> {
-        if let Some(headers) = &self._headers {
-            return Ok(headers.clone().into_pyobject(py)?);
-        }
-
-        let resp = Arc::clone(&self.resp);
-        let runtime = crate::get_runtime(py);
-        let new_headers = py.detach(|| {
-            runtime.block_on(async {
-                let resp_guard = resp.lock().await;
-                match resp_guard.as_ref() {
-                    Some(r) => Ok(r.headers().to_indexmap()),
-                    None => Err(BodyError::new_err(
-                        "Response body already consumed or moved",
-                    )),
-                }
-            })
-        })?;
-
-        let py_dict = new_headers.clone().into_pyobject(py)?;
-        self._headers = Some(new_headers);
-        Ok(py_dict)
+    fn get_headers<'rs>(&mut self, py: Python<'rs>) -> PyResult<Bound<'rs, PyDict>> {
+        response_shared::get_headers(&self.resp, &mut self._headers, py)
     }
 
     #[getter]
-    fn get_cookies<'rs>(&mut self, py: Python<'rs>) -> Result<Bound<'rs, PyDict>> {
-        if let Some(cookies) = &self._cookies {
-            return Ok(cookies.clone().into_pyobject(py)?);
-        }
-
-        let resp = Arc::clone(&self.resp);
-        let runtime = crate::get_runtime(py);
-        let cookie_map = py.detach(|| {
-            runtime.block_on(async {
-                let resp_guard = resp.lock().await;
-                match resp_guard.as_ref() {
-                    Some(r) => Ok(crate::extract_cookies_to_indexmap(r.headers())),
-                    None => Err(BodyError::new_err(
-                        "Response body already consumed or moved",
-                    )),
-                }
-            })
-        })?;
-
-        let py_dict = cookie_map.clone().into_pyobject(py)?;
-        self._cookies = Some(cookie_map);
-        Ok(py_dict)
+    fn get_cookies<'rs>(&mut self, py: Python<'rs>) -> PyResult<Bound<'rs, PyDict>> {
+        response_shared::get_cookies(&self.resp, &mut self._cookies, py)
     }
 
     #[getter]
-    fn text_markdown(&mut self, py: Python) -> Result<String> {
-        let content = self.get_content(py)?.unbind();
-        let raw_bytes = content.as_bytes(py);
-        let text = py.detach(|| from_read(raw_bytes, 100))?;
-        Ok(text)
+    fn text_markdown(&mut self, py: Python<'_>) -> PyResult<String> {
+        response_shared::text_markdown(&self.resp, &mut self._content, self.streaming, py)
     }
 
     #[getter]
-    fn text_plain(&mut self, py: Python) -> Result<String> {
-        let content = self.get_content(py)?.unbind();
-        let raw_bytes = content.as_bytes(py);
-        let text =
-            py.detach(|| from_read_with_decorator(raw_bytes, 100, TrivialDecorator::new()))?;
-        Ok(text)
+    fn text_plain(&mut self, py: Python<'_>) -> PyResult<String> {
+        response_shared::text_plain(&self.resp, &mut self._content, self.streaming, py)
     }
 
     #[getter]
-    fn text_rich(&mut self, py: Python) -> Result<String> {
-        let content = self.get_content(py)?.unbind();
-        let raw_bytes = content.as_bytes(py);
-        let text = py.detach(|| from_read_with_decorator(raw_bytes, 100, RichDecorator::new()))?;
-        Ok(text)
+    fn text_rich(&mut self, py: Python<'_>) -> PyResult<String> {
+        response_shared::text_rich(&self.resp, &mut self._content, self.streaming, py)
     }
 
     fn raise_for_status(&self) -> PyResult<()> {
-        if self.status_code >= 400 {
-            let reason = if self.status_code < 600 {
-                match self.status_code {
-                    400 => "Bad Request",
-                    401 => "Unauthorized",
-                    403 => "Forbidden",
-                    404 => "Not Found",
-                    405 => "Method Not Allowed",
-                    409 => "Conflict",
-                    500 => "Internal Server Error",
-                    502 => "Bad Gateway",
-                    503 => "Service Unavailable",
-                    _ => "Error",
-                }
-            } else {
-                "Unknown Error"
-            };
-
-            return Err(PyErr::from(PrimpErrorEnum::HttpStatus(
-                self.status_code,
-                reason.to_string(),
-                self.url.clone(),
-            )));
-        }
-        Ok(())
+        response_shared::raise_for_status(self.status_code, &self.url)
     }
 
     fn read<'rs>(&mut self, py: Python<'rs>) -> PyResult<Bound<'rs, PyBytes>> {
-        Ok(self.get_content(py)?)
+        response_shared::get_content(&self.resp, &mut self._content, self.streaming, py)
     }
 
     #[pyo3(signature = (chunk_size=None))]

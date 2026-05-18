@@ -1,11 +1,9 @@
 use foldhash::fast::RandomState;
-use indexmap::IndexMap;
 
 use ::primp::header::{HeaderMap, HeaderName, HeaderValue};
 
+use crate::client_builder::IndexMapSSR;
 use crate::error::PrimpErrorEnum;
-
-type IndexMapSSR = IndexMap<String, String, RandomState>;
 
 /// Try to convert a key-value pair to header name and value.
 /// Returns an error if either conversion fails.

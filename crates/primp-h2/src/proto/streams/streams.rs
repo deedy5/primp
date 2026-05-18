@@ -194,7 +194,7 @@ where
     /// WINDOW_UPDATE frame that was already buffered).
     pub fn inc_connection_window(&self, incr: WindowSize) {
         let mut me = self.inner.lock().unwrap();
-        let _ = me.actions.recv.inc_connection_window(incr);
+        me.actions.recv.inc_connection_window(incr);
     }
 
     pub fn poll_complete<T>(

@@ -25,6 +25,7 @@ use response::{BytesIterator, LinesIterator, Response, TextIterator};
 
 mod r#async;
 
+mod response_shared;
 mod traits;
 use traits::HeadersTraits;
 
