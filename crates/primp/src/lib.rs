@@ -618,7 +618,7 @@ fn build_impersonate_tls_config(
     };
 
     // Set browser emulation
-    config.browser_emulation = Some(settings.browser_emulator.clone());
+    config.browser_emulation = Some((*settings.browser_emulator).clone());
 
     // Set ALPN protocols
     config.alpn_protocols = vec!["h2".into(), "http/1.1".into()];

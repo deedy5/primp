@@ -31,7 +31,7 @@ pub(crate) fn build_edge_settings(
     use http::header::*;
     use rustls::client::{BrowserEmulator, BrowserType, BrowserVersion};
     use rustls::crypto::emulation;
-    use std::sync::OnceLock;
+    use std::sync::{Arc, OnceLock};
 
     let user_agent = build_user_agent(edge, os);
     let sec_ch_ua = build_sec_ch_ua(edge, os);
@@ -122,13 +122,43 @@ pub(crate) fn build_edge_settings(
                 })
                 .clone()
         }
+        Impersonate::EdgeV147 => {
+            static EDGE_147: OnceLock<BrowserEmulator> = OnceLock::new();
+            EDGE_147
+                .get_or_init(|| {
+                    let mut emulator =
+                        BrowserEmulator::new(BrowserType::Edge, BrowserVersion::new(147, 0, 0));
+                    emulator.cipher_suites = Some(emulation::cipher_suites::EDGE.to_vec());
+                    emulator.signature_algorithms =
+                        Some(emulation::signature_algorithms::EDGE.to_vec());
+                    emulator.named_groups = Some(emulation::named_groups::EDGE.to_vec());
+                    emulator.extension_order_seed = Some(emulation::extension_order::EDGE);
+                    emulator
+                })
+                .clone()
+        }
+        Impersonate::EdgeV148 => {
+            static EDGE_148: OnceLock<BrowserEmulator> = OnceLock::new();
+            EDGE_148
+                .get_or_init(|| {
+                    let mut emulator =
+                        BrowserEmulator::new(BrowserType::Edge, BrowserVersion::new(148, 0, 0));
+                    emulator.cipher_suites = Some(emulation::cipher_suites::EDGE.to_vec());
+                    emulator.signature_algorithms =
+                        Some(emulation::signature_algorithms::EDGE.to_vec());
+                    emulator.named_groups = Some(emulation::named_groups::EDGE.to_vec());
+                    emulator.extension_order_seed = Some(emulation::extension_order::EDGE);
+                    emulator
+                })
+                .clone()
+        }
         _ => unreachable!(),
     };
 
     let http2 = build_http2_settings(edge);
 
     crate::imp::BrowserSettings {
-        browser_emulator,
+        browser_emulator: Arc::new(browser_emulator),
         http2,
         headers,
         gzip: true,
@@ -165,6 +195,22 @@ fn build_user_agent(edge: Impersonate, os: crate::imp::ImpersonateOS) -> &'stati
             crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 EdgiOS/146.0.0.0 Mobile/15E148 Safari/605.1.15",
             _ => build_user_agent(edge, crate::imp::random_impersonate_os()),
         },
+        Impersonate::EdgeV147 => match os {
+            crate::imp::ImpersonateOS::Windows => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 Edg/147.0.3912.51",
+            crate::imp::ImpersonateOS::MacOS => "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 Edg/147.0.3912.51",
+            crate::imp::ImpersonateOS::Linux => "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 Edg/147.0.3912.51",
+            crate::imp::ImpersonateOS::Android => "Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Mobile Safari/537.36 EdgA/147.0.3912.51",
+            crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 EdgiOS/147.0.3912.51 Mobile/15E148 Safari/605.1.15",
+            _ => build_user_agent(edge, crate::imp::random_impersonate_os()),
+        },
+        Impersonate::EdgeV148 => match os {
+            crate::imp::ImpersonateOS::Windows => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0",
+            crate::imp::ImpersonateOS::MacOS => "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0",
+            crate::imp::ImpersonateOS::Linux => "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0",
+            crate::imp::ImpersonateOS::Android => "Mozilla/5.0 (Linux; Android 10; Pixel 3 XL) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Mobile Safari/537.36 EdgA/148.0.0.0",
+            crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 EdgiOS/148.0.0.0 Mobile/15E148 Safari/605.1.15",
+            _ => build_user_agent(edge, crate::imp::random_impersonate_os()),
+        },
         _ => unreachable!(),
     }
 }
@@ -180,6 +226,12 @@ fn build_sec_ch_ua(edge: Impersonate, _os: crate::imp::ImpersonateOS) -> &'stati
         }
         Impersonate::EdgeV146 => {
             r#""Chromium";v="146", "Not-A.Brand";v="24", "Microsoft Edge";v="146""#
+        }
+        Impersonate::EdgeV147 => {
+            r#""Microsoft Edge";v="147", "Not.A/Brand";v="8", "Chromium";v="147""#
+        }
+        Impersonate::EdgeV148 => {
+            r#""Chromium";v="148", "Microsoft Edge";v="148", "Not/A)Brand";v="99""#
         }
         _ => unreachable!(),
     }

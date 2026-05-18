@@ -30,7 +30,7 @@ pub(crate) fn build_chrome_settings(
     use http::header::*;
     use rustls::client::{BrowserEmulator, BrowserType, BrowserVersion};
     use rustls::crypto::emulation;
-    use std::sync::OnceLock;
+    use std::sync::{Arc, OnceLock};
 
     let user_agent = build_user_agent(chrome, os);
     let sec_ch_ua = build_sec_ch_ua(chrome, os);
@@ -121,13 +121,43 @@ pub(crate) fn build_chrome_settings(
                 })
                 .clone()
         }
+        Impersonate::ChromeV147 => {
+            static CHROME_147: OnceLock<BrowserEmulator> = OnceLock::new();
+            CHROME_147
+                .get_or_init(|| {
+                    let mut emulator =
+                        BrowserEmulator::new(BrowserType::Chrome, BrowserVersion::new(147, 0, 0));
+                    emulator.cipher_suites = Some(emulation::cipher_suites::CHROME.to_vec());
+                    emulator.signature_algorithms =
+                        Some(emulation::signature_algorithms::CHROME.to_vec());
+                    emulator.named_groups = Some(emulation::named_groups::CHROME.to_vec());
+                    emulator.extension_order_seed = Some(emulation::extension_order::CHROME);
+                    emulator
+                })
+                .clone()
+        }
+        Impersonate::ChromeV148 => {
+            static CHROME_148: OnceLock<BrowserEmulator> = OnceLock::new();
+            CHROME_148
+                .get_or_init(|| {
+                    let mut emulator =
+                        BrowserEmulator::new(BrowserType::Chrome, BrowserVersion::new(148, 0, 0));
+                    emulator.cipher_suites = Some(emulation::cipher_suites::CHROME.to_vec());
+                    emulator.signature_algorithms =
+                        Some(emulation::signature_algorithms::CHROME.to_vec());
+                    emulator.named_groups = Some(emulation::named_groups::CHROME.to_vec());
+                    emulator.extension_order_seed = Some(emulation::extension_order::CHROME);
+                    emulator
+                })
+                .clone()
+        }
         _ => unreachable!(),
     };
 
     let http2 = build_http2_settings(chrome);
 
     crate::imp::BrowserSettings {
-        browser_emulator,
+        browser_emulator: Arc::new(browser_emulator),
         http2,
         headers,
         gzip: true,
@@ -164,6 +194,22 @@ fn build_user_agent(chrome: Impersonate, os: crate::imp::ImpersonateOS) -> &'sta
             crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/146.0.0.0 Mobile/15E148 Safari/604.1",
             _ => build_user_agent(chrome, crate::imp::random_impersonate_os()),
         },
+        Impersonate::ChromeV147 => match os {
+            crate::imp::ImpersonateOS::Windows => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+            crate::imp::ImpersonateOS::MacOS => "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+            crate::imp::ImpersonateOS::Linux => "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+            crate::imp::ImpersonateOS::Android => "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Mobile Safari/537.36",
+            crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/147.0.0.0 Mobile/15E148 Safari/604.1",
+            _ => build_user_agent(chrome, crate::imp::random_impersonate_os()),
+        },
+        Impersonate::ChromeV148 => match os {
+            crate::imp::ImpersonateOS::Windows => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+            crate::imp::ImpersonateOS::MacOS => "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+            crate::imp::ImpersonateOS::Linux => "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+            crate::imp::ImpersonateOS::Android => "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Mobile Safari/537.36",
+            crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/148.0.0.0 Mobile/15E148 Safari/604.1",
+            _ => build_user_agent(chrome, crate::imp::random_impersonate_os()),
+        },
         _ => unreachable!(),
     }
 }
@@ -174,6 +220,8 @@ fn build_sec_ch_ua(chrome: Impersonate, _os: crate::imp::ImpersonateOS) -> &'sta
         Impersonate::ChromeV144 => r#""Not-A.Brand";v="24", "Chromium";v="144""#,
         Impersonate::ChromeV145 => r#""Not-A.Brand";v="24", "Chromium";v="145""#,
         Impersonate::ChromeV146 => r#""Not-A.Brand";v="24", "Chromium";v="146""#,
+        Impersonate::ChromeV147 => r#""Google Chrome";v="147", "Not.A/Brand";v="8", "Chromium";v="147""#,
+        Impersonate::ChromeV148 => r#""Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99""#,
         _ => unreachable!(),
     }
 }
@@ -192,7 +240,7 @@ fn os_platform(os: crate::imp::ImpersonateOS) -> &'static str {
 
 /// Builds HTTP/2 settings for a Chrome version.
 #[cfg(feature = "http2")]
-fn build_http2_settings(_chrome: Impersonate) -> crate::imp::Http2Data {
+fn build_http2_settings(chrome: Impersonate) -> crate::imp::Http2Data {
     use crate::imp::{PseudoId, PseudoOrder, SettingId, SettingsOrder};
 
     // Chrome 144 sends only settings: 1, 2, 4, 6
@@ -215,20 +263,25 @@ fn build_http2_settings(_chrome: Impersonate) -> crate::imp::Http2Data {
             .build(),
     );
 
-    crate::imp::Http2Data {
-        initial_stream_window_size: Some(6291456),
-        initial_connection_window_size: Some(15728640),
-        max_concurrent_streams: None,
-        max_frame_size: None,
-        max_header_list_size: Some(262144),
-        header_table_size: Some(65536),
-        enable_push: Some(false),
-        enable_connect_protocol: None,
-        no_rfc7540_priorities: None,
-        settings_order,
-        headers_pseudo_order,
-        headers_priority: Some((255, 0, true)), // Chrome: weight=255 (displays as 0 on wire after -1), dep=0, excl=1
-        headers_order: Some(vec![
+    // Chrome 148+ moved sec-ch-ua group after sec-fetch-dest
+    let headers_order = if matches!(chrome, Impersonate::ChromeV148) {
+        Some(vec![
+            http::HeaderName::from_static("upgrade-insecure-requests"),
+            http::HeaderName::from_static("user-agent"),
+            http::HeaderName::from_static("accept"),
+            http::HeaderName::from_static("sec-fetch-site"),
+            http::HeaderName::from_static("sec-fetch-mode"),
+            http::HeaderName::from_static("sec-fetch-user"),
+            http::HeaderName::from_static("sec-fetch-dest"),
+            http::HeaderName::from_static("sec-ch-ua"),
+            http::HeaderName::from_static("sec-ch-ua-mobile"),
+            http::HeaderName::from_static("sec-ch-ua-platform"),
+            http::HeaderName::from_static("accept-encoding"),
+            http::HeaderName::from_static("accept-language"),
+            http::HeaderName::from_static("priority"),
+        ])
+    } else {
+        Some(vec![
             http::HeaderName::from_static("sec-ch-ua"),
             http::HeaderName::from_static("sec-ch-ua-mobile"),
             http::HeaderName::from_static("sec-ch-ua-platform"),
@@ -242,7 +295,23 @@ fn build_http2_settings(_chrome: Impersonate) -> crate::imp::Http2Data {
             http::HeaderName::from_static("accept-encoding"),
             http::HeaderName::from_static("accept-language"),
             http::HeaderName::from_static("priority"),
-        ]),
+        ])
+    };
+
+    crate::imp::Http2Data {
+        initial_stream_window_size: Some(6291456),
+        initial_connection_window_size: Some(15728640),
+        max_concurrent_streams: None,
+        max_frame_size: None,
+        max_header_list_size: Some(262144),
+        header_table_size: Some(65536),
+        enable_push: Some(false),
+        enable_connect_protocol: None,
+        no_rfc7540_priorities: None,
+        settings_order,
+        headers_pseudo_order,
+        headers_priority: Some((255, 0, true)), // Chrome: weight=255 (displays as 0 on wire after -1), dep=0, excl=1
+        headers_order,
         initial_stream_id: None,
     }
 }

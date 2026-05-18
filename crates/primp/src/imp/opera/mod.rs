@@ -31,7 +31,7 @@ pub(crate) fn build_opera_settings(
     use http::header::*;
     use rustls::client::{BrowserEmulator, BrowserType, BrowserVersion};
     use rustls::crypto::emulation;
-    use std::sync::OnceLock;
+    use std::sync::{Arc, OnceLock};
 
     let user_agent = build_user_agent(opera, os);
     let sec_ch_ua = build_sec_ch_ua(opera, os);
@@ -74,6 +74,11 @@ pub(crate) fn build_opera_settings(
         http::HeaderValue::from_static("en-US,en;q=0.9"),
     );
     headers.insert("priority", http::HeaderValue::from_static("u=0, i"));
+
+    // Opera 131+ adds cache-control as the first header
+    if matches!(opera, Impersonate::OperaV131) {
+        headers.insert("cache-control", http::HeaderValue::from_static("max-age=0"));
+    }
 
     // Get cached browser emulator for Opera (avoids Vec allocations on each call)
     // Opera is Chrome-based, so use Chrome fingerprints for all versions
@@ -138,13 +143,43 @@ pub(crate) fn build_opera_settings(
                 })
                 .clone()
         }
+        Impersonate::OperaV130 => {
+            static OPERA_130: OnceLock<BrowserEmulator> = OnceLock::new();
+            OPERA_130
+                .get_or_init(|| {
+                    let mut emulator =
+                        BrowserEmulator::new(BrowserType::Opera, BrowserVersion::new(130, 0, 0));
+                    emulator.cipher_suites = Some(emulation::cipher_suites::CHROME.to_vec());
+                    emulator.signature_algorithms =
+                        Some(emulation::signature_algorithms::CHROME.to_vec());
+                    emulator.named_groups = Some(emulation::named_groups::CHROME.to_vec());
+                    emulator.extension_order_seed = Some(emulation::extension_order::CHROME);
+                    emulator
+                })
+                .clone()
+        }
+        Impersonate::OperaV131 => {
+            static OPERA_131: OnceLock<BrowserEmulator> = OnceLock::new();
+            OPERA_131
+                .get_or_init(|| {
+                    let mut emulator =
+                        BrowserEmulator::new(BrowserType::Opera, BrowserVersion::new(131, 0, 0));
+                    emulator.cipher_suites = Some(emulation::cipher_suites::CHROME.to_vec());
+                    emulator.signature_algorithms =
+                        Some(emulation::signature_algorithms::CHROME.to_vec());
+                    emulator.named_groups = Some(emulation::named_groups::CHROME.to_vec());
+                    emulator.extension_order_seed = Some(emulation::extension_order::CHROME);
+                    emulator
+                })
+                .clone()
+        }
         _ => unreachable!(),
     };
 
     let http2 = build_http2_settings(opera);
 
     crate::imp::BrowserSettings {
-        browser_emulator,
+        browser_emulator: Arc::new(browser_emulator),
         http2,
         headers,
         gzip: true,
@@ -193,6 +228,24 @@ fn build_user_agent(opera: Impersonate, os: crate::imp::ImpersonateOS) -> &'stat
             crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) OPiOS/129.0.0.0 Mobile/15E148 Safari/605.1.15",
             _ => build_user_agent(opera, crate::imp::random_impersonate_os()),
         },
+        // Opera 130 is based on Chrome 146
+        Impersonate::OperaV130 => match os {
+            crate::imp::ImpersonateOS::Windows => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 OPR/130.0.0.0",
+            crate::imp::ImpersonateOS::MacOS => "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 OPR/130.0.0.0",
+            crate::imp::ImpersonateOS::Linux => "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 OPR/130.0.0.0",
+            crate::imp::ImpersonateOS::Android => "Mozilla/5.0 (Linux; Android 10; SM-G970F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Mobile Safari/537.36 OPR/130.0.0.0",
+            crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) OPiOS/130.0.0.0 Mobile/15E148 Safari/605.1.15",
+            _ => build_user_agent(opera, crate::imp::random_impersonate_os()),
+        },
+        // Opera 131 is based on Chrome 147
+        Impersonate::OperaV131 => match os {
+            crate::imp::ImpersonateOS::Windows => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 OPR/131.0.0.0",
+            crate::imp::ImpersonateOS::MacOS => "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 OPR/131.0.0.0",
+            crate::imp::ImpersonateOS::Linux => "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 OPR/131.0.0.0",
+            crate::imp::ImpersonateOS::Android => "Mozilla/5.0 (Linux; Android 10; SM-G970F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Mobile Safari/537.36 OPR/131.0.0.0",
+            crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) OPiOS/131.0.0.0 Mobile/15E148 Safari/605.1.15",
+            _ => build_user_agent(opera, crate::imp::random_impersonate_os()),
+        },
         _ => unreachable!(),
     }
 }
@@ -204,6 +257,8 @@ fn build_sec_ch_ua(opera: Impersonate, _os: crate::imp::ImpersonateOS) -> &'stat
         Impersonate::OperaV127 => r#""Not:A-Brand";v="99", "Opera";v="127", "Chromium";v="143""#,
         Impersonate::OperaV128 => r#""Not:A-Brand";v="99", "Opera";v="128", "Chromium";v="144""#,
         Impersonate::OperaV129 => r#""Not:A-Brand";v="99", "Opera";v="129", "Chromium";v="145""#,
+        Impersonate::OperaV130 => r#""Not:A-Brand";v="99", "Opera";v="130", "Chromium";v="146""#,
+        Impersonate::OperaV131 => r#""Opera";v="131", "Not.A/Brand";v="8", "Chromium";v="147""#,
         _ => unreachable!(),
     }
 }
@@ -222,7 +277,7 @@ fn os_platform(os: crate::imp::ImpersonateOS) -> &'static str {
 
 /// Builds HTTP/2 settings for an Opera version.
 #[cfg(feature = "http2")]
-fn build_http2_settings(_opera: Impersonate) -> crate::imp::Http2Data {
+fn build_http2_settings(opera: Impersonate) -> crate::imp::Http2Data {
     use crate::imp::{PseudoId, PseudoOrder, SettingId, SettingsOrder};
 
     let settings_order = Some(
@@ -243,20 +298,10 @@ fn build_http2_settings(_opera: Impersonate) -> crate::imp::Http2Data {
             .build(),
     );
 
-    crate::imp::Http2Data {
-        initial_stream_window_size: Some(6291456),
-        initial_connection_window_size: Some(15728640),
-        max_concurrent_streams: None,
-        max_frame_size: None,
-        max_header_list_size: Some(262144),
-        header_table_size: Some(65536),
-        enable_push: Some(false),
-        enable_connect_protocol: None,
-        no_rfc7540_priorities: None,
-        settings_order,
-        headers_pseudo_order,
-        headers_priority: Some((255, 0, true)),
-        headers_order: Some(vec![
+    // Opera 131+ adds cache-control as the first header
+    let headers_order = if matches!(opera, Impersonate::OperaV131) {
+        Some(vec![
+            http::HeaderName::from_static("cache-control"),
             http::HeaderName::from_static("sec-ch-ua"),
             http::HeaderName::from_static("sec-ch-ua-mobile"),
             http::HeaderName::from_static("sec-ch-ua-platform"),
@@ -270,7 +315,39 @@ fn build_http2_settings(_opera: Impersonate) -> crate::imp::Http2Data {
             http::HeaderName::from_static("accept-encoding"),
             http::HeaderName::from_static("accept-language"),
             http::HeaderName::from_static("priority"),
-        ]),
+        ])
+    } else {
+        Some(vec![
+            http::HeaderName::from_static("sec-ch-ua"),
+            http::HeaderName::from_static("sec-ch-ua-mobile"),
+            http::HeaderName::from_static("sec-ch-ua-platform"),
+            http::HeaderName::from_static("upgrade-insecure-requests"),
+            http::HeaderName::from_static("user-agent"),
+            http::HeaderName::from_static("accept"),
+            http::HeaderName::from_static("sec-fetch-site"),
+            http::HeaderName::from_static("sec-fetch-mode"),
+            http::HeaderName::from_static("sec-fetch-user"),
+            http::HeaderName::from_static("sec-fetch-dest"),
+            http::HeaderName::from_static("accept-encoding"),
+            http::HeaderName::from_static("accept-language"),
+            http::HeaderName::from_static("priority"),
+        ])
+    };
+
+    crate::imp::Http2Data {
+        initial_stream_window_size: Some(6291456),
+        initial_connection_window_size: Some(15728640),
+        max_concurrent_streams: None,
+        max_frame_size: None,
+        max_header_list_size: Some(262144),
+        header_table_size: Some(65536),
+        enable_push: Some(false),
+        enable_connect_protocol: None,
+        no_rfc7540_priorities: None,
+        settings_order,
+        headers_pseudo_order,
+        headers_priority: Some((255, 0, true)),
+        headers_order,
         initial_stream_id: None,
     }
 }

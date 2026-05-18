@@ -29,7 +29,7 @@ pub(crate) fn build_safari_settings(
 ) -> crate::imp::BrowserSettings {
     use rustls::client::{BrowserEmulator, BrowserEmulatorOS, BrowserType, BrowserVersion};
     use rustls::crypto::emulation;
-    use std::sync::OnceLock;
+    use std::sync::{Arc, OnceLock};
 
     let user_agent = build_user_agent(safari, os);
     let headers = build_headers(user_agent);
@@ -121,7 +121,7 @@ pub(crate) fn build_safari_settings(
     let http2 = build_http2_settings(os);
 
     crate::imp::BrowserSettings {
-        browser_emulator,
+        browser_emulator: Arc::new(browser_emulator),
         http2,
         headers,
         gzip: true,

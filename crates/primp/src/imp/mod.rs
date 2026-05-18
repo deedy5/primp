@@ -27,6 +27,7 @@
 use http::HeaderMap;
 use rand::prelude::*;
 use rustls::client::BrowserEmulator;
+use std::sync::{Arc, OnceLock};
 
 // Re-export h2 types for HTTP/2 fingerprinting when http2 feature is enabled
 #[cfg(feature = "http2")]
@@ -40,6 +41,20 @@ pub mod firefox;
 pub mod opera;
 pub mod safari;
 
+// HTTP/2 magic numbers grouped by browser family.
+pub(crate) const CHROME_INITIAL_STREAM_WINDOW: u32 = 6291456;
+pub(crate) const CHROME_INITIAL_CONNECTION_WINDOW: u32 = 15728640;
+pub(crate) const CHROME_MAX_HEADER_LIST_SIZE: u32 = 262144;
+pub(crate) const CHROME_HEADER_TABLE_SIZE: u32 = 65536;
+
+pub(crate) const FIREFOX_INITIAL_STREAM_WINDOW: u32 = 131072;
+pub(crate) const FIREFOX_INITIAL_CONNECTION_WINDOW: u32 = 15728640;
+pub(crate) const FIREFOX_HEADER_TABLE_SIZE: u32 = 65536;
+
+pub(crate) const SAFARI_INITIAL_STREAM_WINDOW: u32 = 2097152;
+pub(crate) const SAFARI_INITIAL_CONNECTION_WINDOW: u32 = 10485760;
+pub(crate) const SAFARI_MAX_HEADER_LIST_SIZE: u32 = 262144;
+
 /// Browser TLS and HTTP/2 configuration settings.
 ///
 /// This struct contains all the configuration needed to impersonate a specific
@@ -48,7 +63,7 @@ pub mod safari;
 #[derive(Clone)]
 pub struct BrowserSettings {
     /// Rustls browser emulator configuration
-    pub(crate) browser_emulator: BrowserEmulator,
+    pub(crate) browser_emulator: Arc<BrowserEmulator>,
     /// HTTP/2 configuration data
     pub http2: Http2Data,
     /// Default headers to include with requests
@@ -185,12 +200,16 @@ pub enum Impersonate {
     ChromeV144,
     ChromeV145,
     ChromeV146,
+    ChromeV147,
+    ChromeV148,
     /// Random Chrome version
     Chrome,
     // Edge variants
     EdgeV144,
     EdgeV145,
     EdgeV146,
+    EdgeV147,
+    EdgeV148,
     /// Random Edge version
     Edge,
     // Opera variants
@@ -198,6 +217,8 @@ pub enum Impersonate {
     OperaV127,
     OperaV128,
     OperaV129,
+    OperaV130,
+    OperaV131,
     /// Random Opera version
     Opera,
     // Safari variants
@@ -252,13 +273,19 @@ pub fn random_impersonate() -> Impersonate {
         Impersonate::ChromeV144,
         Impersonate::ChromeV145,
         Impersonate::ChromeV146,
+        Impersonate::ChromeV147,
+        Impersonate::ChromeV148,
         Impersonate::EdgeV144,
         Impersonate::EdgeV145,
         Impersonate::EdgeV146,
+        Impersonate::EdgeV147,
+        Impersonate::EdgeV148,
         Impersonate::OperaV126,
         Impersonate::OperaV127,
         Impersonate::OperaV128,
         Impersonate::OperaV129,
+        Impersonate::OperaV130,
+        Impersonate::OperaV131,
         Impersonate::SafariV26,
         Impersonate::SafariV26_3,
         Impersonate::SafariV18_5,
@@ -280,6 +307,8 @@ pub fn resolve_impersonate(version: Impersonate) -> Impersonate {
                 Impersonate::ChromeV144,
                 Impersonate::ChromeV145,
                 Impersonate::ChromeV146,
+                Impersonate::ChromeV147,
+                Impersonate::ChromeV148,
             ];
             *CHROME.choose(&mut rand::rng()).unwrap()
         }
@@ -288,6 +317,8 @@ pub fn resolve_impersonate(version: Impersonate) -> Impersonate {
                 Impersonate::EdgeV144,
                 Impersonate::EdgeV145,
                 Impersonate::EdgeV146,
+                Impersonate::EdgeV147,
+                Impersonate::EdgeV148,
             ];
             *EDGE.choose(&mut rand::rng()).unwrap()
         }
@@ -297,6 +328,8 @@ pub fn resolve_impersonate(version: Impersonate) -> Impersonate {
                 Impersonate::OperaV127,
                 Impersonate::OperaV128,
                 Impersonate::OperaV129,
+                Impersonate::OperaV130,
+                Impersonate::OperaV131,
             ];
             *OPERA.choose(&mut rand::rng()).unwrap()
         }
@@ -339,6 +372,78 @@ pub fn random_impersonate_os() -> ImpersonateOS {
     *OS_VARIANTS.choose(&mut rand::rng()).unwrap()
 }
 
+/// Returns the OS-specific sec-ch-ua-platform header value.
+pub(crate) fn os_platform(os: ImpersonateOS) -> &'static str {
+    match os {
+        ImpersonateOS::Windows => r#""Windows""#,
+        ImpersonateOS::MacOS => r#""macOS""#,
+        ImpersonateOS::Linux => r#""Linux""#,
+        ImpersonateOS::Android => r#""Android""#,
+        ImpersonateOS::IOS => r#""iOS""#,
+        ImpersonateOS::Random => os_platform(random_impersonate_os()),
+    }
+}
+
+/// Standard Chrome/Edge/Opera header order with sec-ch-ua first.
+pub(crate) fn header_order_sec_chua_first() -> &'static Vec<http::HeaderName> {
+    static ORDER: OnceLock<Vec<http::HeaderName>> = OnceLock::new();
+    ORDER.get_or_init(|| vec![
+        http::HeaderName::from_static("sec-ch-ua"),
+        http::HeaderName::from_static("sec-ch-ua-mobile"),
+        http::HeaderName::from_static("sec-ch-ua-platform"),
+        http::HeaderName::from_static("upgrade-insecure-requests"),
+        http::HeaderName::from_static("user-agent"),
+        http::HeaderName::from_static("accept"),
+        http::HeaderName::from_static("sec-fetch-site"),
+        http::HeaderName::from_static("sec-fetch-mode"),
+        http::HeaderName::from_static("sec-fetch-dest"),
+        http::HeaderName::from_static("sec-fetch-user"),
+        http::HeaderName::from_static("cache-control"),
+        http::HeaderName::from_static("accept-encoding"),
+        http::HeaderName::from_static("accept-language"),
+    ])
+}
+
+/// Chrome 148+ header order with upgrade-insecure-requests first.
+pub(crate) fn header_order_upgrade_first() -> &'static Vec<http::HeaderName> {
+    static ORDER: OnceLock<Vec<http::HeaderName>> = OnceLock::new();
+    ORDER.get_or_init(|| vec![
+        http::HeaderName::from_static("upgrade-insecure-requests"),
+        http::HeaderName::from_static("sec-ch-ua"),
+        http::HeaderName::from_static("sec-ch-ua-mobile"),
+        http::HeaderName::from_static("sec-ch-ua-platform"),
+        http::HeaderName::from_static("user-agent"),
+        http::HeaderName::from_static("accept"),
+        http::HeaderName::from_static("sec-fetch-site"),
+        http::HeaderName::from_static("sec-fetch-mode"),
+        http::HeaderName::from_static("sec-fetch-dest"),
+        http::HeaderName::from_static("sec-fetch-user"),
+        http::HeaderName::from_static("cache-control"),
+        http::HeaderName::from_static("accept-encoding"),
+        http::HeaderName::from_static("accept-language"),
+    ])
+}
+
+/// Opera 131+ header order with cache-control first.
+pub(crate) fn header_order_cache_control_first() -> &'static Vec<http::HeaderName> {
+    static ORDER: OnceLock<Vec<http::HeaderName>> = OnceLock::new();
+    ORDER.get_or_init(|| vec![
+        http::HeaderName::from_static("cache-control"),
+        http::HeaderName::from_static("sec-ch-ua"),
+        http::HeaderName::from_static("sec-ch-ua-mobile"),
+        http::HeaderName::from_static("sec-ch-ua-platform"),
+        http::HeaderName::from_static("upgrade-insecure-requests"),
+        http::HeaderName::from_static("user-agent"),
+        http::HeaderName::from_static("accept"),
+        http::HeaderName::from_static("sec-fetch-site"),
+        http::HeaderName::from_static("sec-fetch-mode"),
+        http::HeaderName::from_static("sec-fetch-dest"),
+        http::HeaderName::from_static("sec-fetch-user"),
+        http::HeaderName::from_static("accept-encoding"),
+        http::HeaderName::from_static("accept-language"),
+    ])
+}
+
 /// Gets browser settings for impersonation.
 ///
 /// # Arguments
@@ -358,16 +463,26 @@ pub fn get_browser_settings(
     let os_type = os_type.unwrap_or_default();
 
     match version {
-        Impersonate::ChromeV144 | Impersonate::ChromeV145 | Impersonate::ChromeV146 => {
+        Impersonate::ChromeV144
+        | Impersonate::ChromeV145
+        | Impersonate::ChromeV146
+        | Impersonate::ChromeV147
+        | Impersonate::ChromeV148 => {
             chrome::build_chrome_settings(version, os_type)
         }
-        Impersonate::EdgeV144 | Impersonate::EdgeV145 | Impersonate::EdgeV146 => {
+        Impersonate::EdgeV144
+        | Impersonate::EdgeV145
+        | Impersonate::EdgeV146
+        | Impersonate::EdgeV147
+        | Impersonate::EdgeV148 => {
             edge::build_edge_settings(version, os_type)
         }
         Impersonate::OperaV126
         | Impersonate::OperaV127
         | Impersonate::OperaV128
-        | Impersonate::OperaV129 => opera::build_opera_settings(version, os_type),
+        | Impersonate::OperaV129
+        | Impersonate::OperaV130
+        | Impersonate::OperaV131 => opera::build_opera_settings(version, os_type),
         Impersonate::SafariV26 | Impersonate::SafariV26_3 | Impersonate::SafariV18_5 => {
             safari::build_safari_settings(version, os_type)
         }
