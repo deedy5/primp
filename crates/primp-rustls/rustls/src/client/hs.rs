@@ -698,7 +698,6 @@ fn emit_client_hello_for_retry(
     // Debug: Print cipher suites being used
     #[cfg(all(feature = "logging", feature = "impersonate"))]
     {
-        debug!("Browser emulation: {:?}", config.browser_emulation);
         debug!("Cipher suites count: {}", cipher_suites.len());
         for (i, cs) in cipher_suites.iter().enumerate() {
             debug!("  [{}] {:?}", i, cs);
