@@ -1,10 +1,8 @@
 //! DNS-over-HTTPS (DoH) resolution via hickory-resolver
 
-use hickory_resolver::{
-    config::{LookupIpStrategy, NameServerConfig, ResolverConfig},
-    net::runtime::TokioRuntimeProvider,
-    TokioResolver,
-};
+use hickory_resolver::config::{LookupIpStrategy, NameServerConfig, ResolverConfig};
+use hickory_resolver::net::runtime::TokioRuntimeProvider;
+use hickory_resolver::TokioResolver;
 
 use std::net::IpAddr;
 use std::str::FromStr;
@@ -110,7 +108,10 @@ impl Resolve for DohResolver {
         let this = self.clone();
         Box::pin(async move {
             let resolver = this.get_resolver().await?;
-            let lookup = resolver.lookup_ip(name.as_str()).await?;
+            let lookup = tokio::time::timeout(Duration::from_secs(5), resolver.lookup_ip(name.as_str()))
+                .await
+                .map_err(|_| BoxError::from("DoH lookup timed out"))?
+                .map_err(BoxError::from)?;
             let ips: Vec<IpAddr> = lookup.iter().collect();
             let addrs: Addrs = Box::new(SocketAddrs {
                 iter: ips.into_iter(),
