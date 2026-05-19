@@ -46,9 +46,7 @@ fn parse_single_resolver(s: &str) -> PrimpResult<Arc<dyn Resolve>> {
     } else {
         let host = s.strip_prefix("dns://").unwrap_or(s);
         if host.is_empty() {
-            return Err(PrimpErrorEnum::Custom(
-                "dns:// URL must have a host".into(),
-            ));
+            return Err(PrimpErrorEnum::Custom("dns:// URL must have a host".into()));
         }
         if host == "system" {
             return Ok(Arc::new(primp::dns::gai::GaiResolver::new()));

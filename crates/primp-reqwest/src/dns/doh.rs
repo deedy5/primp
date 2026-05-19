@@ -1,13 +1,12 @@
 //! DNS-over-HTTPS (DoH) resolution via hickory-resolver
 
 use hickory_resolver::{
-    config::{LookupIpStrategy, NameServerConfig, NameServerConfigGroup, ResolverConfig},
-    name_server::TokioConnectionProvider,
-    proto::xfer::Protocol,
+    config::{LookupIpStrategy, NameServerConfig, ResolverConfig},
+    net::runtime::TokioRuntimeProvider,
     TokioResolver,
 };
 
-use std::net::{IpAddr, SocketAddr};
+use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -79,25 +78,24 @@ impl DohResolver {
             .await?;
         let ips: Vec<IpAddr> = addrs.map(|a| a.ip()).collect();
 
-        let mut group = NameServerConfigGroup::with_capacity(ips.len());
-        for &ip in &ips {
-            group.push(NameServerConfig {
-                socket_addr: SocketAddr::new(ip, self.doh_port),
-                protocol: Protocol::Https,
-                tls_dns_name: Some(self.doh_host.clone()),
-                http_endpoint: Some(self.doh_path.clone()),
-                trust_negative_responses: true,
-                bind_addr: None,
-            });
-        }
-        let config = ResolverConfig::from_parts(None, vec![], group);
+        let name_servers: Vec<NameServerConfig> = ips
+            .iter()
+            .map(|&ip| {
+                NameServerConfig::https(
+                    ip,
+                    self.doh_host.clone().into(),
+                    Some(self.doh_path.clone().into()),
+                )
+            })
+            .collect();
+        let config = ResolverConfig::from_parts(None, vec![], name_servers);
 
         let mut builder =
-            TokioResolver::builder_with_config(config, TokioConnectionProvider::default());
+            TokioResolver::builder_with_config(config, TokioRuntimeProvider::default());
         let opts = builder.options_mut();
         opts.timeout = Duration::from_secs(5);
         opts.ip_strategy = LookupIpStrategy::Ipv4AndIpv6;
-        let resolver = Arc::new(builder.build());
+        let resolver = Arc::new(builder.build().expect("failed to build DoH resolver"));
 
         let mut guard = self.state.lock().unwrap();
         if guard.is_none() {
@@ -113,8 +111,9 @@ impl Resolve for DohResolver {
         Box::pin(async move {
             let resolver = this.get_resolver().await?;
             let lookup = resolver.lookup_ip(name.as_str()).await?;
+            let ips: Vec<IpAddr> = lookup.iter().collect();
             let addrs: Addrs = Box::new(SocketAddrs {
-                iter: lookup.into_iter(),
+                iter: ips.into_iter(),
             });
             Ok(addrs)
         })
