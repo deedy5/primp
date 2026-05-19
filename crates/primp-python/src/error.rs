@@ -22,6 +22,7 @@ use pyo3::create_exception;
 use pyo3::exceptions::PyException;
 use pyo3::PyErr;
 
+use std::error::Error;
 use std::fmt;
 use std::io;
 
@@ -177,6 +178,21 @@ pub type PrimpResult<T> = std::result::Result<T, PrimpErrorEnum>;
 // Error Conversion Functions
 // =============================================================================
 
+/// Format an error with its full source chain for better debugging.
+fn format_with_source(err: &::primp::Error) -> String {
+    let mut msg = err.to_string();
+    let mut source: Option<&(dyn Error + 'static)> = err.source();
+    while let Some(s) = source {
+        let s_msg: String = s.to_string();
+        if !msg.contains(&s_msg) {
+            msg.push_str(" > ");
+            msg.push_str(&s_msg);
+        }
+        source = s.source();
+    }
+    msg
+}
+
 /// Convert a ::primp::Error to the appropriate Python exception.
 ///
 /// Uses native type-based detection via `is_*()` methods from primp-reqwest.
@@ -196,39 +212,44 @@ pub type PrimpResult<T> = std::result::Result<T, PrimpErrorEnum>;
 /// 10. Fallback → PrimpError
 pub(crate) fn convert_reqwest_error(err: ::primp::Error) -> PyErr {
     let url = err.url().map(|u| u.to_string());
-    let message = err.to_string();
 
     // Use native primp-reqwest error API - NO message parsing!
 
     // Builder errors (includes URL and header errors)
     if err.is_builder() {
+        let message = err.to_string();
         return BuilderError::new_err((message, url));
     }
 
     // Status errors (HTTP 4xx/5xx)
     if err.is_status() {
+        let message = err.to_string();
         let status_code = err.status().map(|s| s.as_u16()).unwrap_or(0);
         return StatusError::new_err((status_code, message, url));
     }
 
     // Redirect errors
     if err.is_redirect() {
+        let message = err.to_string();
         return RedirectError::new_err((message, url));
     }
 
+    // Include source chain for request-level errors (connect, timeout, generic)
+    let message = format_with_source(&err);
+
     // Timeout errors (child of RequestError)
     if err.is_timeout() {
-        return TimeoutError::new_err((message, url));
+        return TimeoutError::new_err(message);
     }
 
     // Connect errors (child of RequestError)
     if err.is_connect() {
-        return ConnectError::new_err((message, url));
+        return ConnectError::new_err(message);
     }
 
     // Request errors (generic)
     if err.is_request() {
-        return RequestError::new_err((message, url));
+        return RequestError::new_err(message);
     }
 
     // Decode errors
