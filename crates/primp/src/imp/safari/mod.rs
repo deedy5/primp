@@ -42,16 +42,13 @@ pub(crate) fn build_safari_settings(
         _ => BrowserEmulatorOS::MacOS,
     };
 
-    // Get cached browser emulator for Safari (avoids Vec allocations on each call)
-    let mut browser_emulator = safari_emulator(safari, browser_os);
-
-    // Set OS type on the cloned emulator
-    browser_emulator.os_type = Some(browser_os);
+    // Get cached browser emulator for Safari (Arc clone = cheap refcount increment)
+    let browser_emulator = safari_emulator(safari, browser_os);
 
     let http2 = build_http2_settings();
 
     crate::imp::BrowserSettings {
-        browser_emulator: Arc::new(browser_emulator),
+        browser_emulator,
         http2,
         headers,
         gzip: true,
@@ -62,23 +59,26 @@ pub(crate) fn build_safari_settings(
 }
 
 /// Builds a User-Agent string for a Safari version and OS.
+/// Safari only supports MacOS and iOS; other OSes default to MacOS.
 fn build_user_agent(safari: Impersonate, os: crate::imp::ImpersonateOS) -> &'static str {
+    let os = match os {
+        crate::imp::ImpersonateOS::Random => crate::imp::random_impersonate_os(),
+        crate::imp::ImpersonateOS::IOS => crate::imp::ImpersonateOS::IOS,
+        _ => crate::imp::ImpersonateOS::MacOS,
+    };
     match safari {
         Impersonate::SafariV18_5 => match os {
-            crate::imp::ImpersonateOS::MacOS => "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Safari/605.1.15",
             crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",
-            _ => build_user_agent(safari, crate::imp::random_impersonate_os()),
+            _ => "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Safari/605.1.15",
         },
         Impersonate::SafariV26 => match os {
-            crate::imp::ImpersonateOS::MacOS => "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
             crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1",
-            _ => build_user_agent(safari, crate::imp::random_impersonate_os()),
+            _ => "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
         },
         // Safari 26.3: macOS uses Safari 26 UA, iOS uses Safari 18.5 UA
         Impersonate::SafariV26_3 => match os {
-            crate::imp::ImpersonateOS::MacOS => "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.3 Safari/605.1.15",
             crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",
-            _ => build_user_agent(safari, crate::imp::random_impersonate_os()),
+            _ => "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.3 Safari/605.1.15",
         },
         _ => unreachable!(),
     }
@@ -109,24 +109,26 @@ fn build_http2_settings() -> crate::imp::Http2Data {
     }
 }
 
-fn safari_emulator(safari: Impersonate, browser_os: BrowserEmulatorOS) -> BrowserEmulator {
+fn safari_emulator(safari: Impersonate, browser_os: BrowserEmulatorOS) -> Arc<BrowserEmulator> {
     match safari {
         Impersonate::SafariV18_5 => {
-            static EMU: OnceLock<BrowserEmulator> = OnceLock::new();
-            EMU.get_or_init(new_safari_18_5_emulator).clone()
+            static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
+            EMU.get_or_init(|| Arc::new(new_safari_18_5_emulator())).clone()
         }
         Impersonate::SafariV26 => {
-            static EMU: OnceLock<BrowserEmulator> = OnceLock::new();
-            EMU.get_or_init(new_safari_26_emulator).clone()
+            static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
+            EMU.get_or_init(|| Arc::new(new_safari_26_emulator())).clone()
         }
         Impersonate::SafariV26_3 => {
             if browser_os == BrowserEmulatorOS::IOS {
-                static EMU_IOS: OnceLock<BrowserEmulator> = OnceLock::new();
-                EMU_IOS.get_or_init(new_safari_26_3_ios_emulator).clone()
+                static EMU_IOS: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
+                EMU_IOS
+                    .get_or_init(|| Arc::new(new_safari_26_3_ios_emulator()))
+                    .clone()
             } else {
-                static EMU_MACOS: OnceLock<BrowserEmulator> = OnceLock::new();
+                static EMU_MACOS: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
                 EMU_MACOS
-                    .get_or_init(new_safari_26_3_macos_emulator)
+                    .get_or_init(|| Arc::new(new_safari_26_3_macos_emulator()))
                     .clone()
             }
         }

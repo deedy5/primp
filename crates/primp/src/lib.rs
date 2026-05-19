@@ -598,18 +598,26 @@ fn build_impersonate_tls_config(
     custom_certs: &[reqwest::Certificate],
 ) -> crate::Result<rustls::ClientConfig> {
     use rustls::client::EchMode;
-    use std::sync::Arc;
+    use std::sync::{Arc, OnceLock};
 
-    let provider = rustls::crypto::CryptoProvider::get_default()
-        .cloned()
-        .unwrap_or_else(|| Arc::new(rustls::crypto::aws_lc_rs::default_provider()));
+    // Cache the CryptoProvider to avoid repeated lookups and allocations
+    static CRYPTO_PROVIDER: OnceLock<Arc<rustls::crypto::CryptoProvider>> = OnceLock::new();
+    let provider = CRYPTO_PROVIDER
+        .get_or_init(|| {
+            rustls::crypto::CryptoProvider::get_default()
+                .cloned()
+                .unwrap_or_else(|| Arc::new(rustls::crypto::aws_lc_rs::default_provider()))
+        })
+        .clone();
 
-    // Use cached root store with both webpki roots and native OS root CAs.
-    // If custom certs are provided, merge them in.
+    // Cache the default root store to avoid cloning hundreds of certs on every build
+    static DEFAULT_ROOT_STORE: OnceLock<Arc<rustls::RootCertStore>> = OnceLock::new();
     let root_store = if custom_certs.is_empty() {
-        reqwest::tls::default_root_store().clone()
+        DEFAULT_ROOT_STORE
+            .get_or_init(|| Arc::new(reqwest::tls::default_root_store().clone()))
+            .clone()
     } else {
-        reqwest::tls::merged_root_store(custom_certs.to_vec())?
+        Arc::new(reqwest::tls::merged_root_store(custom_certs.to_vec())?)
     };
 
     // ECH GREASE is only used for Chrome-based browsers and Firefox to match JA4 fingerprint

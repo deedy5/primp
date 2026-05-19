@@ -383,13 +383,18 @@ pub fn random_impersonate_os() -> ImpersonateOS {
 
 /// Returns the OS-specific sec-ch-ua-platform header value.
 pub(crate) fn os_platform(os: ImpersonateOS) -> &'static str {
+    let os = if matches!(os, ImpersonateOS::Random) {
+        random_impersonate_os()
+    } else {
+        os
+    };
     match os {
         ImpersonateOS::Windows => r#""Windows""#,
         ImpersonateOS::MacOS => r#""macOS""#,
         ImpersonateOS::Linux => r#""Linux""#,
         ImpersonateOS::Android => r#""Android""#,
         ImpersonateOS::IOS => r#""iOS""#,
-        ImpersonateOS::Random => os_platform(random_impersonate_os()),
+        ImpersonateOS::Random => unreachable!(),
     }
 }
 
