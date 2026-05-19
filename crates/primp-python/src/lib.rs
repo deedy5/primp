@@ -88,6 +88,20 @@ pub fn extract_cookies_to_indexmap(headers: &http::HeaderMap) -> IndexMapSSR {
     cookie_map
 }
 
+/// Convert a non-Object `serde_json::Value` to a raw string body.
+pub(crate) fn body_value_to_string(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Number(n) => n.to_string(),
+        Value::Bool(b) => b.to_string(),
+        Value::Null => String::new(),
+        Value::Array(arr) => {
+            serde_json::to_string(arr).unwrap_or_default()
+        }
+        Value::Object(_) => unreachable!("body_value_to_string should not be called with Object"),
+    }
+}
+
 #[pymethods]
 impl Client {
     /// Initializes an HTTP client that can impersonate web browsers.
@@ -370,9 +384,17 @@ impl Client {
             if let Some(content) = content {
                 request_builder = request_builder.body(content);
             }
-            // Form data (if provided)
+            // Form data (if provided) — only form-encode objects; send scalars as raw body
             if let Some(form_data) = data_value {
-                request_builder = request_builder.form(&form_data);
+                match form_data {
+                    Value::Object(_) => {
+                        request_builder = request_builder.form(&form_data);
+                    }
+                    other => {
+                        let body = body_value_to_string(&other);
+                        request_builder = request_builder.body(body);
+                    }
+                }
             }
             // JSON (if provided)
             if let Some(json_data) = json_value {

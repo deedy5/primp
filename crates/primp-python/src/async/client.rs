@@ -11,6 +11,7 @@ use tokio_util::codec::{BytesCodec, FramedRead};
 use crate::client_builder::{configure_client_builder, cookies_to_header_values, IndexMapSSR};
 use crate::error::{PrimpErrorEnum, PrimpResult};
 use crate::extract_cookies_to_indexmap;
+use crate::body_value_to_string;
 use crate::traits::HeadersTraits;
 use crate::utils::extract_encoding;
 
@@ -258,9 +259,17 @@ impl AsyncClient {
             if let Some(content) = content {
                 request_builder = request_builder.body(content);
             }
-            // Form data (if provided)
+            // Form data (if provided) — only form-encode objects; send scalars as raw body
             if let Some(form_data) = data_value {
-                request_builder = request_builder.form(&form_data);
+                match form_data {
+                    Value::Object(_) => {
+                        request_builder = request_builder.form(&form_data);
+                    }
+                    other => {
+                        let body = body_value_to_string(&other);
+                        request_builder = request_builder.body(body);
+                    }
+                }
             }
             // JSON (if provided)
             if let Some(json_data) = json_value {
