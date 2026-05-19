@@ -32,6 +32,11 @@ pub(crate) fn build_safari_settings(
     safari: Impersonate,
     os: crate::imp::ImpersonateOS,
 ) -> crate::imp::BrowserSettings {
+    let os = if matches!(os, crate::imp::ImpersonateOS::Random) {
+        crate::imp::random_impersonate_os()
+    } else {
+        os
+    };
     let user_agent = build_user_agent(safari, os);
     let headers = build_safari_base_headers(user_agent);
 
@@ -63,8 +68,8 @@ pub(crate) fn build_safari_settings(
 /// Builds a User-Agent string for a Safari version and OS.
 /// Safari only supports MacOS and iOS; other OSes default to MacOS.
 fn build_user_agent(safari: Impersonate, os: crate::imp::ImpersonateOS) -> &'static str {
+    // Random is resolved before this is called; only MacOS and IOS reach here
     let os = match os {
-        crate::imp::ImpersonateOS::Random => crate::imp::random_impersonate_os(),
         crate::imp::ImpersonateOS::IOS => crate::imp::ImpersonateOS::IOS,
         _ => crate::imp::ImpersonateOS::MacOS,
     };

@@ -10,6 +10,11 @@ pub(crate) fn build_firefox_settings(
     firefox: Impersonate,
     os: crate::imp::ImpersonateOS,
 ) -> crate::imp::BrowserSettings {
+    let os = if matches!(os, crate::imp::ImpersonateOS::Random) {
+        crate::imp::random_impersonate_os()
+    } else {
+        os
+    };
     let user_agent = build_user_agent(firefox, os);
     let headers = build_headers(user_agent);
 
@@ -66,7 +71,7 @@ fn build_user_agent(firefox: Impersonate, os: crate::imp::ImpersonateOS) -> &'st
             crate::imp::ImpersonateOS::Linux => "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0",
             crate::imp::ImpersonateOS::Android => "Mozilla/5.0 (Android 14; Mobile; rv:140.0) Gecko/140.0 Firefox/140.0",
             crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 17_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/140.0 Mobile/15E148 Safari/605.1",
-            _ => build_user_agent(firefox, crate::imp::random_impersonate_os()),
+            _ => unreachable!(),
         },
         Impersonate::FirefoxV146 => match os {
             crate::imp::ImpersonateOS::Windows => "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:146.0) Gecko/20100101 Firefox/146.0",
@@ -74,7 +79,7 @@ fn build_user_agent(firefox: Impersonate, os: crate::imp::ImpersonateOS) -> &'st
             crate::imp::ImpersonateOS::Linux => "Mozilla/5.0 (X11; Linux x86_64; rv:146.0) Gecko/20100101 Firefox/146.0",
             crate::imp::ImpersonateOS::Android => "Mozilla/5.0 (Android 14; Mobile; rv:146.0) Gecko/146.0 Firefox/146.0",
             crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 17_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/146.0 Mobile/15E148 Safari/605.1",
-            _ => build_user_agent(firefox, crate::imp::random_impersonate_os()),
+            _ => unreachable!(),
         },
         Impersonate::FirefoxV147 => match os {
             crate::imp::ImpersonateOS::Windows => "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:147.0) Gecko/20100101 Firefox/147.0",
@@ -82,7 +87,7 @@ fn build_user_agent(firefox: Impersonate, os: crate::imp::ImpersonateOS) -> &'st
             crate::imp::ImpersonateOS::Linux => "Mozilla/5.0 (X11; Linux x86_64; rv:147.0) Gecko/20100101 Firefox/147.0",
             crate::imp::ImpersonateOS::Android => "Mozilla/5.0 (Android 14; Mobile; rv:147.0) Gecko/147.0 Firefox/147.0",
             crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 17_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/147.0 Mobile/15E148 Safari/605.1",
-            _ => build_user_agent(firefox, crate::imp::random_impersonate_os()),
+            _ => unreachable!(),
         },
         Impersonate::FirefoxV148 => match os {
             crate::imp::ImpersonateOS::Windows => "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:148.0) Gecko/20100101 Firefox/148.0",
@@ -90,7 +95,7 @@ fn build_user_agent(firefox: Impersonate, os: crate::imp::ImpersonateOS) -> &'st
             crate::imp::ImpersonateOS::Linux => "Mozilla/5.0 (X11; Linux x86_64; rv:148.0) Gecko/20100101 Firefox/148.0",
             crate::imp::ImpersonateOS::Android => "Mozilla/5.0 (Android 14; Mobile; rv:148.0) Gecko/148.0 Firefox/148.0",
             crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 17_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/148.0 Mobile/15E148 Safari/605.1",
-            _ => build_user_agent(firefox, crate::imp::random_impersonate_os()),
+            _ => unreachable!(),
         },
         _ => unreachable!(),
     }

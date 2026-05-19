@@ -34,6 +34,11 @@ pub(crate) fn build_edge_settings(
     edge: Impersonate,
     os: crate::imp::ImpersonateOS,
 ) -> crate::imp::BrowserSettings {
+    let os = if matches!(os, crate::imp::ImpersonateOS::Random) {
+        crate::imp::random_impersonate_os()
+    } else {
+        os
+    };
     let user_agent = build_user_agent(edge, os);
     let sec_ch_ua = build_sec_ch_ua(edge, os);
 
@@ -83,7 +88,7 @@ fn build_user_agent(edge: Impersonate, os: crate::imp::ImpersonateOS) -> &'stati
             crate::imp::ImpersonateOS::Linux => "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0",
             crate::imp::ImpersonateOS::Android => "Mozilla/5.0 (Linux; Android 10; Pixel 3 XL) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Mobile Safari/537.36 EdgA/144.0.0.0",
             crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 EdgiOS/144.0.0.0 Mobile/15E148 Safari/605.1.15",
-            _ => build_user_agent(edge, crate::imp::random_impersonate_os()),
+            _ => unreachable!(),
         },
         Impersonate::EdgeV145 => match os {
             crate::imp::ImpersonateOS::Windows => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36 Edg/145.0.0.0",
@@ -91,7 +96,7 @@ fn build_user_agent(edge: Impersonate, os: crate::imp::ImpersonateOS) -> &'stati
             crate::imp::ImpersonateOS::Linux => "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36 Edg/145.0.0.0",
             crate::imp::ImpersonateOS::Android => "Mozilla/5.0 (Linux; Android 10; Pixel 3 XL) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Mobile Safari/537.36 EdgA/145.0.0.0",
             crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 EdgiOS/145.0.0.0 Mobile/15E148 Safari/605.1.15",
-            _ => build_user_agent(edge, crate::imp::random_impersonate_os()),
+            _ => unreachable!(),
         },
         Impersonate::EdgeV146 => match os {
             crate::imp::ImpersonateOS::Windows => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0",
@@ -99,7 +104,7 @@ fn build_user_agent(edge: Impersonate, os: crate::imp::ImpersonateOS) -> &'stati
             crate::imp::ImpersonateOS::Linux => "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0",
             crate::imp::ImpersonateOS::Android => "Mozilla/5.0 (Linux; Android 10; Pixel 3 XL) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Mobile Safari/537.36 EdgA/146.0.0.0",
             crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 EdgiOS/146.0.0.0 Mobile/15E148 Safari/605.1.15",
-            _ => build_user_agent(edge, crate::imp::random_impersonate_os()),
+            _ => unreachable!(),
         },
         Impersonate::EdgeV147 => match os {
             crate::imp::ImpersonateOS::Windows => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 Edg/147.0.3912.51",
@@ -107,7 +112,7 @@ fn build_user_agent(edge: Impersonate, os: crate::imp::ImpersonateOS) -> &'stati
             crate::imp::ImpersonateOS::Linux => "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 Edg/147.0.3912.51",
             crate::imp::ImpersonateOS::Android => "Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Mobile Safari/537.36 EdgA/147.0.3912.51",
             crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 EdgiOS/147.0.3912.51 Mobile/15E148 Safari/605.1.15",
-            _ => build_user_agent(edge, crate::imp::random_impersonate_os()),
+            _ => unreachable!(),
         },
         Impersonate::EdgeV148 => match os {
             crate::imp::ImpersonateOS::Windows => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0",
@@ -115,7 +120,7 @@ fn build_user_agent(edge: Impersonate, os: crate::imp::ImpersonateOS) -> &'stati
             crate::imp::ImpersonateOS::Linux => "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0",
             crate::imp::ImpersonateOS::Android => "Mozilla/5.0 (Linux; Android 10; Pixel 3 XL) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Mobile Safari/537.36 EdgA/148.0.0.0",
             crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 EdgiOS/148.0.0.0 Mobile/15E148 Safari/605.1.15",
-            _ => build_user_agent(edge, crate::imp::random_impersonate_os()),
+            _ => unreachable!(),
         },
         _ => unreachable!(),
     }

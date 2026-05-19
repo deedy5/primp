@@ -34,6 +34,11 @@ pub(crate) fn build_opera_settings(
     opera: Impersonate,
     os: crate::imp::ImpersonateOS,
 ) -> crate::imp::BrowserSettings {
+    let os = if matches!(os, crate::imp::ImpersonateOS::Random) {
+        crate::imp::random_impersonate_os()
+    } else {
+        os
+    };
     let user_agent = build_user_agent(opera, os);
     let sec_ch_ua = build_sec_ch_ua(opera, os);
 
@@ -89,7 +94,7 @@ fn build_user_agent(opera: Impersonate, os: crate::imp::ImpersonateOS) -> &'stat
             crate::imp::ImpersonateOS::Linux => "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 OPR/126.0.0.0",
             crate::imp::ImpersonateOS::Android => "Mozilla/5.0 (Linux; Android 10; SM-G970F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36 OPR/126.0.0.0",
             crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) OPiOS/126.0.0.0 Mobile/15E148 Safari/605.1.15",
-            _ => build_user_agent(opera, crate::imp::random_impersonate_os()),
+            _ => unreachable!(),
         },
         // Opera 127 is based on Chrome 143
         Impersonate::OperaV127 => match os {
@@ -98,7 +103,7 @@ fn build_user_agent(opera: Impersonate, os: crate::imp::ImpersonateOS) -> &'stat
             crate::imp::ImpersonateOS::Linux => "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 OPR/127.0.0.0",
             crate::imp::ImpersonateOS::Android => "Mozilla/5.0 (Linux; Android 10; SM-G970F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Mobile Safari/537.36 OPR/127.0.0.0",
             crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) OPiOS/127.0.0.0 Mobile/15E148 Safari/605.1.15",
-            _ => build_user_agent(opera, crate::imp::random_impersonate_os()),
+            _ => unreachable!(),
         },
         // Opera 128 is based on Chrome 144
         Impersonate::OperaV128 => match os {
@@ -107,7 +112,7 @@ fn build_user_agent(opera: Impersonate, os: crate::imp::ImpersonateOS) -> &'stat
             crate::imp::ImpersonateOS::Linux => "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 OPR/128.0.0.0",
             crate::imp::ImpersonateOS::Android => "Mozilla/5.0 (Linux; Android 10; SM-G970F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Mobile Safari/537.36 OPR/128.0.0.0",
             crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) OPiOS/128.0.0.0 Mobile/15E148 Safari/605.1.15",
-            _ => build_user_agent(opera, crate::imp::random_impersonate_os()),
+            _ => unreachable!(),
         },
         // Opera 129 is based on Chrome 145
         Impersonate::OperaV129 => match os {
@@ -116,7 +121,7 @@ fn build_user_agent(opera: Impersonate, os: crate::imp::ImpersonateOS) -> &'stat
             crate::imp::ImpersonateOS::Linux => "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36 OPR/129.0.0.0",
             crate::imp::ImpersonateOS::Android => "Mozilla/5.0 (Linux; Android 10; SM-G970F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Mobile Safari/537.36 OPR/129.0.0.0",
             crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) OPiOS/129.0.0.0 Mobile/15E148 Safari/605.1.15",
-            _ => build_user_agent(opera, crate::imp::random_impersonate_os()),
+            _ => unreachable!(),
         },
         // Opera 130 is based on Chrome 146
         Impersonate::OperaV130 => match os {
@@ -125,7 +130,7 @@ fn build_user_agent(opera: Impersonate, os: crate::imp::ImpersonateOS) -> &'stat
             crate::imp::ImpersonateOS::Linux => "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 OPR/130.0.0.0",
             crate::imp::ImpersonateOS::Android => "Mozilla/5.0 (Linux; Android 10; SM-G970F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Mobile Safari/537.36 OPR/130.0.0.0",
             crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) OPiOS/130.0.0.0 Mobile/15E148 Safari/605.1.15",
-            _ => build_user_agent(opera, crate::imp::random_impersonate_os()),
+            _ => unreachable!(),
         },
         // Opera 131 is based on Chrome 147
         Impersonate::OperaV131 => match os {
@@ -134,7 +139,7 @@ fn build_user_agent(opera: Impersonate, os: crate::imp::ImpersonateOS) -> &'stat
             crate::imp::ImpersonateOS::Linux => "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 OPR/131.0.0.0",
             crate::imp::ImpersonateOS::Android => "Mozilla/5.0 (Linux; Android 10; SM-G970F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Mobile Safari/537.36 OPR/131.0.0.0",
             crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) OPiOS/131.0.0.0 Mobile/15E148 Safari/605.1.15",
-            _ => build_user_agent(opera, crate::imp::random_impersonate_os()),
+            _ => unreachable!(),
         },
         _ => unreachable!(),
     }
