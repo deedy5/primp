@@ -246,6 +246,12 @@ impl AsyncClient {
             client_guard.clone()
         };
 
+        // Restore redirect policy immediately after cloning if it was changed
+        if follow_redirects.is_some() {
+            let mut client_guard = self.client.write().unwrap_or_else(|e| e.into_inner());
+            client_guard.set_redirect_policy(::primp::redirect::Policy::limited(20));
+        }
+
         let future = async move {
             // Create request builder
             let mut request_builder = client.request(method, &resolved_url);
@@ -323,12 +329,6 @@ impl AsyncClient {
             tracing::info!("response: {} {}", url, status_code);
             Ok::<(PrimpResponse, String, u16), PrimpErrorEnum>((resp, url, status_code))
         };
-
-        // Restore redirect policy if it was changed
-        if follow_redirects.is_some() {
-            let mut client_guard = self.client.write().unwrap_or_else(|e| e.into_inner());
-            client_guard.set_redirect_policy(::primp::redirect::Policy::limited(20));
-        }
 
         // Convert Rust future to Python awaitable
         if stream {

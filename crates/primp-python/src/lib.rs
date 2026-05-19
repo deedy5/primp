@@ -369,6 +369,12 @@ impl Client {
         // Clone the inner client to avoid holding the RwLock across await points
         let client_clone = client.read().unwrap_or_else(|e| e.into_inner()).clone();
 
+        // Restore redirect policy immediately after cloning if it was changed
+        if follow_redirects.is_some() {
+            let mut client_guard = client.write().unwrap_or_else(|e| e.into_inner());
+            client_guard.set_redirect_policy(::primp::redirect::Policy::limited(20));
+        }
+
         let future = async move {
             // Create request builder using the cloned client
             let mut request_builder = client_clone.request(method, &resolved_url);
@@ -452,12 +458,6 @@ impl Client {
         let runtime = get_runtime(py);
         let response: Result<(PrimpResponse, String, u16), PrimpErrorEnum> =
             py.detach(move || runtime.block_on(future));
-
-        // Restore redirect policy if it was changed
-        if follow_redirects.is_some() {
-            let mut client_guard = client.write().unwrap_or_else(|e| e.into_inner());
-            client_guard.set_redirect_policy(::primp::redirect::Policy::limited(20));
-        }
 
         let result = response?;
         let resp = result.0;
@@ -829,7 +829,7 @@ fn get(
         None,
         None,
         None,
-        headers.clone(),
+        headers,
         None,
         None,
         None,
@@ -918,7 +918,7 @@ fn head(
         None,
         None,
         None,
-        headers.clone(),
+        headers,
         None,
         None,
         None,
@@ -1007,7 +1007,7 @@ fn options(
         None,
         None,
         None,
-        headers.clone(),
+        headers,
         None,
         None,
         None,
@@ -1096,7 +1096,7 @@ fn delete(
         None,
         None,
         None,
-        headers.clone(),
+        headers,
         None,
         None,
         None,
@@ -1185,7 +1185,7 @@ fn post(
         None,
         None,
         None,
-        headers.clone(),
+        headers,
         None,
         None,
         None,
@@ -1274,7 +1274,7 @@ fn put(
         None,
         None,
         None,
-        headers.clone(),
+        headers,
         None,
         None,
         None,
@@ -1363,7 +1363,7 @@ fn patch(
         None,
         None,
         None,
-        headers.clone(),
+        headers,
         None,
         None,
         None,
@@ -1454,7 +1454,7 @@ fn request(
         None,
         None,
         None,
-        headers.clone(),
+        headers,
         None,
         None,
         None,

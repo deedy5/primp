@@ -332,7 +332,7 @@ impl AsyncBytesIterator {
         AsyncBytesIterator {
             resp,
             chunk_size,
-            buffer: Arc::new(TMutex::new(Vec::new())),
+            buffer: Arc::new(TMutex::new(Vec::with_capacity(chunk_size * 2))),
         }
     }
 }
@@ -412,7 +412,7 @@ impl AsyncBytesIterator {
 #[pyclass]
 pub struct AsyncTextIterator {
     resp: Arc<TMutex<Option<::primp::Response>>>,
-    encoding: String,
+    encoding: &'static encoding_rs::Encoding,
     chunk_size: usize,
     buffer: Arc<TMutex<Vec<u8>>>,
 }
@@ -423,11 +423,13 @@ impl AsyncTextIterator {
         encoding: String,
         chunk_size: usize,
     ) -> Self {
+        let encoding =
+            encoding_rs::Encoding::for_label(encoding.as_bytes()).unwrap_or(encoding_rs::UTF_8);
         AsyncTextIterator {
             resp,
             encoding,
             chunk_size,
-            buffer: Arc::new(TMutex::new(Vec::new())),
+            buffer: Arc::new(TMutex::new(Vec::with_capacity(chunk_size * 2))),
         }
     }
 }
@@ -442,7 +444,7 @@ impl AsyncTextIterator {
         use pyo3_async_runtimes::tokio::future_into_py;
 
         let resp = Arc::clone(&self.resp);
-        let encoding = self.encoding.clone();
+        let encoding = self.encoding;
         let chunk_size = self.chunk_size;
         let buffer = Arc::clone(&self.buffer);
 
@@ -451,8 +453,7 @@ impl AsyncTextIterator {
                 let mut buf = buffer.lock().await;
                 if buf.len() >= chunk_size {
                     let chunk: Vec<u8> = buf.drain(..chunk_size).collect();
-                    let enc = Encoding::for_label(encoding.as_bytes()).unwrap_or(UTF_8);
-                    let (text, _, _) = enc.decode(&chunk);
+                    let (text, _, _) = encoding.decode(&chunk);
                     return Ok::<String, PyErr>(text.to_string());
                 }
             }
@@ -465,13 +466,11 @@ impl AsyncTextIterator {
                         buf.extend_from_slice(&data);
                         if buf.len() >= chunk_size {
                             let result: Vec<u8> = buf.drain(..chunk_size).collect();
-                            let enc = Encoding::for_label(encoding.as_bytes()).unwrap_or(UTF_8);
-                            let (text, _, _) = enc.decode(&result);
+                            let (text, _, _) = encoding.decode(&result);
                             Ok(text.to_string())
                         } else if !buf.is_empty() {
                             let result: Vec<u8> = std::mem::take(&mut *buf);
-                            let enc = Encoding::for_label(encoding.as_bytes()).unwrap_or(UTF_8);
-                            let (text, _, _) = enc.decode(&result);
+                            let (text, _, _) = encoding.decode(&result);
                             Ok(text.to_string())
                         } else {
                             Ok(String::new())
@@ -481,8 +480,7 @@ impl AsyncTextIterator {
                         let mut buf = buffer.lock().await;
                         if !buf.is_empty() {
                             let result: Vec<u8> = std::mem::take(&mut *buf);
-                            let enc = Encoding::for_label(encoding.as_bytes()).unwrap_or(UTF_8);
-                            let (text, _, _) = enc.decode(&result);
+                            let (text, _, _) = encoding.decode(&result);
                             Ok(text.to_string())
                         } else {
                             Err(PyErr::new::<pyo3::exceptions::PyStopAsyncIteration, _>(
@@ -496,8 +494,7 @@ impl AsyncTextIterator {
                     let mut buf = buffer.lock().await;
                     if !buf.is_empty() {
                         let result: Vec<u8> = std::mem::take(&mut *buf);
-                        let enc = Encoding::for_label(encoding.as_bytes()).unwrap_or(UTF_8);
-                        let (text, _, _) = enc.decode(&result);
+                        let (text, _, _) = encoding.decode(&result);
                         Ok(text.to_string())
                     } else {
                         Err(PyErr::new::<pyo3::exceptions::PyStopAsyncIteration, _>(
@@ -516,7 +513,7 @@ impl AsyncTextIterator {
 #[pyclass]
 pub struct AsyncLinesIterator {
     resp: Arc<TMutex<Option<::primp::Response>>>,
-    buffer: Arc<TMutex<String>>,
+    buffer: Arc<TMutex<Vec<u8>>>,
     done: Arc<TMutex<bool>>,
 }
 
@@ -524,7 +521,7 @@ impl AsyncLinesIterator {
     fn new(resp: Arc<TMutex<Option<::primp::Response>>>) -> Self {
         AsyncLinesIterator {
             resp,
-            buffer: Arc::new(TMutex::new(String::new())),
+            buffer: Arc::new(TMutex::new(Vec::with_capacity(8192))),
             done: Arc::new(TMutex::new(false)),
         }
     }
@@ -547,10 +544,11 @@ impl AsyncLinesIterator {
             loop {
                 {
                     let mut buf = buffer.lock().await;
-                    if let Some(newline_pos) = buf.find('\n') {
-                        let line: String = buf.drain(..=newline_pos).collect();
+                    if let Some(newline_pos) = buf.iter().position(|&b| b == b'\n') {
+                        let line_bytes: Vec<u8> = buf.drain(..=newline_pos).collect();
+                        let line = String::from_utf8_lossy(&line_bytes);
                         let line = line.trim_end_matches('\r').trim_end_matches('\n');
-                        return Ok::<String, PyErr>(line.to_string());
+                        return Ok::<String, PyErr>(line.to_owned());
                     }
                 }
 
@@ -559,8 +557,9 @@ impl AsyncLinesIterator {
                     if is_done {
                         let mut buf = buffer.lock().await;
                         if !buf.is_empty() {
-                            let line = std::mem::take(&mut *buf);
-                            return Ok(line);
+                            let remaining = std::mem::take(&mut *buf);
+                            let line = String::from_utf8_lossy(&remaining);
+                            return Ok::<String, PyErr>(line.into_owned());
                         }
                         return Err(PyErr::new::<pyo3::exceptions::PyStopAsyncIteration, _>(
                             "Stream exhausted",
@@ -573,8 +572,7 @@ impl AsyncLinesIterator {
                     Some(r) => match r.chunk().await {
                         Ok(Some(data)) => {
                             let mut buf = buffer.lock().await;
-                            let text = String::from_utf8_lossy(&data);
-                            buf.push_str(&text);
+                            buf.extend_from_slice(&data);
                         }
                         Ok(None) => {
                             let mut is_done = done.lock().await;

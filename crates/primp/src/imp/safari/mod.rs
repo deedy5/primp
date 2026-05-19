@@ -43,7 +43,9 @@ pub(crate) fn build_safari_settings(
     };
 
     // Get cached browser emulator for Safari (Arc clone = cheap refcount increment)
-    let browser_emulator = safari_emulator(safari, browser_os);
+    let mut browser_emulator = safari_emulator(safari, browser_os);
+    // Set OS type on our unique clone (cached emulator retains None)
+    Arc::make_mut(&mut browser_emulator).os_type = Some(browser_os);
 
     let http2 = build_http2_settings();
 
@@ -113,11 +115,13 @@ fn safari_emulator(safari: Impersonate, browser_os: BrowserEmulatorOS) -> Arc<Br
     match safari {
         Impersonate::SafariV18_5 => {
             static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
-            EMU.get_or_init(|| Arc::new(new_safari_18_5_emulator())).clone()
+            EMU.get_or_init(|| Arc::new(new_safari_18_5_emulator()))
+                .clone()
         }
         Impersonate::SafariV26 => {
             static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
-            EMU.get_or_init(|| Arc::new(new_safari_26_emulator())).clone()
+            EMU.get_or_init(|| Arc::new(new_safari_26_emulator()))
+                .clone()
         }
         Impersonate::SafariV26_3 => {
             if browser_os == BrowserEmulatorOS::IOS {
@@ -161,6 +165,7 @@ fn new_safari_26_3_ios_emulator() -> BrowserEmulator {
     emulator.named_groups = Some(emulation::named_groups::SAFARI.to_vec());
     emulator.signature_algorithms = Some(emulation::signature_algorithms::SAFARI.to_vec());
     emulator.extension_order_seed = Some(emulation::extension_order::SAFARI_26);
+    emulator.os_type = Some(BrowserEmulatorOS::IOS);
     emulator
 }
 
@@ -171,6 +176,7 @@ fn new_safari_26_3_macos_emulator() -> BrowserEmulator {
     emulator.signature_algorithms = Some(emulation::signature_algorithms::SAFARI.to_vec());
     emulator.extension_order_seed = Some(emulation::extension_order::SAFARI_18_5);
     emulator.include_status_request_v2 = true;
+    emulator.os_type = Some(BrowserEmulatorOS::MacOS);
     emulator
 }
 

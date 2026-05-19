@@ -229,7 +229,7 @@ impl BytesIterator {
         BytesIterator {
             resp,
             chunk_size,
-            buffer: Vec::new(),
+            buffer: Vec::with_capacity(chunk_size * 2),
         }
     }
 }
@@ -293,7 +293,7 @@ impl BytesIterator {
 #[pyclass]
 pub struct TextIterator {
     resp: Arc<TMutex<Option<::primp::Response>>>,
-    encoding: String,
+    encoding: &'static Encoding,
     chunk_size: usize,
     buffer: Vec<u8>,
 }
@@ -304,11 +304,12 @@ impl TextIterator {
         encoding: String,
         chunk_size: usize,
     ) -> Self {
+        let encoding = Encoding::for_label(encoding.as_bytes()).unwrap_or(UTF_8);
         TextIterator {
             resp,
             encoding,
             chunk_size,
-            buffer: Vec::new(),
+            buffer: Vec::with_capacity(chunk_size * 2),
         }
     }
 }
@@ -322,8 +323,7 @@ impl TextIterator {
     fn __next__<'rs>(&mut self, py: Python<'rs>) -> PyResult<Option<Bound<'rs, PyString>>> {
         if self.buffer.len() >= self.chunk_size {
             let chunk: Vec<u8> = self.buffer.drain(..self.chunk_size).collect();
-            let encoding = Encoding::for_label(self.encoding.as_bytes()).unwrap_or(UTF_8);
-            let (text, _, _) = encoding.decode(&chunk);
+            let (text, _, _) = self.encoding.decode(&chunk);
             return Ok(Some(text.into_pyobject_or_pyerr(py)?));
         }
 
@@ -348,13 +348,11 @@ impl TextIterator {
                 self.buffer.extend_from_slice(&data);
                 if self.buffer.len() >= self.chunk_size {
                     let result: Vec<u8> = self.buffer.drain(..self.chunk_size).collect();
-                    let encoding = Encoding::for_label(self.encoding.as_bytes()).unwrap_or(UTF_8);
-                    let (text, _, _) = encoding.decode(&result);
+                    let (text, _, _) = self.encoding.decode(&result);
                     Ok(Some(text.into_pyobject_or_pyerr(py)?))
                 } else if !self.buffer.is_empty() {
                     let result: Vec<u8> = std::mem::take(&mut self.buffer);
-                    let encoding = Encoding::for_label(self.encoding.as_bytes()).unwrap_or(UTF_8);
-                    let (text, _, _) = encoding.decode(&result);
+                    let (text, _, _) = self.encoding.decode(&result);
                     Ok(Some(text.into_pyobject_or_pyerr(py)?))
                 } else {
                     Ok(None)
@@ -363,8 +361,7 @@ impl TextIterator {
             None => {
                 if !self.buffer.is_empty() {
                     let result: Vec<u8> = std::mem::take(&mut self.buffer);
-                    let encoding = Encoding::for_label(self.encoding.as_bytes()).unwrap_or(UTF_8);
-                    let (text, _, _) = encoding.decode(&result);
+                    let (text, _, _) = self.encoding.decode(&result);
                     Ok(Some(text.into_pyobject_or_pyerr(py)?))
                 } else {
                     Err(pyo3::exceptions::PyStopIteration::new_err(
@@ -380,7 +377,7 @@ impl TextIterator {
 #[pyclass]
 pub struct LinesIterator {
     resp: Arc<TMutex<Option<::primp::Response>>>,
-    buffer: String,
+    buffer: Vec<u8>,
     done: bool,
 }
 
@@ -388,7 +385,7 @@ impl LinesIterator {
     fn new(resp: Arc<TMutex<Option<::primp::Response>>>) -> Self {
         LinesIterator {
             resp,
-            buffer: String::new(),
+            buffer: Vec::with_capacity(8192),
             done: false,
         }
     }
@@ -402,16 +399,18 @@ impl LinesIterator {
 
     fn __next__<'rs>(&mut self, py: Python<'rs>) -> PyResult<Option<Bound<'rs, PyString>>> {
         loop {
-            if let Some(newline_pos) = self.buffer.find('\n') {
-                let line: String = self.buffer.drain(..=newline_pos).collect();
+            if let Some(newline_pos) = self.buffer.iter().position(|&b| b == b'\n') {
+                let line_bytes: Vec<u8> = self.buffer.drain(..=newline_pos).collect();
+                let line = String::from_utf8_lossy(&line_bytes);
                 let line = line.trim_end_matches('\r').trim_end_matches('\n');
-                return Ok(Some(line.to_string().into_pyobject_or_pyerr(py)?));
+                return Ok(Some(line.to_owned().into_pyobject_or_pyerr(py)?));
             }
 
             if self.done {
                 if !self.buffer.is_empty() {
-                    let line = std::mem::take(&mut self.buffer);
-                    return Ok(Some(line.into_pyobject_or_pyerr(py)?));
+                    let remaining = std::mem::take(&mut self.buffer);
+                    let line = String::from_utf8_lossy(&remaining);
+                    return Ok(Some(line.into_owned().into_pyobject_or_pyerr(py)?));
                 }
                 return Err(pyo3::exceptions::PyStopIteration::new_err(
                     "Stream exhausted",
@@ -436,8 +435,7 @@ impl LinesIterator {
 
             match chunk {
                 Some(data) => {
-                    let text = String::from_utf8_lossy(&data);
-                    self.buffer.push_str(&text);
+                    self.buffer.extend_from_slice(&data);
                 }
                 None => {
                     self.done = true;
