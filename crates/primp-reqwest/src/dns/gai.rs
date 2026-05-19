@@ -4,10 +4,12 @@ use tower_service::Service;
 use crate::dns::{Addrs, Name, Resolve, Resolving};
 use crate::error::BoxError;
 
+/// DNS resolver backed by the OS `getaddrinfo` (system resolver).
 #[derive(Debug)]
 pub struct GaiResolver(HyperGaiResolver);
 
 impl GaiResolver {
+    /// Create a new system resolver.
     pub fn new() -> Self {
         Self(HyperGaiResolver::new())
     }

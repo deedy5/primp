@@ -9,10 +9,13 @@ use std::time::Duration;
 use foldhash::fast::RandomState;
 use indexmap::IndexMap;
 use primp::{
+    dns::Resolve,
     header::{HeaderMap, HeaderValue},
     redirect::Policy,
     Client as PrimpClient, ClientBuilder, Proxy, Url,
 };
+use pyo3::prelude::*;
+use pyo3::types::PyList;
 
 use crate::error::{PrimpErrorEnum, PrimpResult};
 use crate::impersonate::{
@@ -24,6 +27,70 @@ use crate::utils::load_ca_certs;
 
 /// Type alias for IndexMap with String keys and values.
 pub type IndexMapSSR = IndexMap<String, String, RandomState>;
+
+/// Parse a resolver string into an `Arc<dyn Resolve>`.
+///
+/// Supported formats:
+/// - `doh://<host>/path` → DoH resolver (e.g. `doh://cloudflare-dns.com/dns-query`)
+/// - `dot://<host>` → DoT resolver (e.g. `dot://1.1.1.1`)
+/// - `dns://<host>` or bare `<host>` → plain DNS resolver on port 53
+/// - `system` → system resolver
+fn parse_single_resolver(s: &str) -> PrimpResult<Arc<dyn Resolve>> {
+    if let Some(url) = s.strip_prefix("doh://") {
+        let doh_url = format!("https://{url}");
+        let resolver = primp::dns::doh::DohResolver::new(&doh_url)
+            .map_err(|e| PrimpErrorEnum::Custom(format!("invalid DoH URL: {e}")))?;
+        Ok(Arc::new(resolver))
+    } else if let Some(host) = s.strip_prefix("dot://") {
+        Ok(Arc::new(primp::dns::dot::DotResolver::new(host)))
+    } else {
+        let host = s.strip_prefix("dns://").unwrap_or(s);
+        if host.is_empty() {
+            return Err(PrimpErrorEnum::Custom(
+                "dns:// URL must have a host".into(),
+            ));
+        }
+        if host == "system" {
+            return Ok(Arc::new(primp::dns::gai::GaiResolver::new()));
+        }
+        Ok(Arc::new(primp::dns::plain::PlainDnsResolver::new(host)))
+    }
+}
+
+/// Parse `dns_resolver` Python argument into a `Vec<Arc<dyn Resolve>>`.
+///
+/// - `None` → system default
+/// - `str` → single resolver
+/// - `list[str]` → fallback chain (order matters: first success wins)
+pub fn parse_dns_resolver(
+    obj: Option<pyo3::Bound<'_, pyo3::types::PyAny>>,
+) -> PrimpResult<Vec<Arc<dyn Resolve>>> {
+    let Some(obj) = obj else {
+        return Ok(Vec::new());
+    };
+    if let Ok(s) = obj.cast::<pyo3::types::PyString>() {
+        return Ok(vec![parse_single_resolver(
+            &s.to_cow()
+                .map_err(|e| PrimpErrorEnum::Custom(e.to_string()))?,
+        )?]);
+    }
+    if let Ok(list) = obj.cast::<PyList>() {
+        let mut resolvers = Vec::with_capacity(list.len());
+        for item in list.iter() {
+            let s = item.cast::<pyo3::types::PyString>().map_err(|_| {
+                PrimpErrorEnum::Custom("each item in dns_resolver list must be a string".into())
+            })?;
+            resolvers.push(parse_single_resolver(
+                &s.to_cow()
+                    .map_err(|e| PrimpErrorEnum::Custom(e.to_string()))?,
+            )?);
+        }
+        return Ok(resolvers);
+    }
+    Err(PrimpErrorEnum::Custom(
+        "dns_resolver must be a string, list of strings, or None".into(),
+    ))
+}
 
 /// Applies common configuration to a client builder.
 ///
@@ -56,6 +123,7 @@ pub type IndexMapSSR = IndexMap<String, String, RandomState>;
 /// * `ca_cert_file` - Optional path to CA certificate file
 /// * `https_only` - Whether to restrict to HTTPS only
 /// * `http2_only` - Whether to use HTTP/2 only
+/// * `dns_resolvers` - Parsed DNS resolvers (empty = system default)
 ///
 /// # Returns
 ///
@@ -77,6 +145,7 @@ pub fn configure_client_builder(
     ca_cert_file: Option<String>,
     https_only: Option<bool>,
     http2_only: Option<bool>,
+    dns_resolvers: Vec<Arc<dyn Resolve>>,
 ) -> PrimpResult<(ClientBuilder, Option<String>)> {
     // Impersonate
     if let Some(imp) = impersonate {
@@ -156,6 +225,11 @@ pub fn configure_client_builder(
     // HTTP2 only
     if http2_only == Some(true) {
         builder = builder.http2_prior_knowledge();
+    }
+
+    // DNS resolver (fallback chain)
+    if !dns_resolvers.is_empty() {
+        builder = builder.dns_resolver(dns_resolvers);
     }
 
     Ok((builder, proxy))

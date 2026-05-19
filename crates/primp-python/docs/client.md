@@ -24,6 +24,7 @@ primp.Client(
     ca_cert_file=None,      # Path to CA certificate
     https_only=False,       # HTTPS only mode
     http2_only=False,       # HTTP/2 only mode
+    dns_resolver=None,      # DNS resolver: str, list[str], or None (see docs/dns.md)
     base_url=None,          # Base URL for relative paths
     cookies=None,           # Initial cookies to send with all requests
 )

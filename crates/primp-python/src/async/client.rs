@@ -8,10 +8,12 @@ use serde_json::Value;
 use tokio::fs::File;
 use tokio_util::codec::{BytesCodec, FramedRead};
 
-use crate::client_builder::{configure_client_builder, cookies_to_header_values, IndexMapSSR};
+use crate::body_value_to_string;
+use crate::client_builder::{
+    configure_client_builder, cookies_to_header_values, parse_dns_resolver, IndexMapSSR,
+};
 use crate::error::{PrimpErrorEnum, PrimpResult};
 use crate::extract_cookies_to_indexmap;
-use crate::body_value_to_string;
 use crate::traits::HeadersTraits;
 use crate::utils::extract_encoding;
 
@@ -50,7 +52,7 @@ impl AsyncClient {
         referer=true, proxy=None, timeout=None, connect_timeout=None, read_timeout=None,
         impersonate=None, impersonate_os=None, follow_redirects=true,
         max_redirects=20, verify=true, ca_cert_file=None, https_only=false, http2_only=false,
-        base_url=None, cookies=None))]
+        dns_resolver=None, base_url=None, cookies=None))]
     fn new(
         py: Python<'_>,
         auth: Option<(String, Option<String>)>,
@@ -71,9 +73,11 @@ impl AsyncClient {
         ca_cert_file: Option<String>,
         https_only: Option<bool>,
         http2_only: Option<bool>,
+        dns_resolver: Option<pyo3::Bound<'_, pyo3::types::PyAny>>,
         base_url: Option<String>,
         cookies: Option<IndexMapSSR>,
     ) -> PrimpResult<Self> {
+        let dns_resolvers = parse_dns_resolver(dns_resolver)?;
         let (resolved_proxy, client) = py.detach(|| -> PrimpResult<_> {
             let (client_builder, resolved_proxy) = configure_client_builder(
                 PrimpClient::builder(),
@@ -92,6 +96,7 @@ impl AsyncClient {
                 ca_cert_file,
                 https_only,
                 http2_only,
+                dns_resolvers,
             )?;
 
             let client = Arc::new(RwLock::new(client_builder.build()?));

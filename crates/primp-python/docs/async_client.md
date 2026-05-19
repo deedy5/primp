@@ -26,6 +26,7 @@ primp.AsyncClient(
     ca_cert_file=None,
     https_only=False,
     http2_only=False,
+    dns_resolver=None,
     base_url=None,
     cookies=None,
 )

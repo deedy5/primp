@@ -34,7 +34,7 @@ pub trait Resolve: Send + Sync {
 }
 
 /// A name that must be resolved to addresses.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Name(pub(super) HyperName);
 
 /// A more general trait implemented for types implementing `Resolve`.
@@ -172,6 +172,47 @@ where
 {
     fn into_resolve(self) -> Arc<dyn Resolve> {
         Arc::new(self)
+    }
+}
+
+/// Chains multiple resolvers: tries each in order, returning the first success.
+struct ChainedResolver {
+    resolvers: Vec<Arc<dyn Resolve>>,
+}
+
+impl Resolve for ChainedResolver {
+    fn resolve(&self, name: Name) -> Resolving {
+        let resolvers = self.resolvers.clone();
+        Box::pin(async move {
+            let mut last_err = None;
+            for resolver in &resolvers {
+                match resolver.resolve(name.clone()).await {
+                    Ok(addrs) => return Ok(addrs),
+                    Err(e) => last_err = Some(e),
+                }
+            }
+            Err(last_err.unwrap_or_else(|| "all DNS resolvers failed".into()))
+        })
+    }
+}
+
+impl<R: Resolve + 'static> IntoResolve for Vec<R> {
+    fn into_resolve(self) -> Arc<dyn Resolve> {
+        if self.len() == 1 {
+            return Arc::new(self.into_iter().next().unwrap());
+        }
+        Arc::new(ChainedResolver {
+            resolvers: self.into_iter().map(|r| Arc::new(r) as Arc<dyn Resolve>).collect(),
+        })
+    }
+}
+
+impl IntoResolve for Vec<Arc<dyn Resolve>> {
+    fn into_resolve(self) -> Arc<dyn Resolve> {
+        if self.len() == 1 {
+            return self.into_iter().next().unwrap();
+        }
+        Arc::new(ChainedResolver { resolvers: self })
     }
 }
 

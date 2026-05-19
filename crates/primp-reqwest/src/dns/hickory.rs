@@ -22,8 +22,8 @@ pub(crate) struct HickoryDnsResolver {
     state: Arc<OnceCell<TokioResolver>>,
 }
 
-struct SocketAddrs {
-    iter: LookupIpIntoIter,
+pub(crate) struct SocketAddrs {
+    pub(crate) iter: LookupIpIntoIter,
 }
 
 impl Resolve for HickoryDnsResolver {

@@ -20,6 +20,7 @@ pyo3-log = "0.13.2"
 primp = { version = "1.2", path = "../primp", features = [
     "impersonate",
     "socks",
+    "hickory-dns",
 ] }
 bytes = "1"
 encoding_rs = { version = "0.8.35" }

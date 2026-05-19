@@ -444,6 +444,20 @@ impl ClientBuilder {
         self.inner = self.inner.resolve_to_addrs(domain, addrs);
         self
     }
+
+    /// Override the DNS resolver implementation.
+    ///
+    /// Accepts any type implementing `IntoResolve`, such as `GaiResolver`,
+    /// or a `Vec` of resolvers for fallback.
+    ///
+    /// **Note:** `DohResolver`, `DotResolver`, and `PlainDnsResolver` require the `hickory-dns` feature.
+    pub fn dns_resolver<R>(mut self, resolver: R) -> Self
+    where
+        R: crate::dns::IntoResolve,
+    {
+        self.inner = self.inner.dns_resolver(resolver);
+        self
+    }
 }
 
 impl Client {

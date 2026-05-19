@@ -70,7 +70,13 @@ json = ["dep:serde", "dep:serde_json"]
 
 multipart = ["dep:mime_guess", "dep:futures-util"]
 
-hickory-dns = ["dep:hickory-resolver", "dep:once_cell"]
+hickory-dns = [
+    "dep:hickory-resolver",
+    "dep:once_cell",
+    "hickory-resolver/https-aws-lc-rs",
+    "hickory-resolver/tls-aws-lc-rs",
+    "hickory-resolver/webpki-roots",
+]
 
 stream = ["tokio/fs", "dep:futures-util", "dep:tokio-util", "dep:wasm-streams"]
 

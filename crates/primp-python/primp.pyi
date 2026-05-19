@@ -276,6 +276,7 @@ class Client:
         ca_cert_file: str | None = None,
         https_only: bool = False,
         http2_only: bool = False,
+        dns_resolver: str | list[str] | None = None,
         base_url: str | None = None,
         cookies: Mapping[str, str] | None = None,
     ) -> None: ...
@@ -480,6 +481,7 @@ class AsyncClient:
         ca_cert_file: str | None = None,
         https_only: bool = False,
         http2_only: bool = False,
+        dns_resolver: str | list[str] | None = None,
         base_url: str | None = None,
         cookies: Mapping[str, str] | None = None,
     ) -> None: ...
