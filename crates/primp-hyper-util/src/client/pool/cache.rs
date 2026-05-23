@@ -24,8 +24,8 @@ mod internal {
     use std::sync::{Arc, Mutex, Weak};
     use std::task::{self, Poll};
 
-    use futures_core::ready;
     use futures_util::future;
+    use std::task::ready;
     use tokio::sync::oneshot;
     use tower_service::Service;
 
@@ -448,7 +448,7 @@ mod tests {
         let mut cache = super::builder().build(mock);
         handle.allow(1);
 
-        crate::common::future::poll_fn(|cx| cache.poll_ready(cx))
+        std::future::poll_fn(|cx| cache.poll_ready(cx))
             .await
             .unwrap();
 
@@ -470,7 +470,7 @@ mod tests {
         // only 1 connection should ever be made
         handle.allow(1);
 
-        crate::common::future::poll_fn(|cx| cache.poll_ready(cx))
+        std::future::poll_fn(|cx| cache.poll_ready(cx))
             .await
             .unwrap();
         let f = cache.call(1);
@@ -482,7 +482,7 @@ mod tests {
         .expect("call");
         drop(cached);
 
-        crate::common::future::poll_fn(|cx| cache.poll_ready(cx))
+        std::future::poll_fn(|cx| cache.poll_ready(cx))
             .await
             .unwrap();
         let f = cache.call(1);

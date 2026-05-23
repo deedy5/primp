@@ -4,10 +4,10 @@ use std::marker::{PhantomData, Unpin};
 use std::pin::Pin;
 use std::task::{self, Poll};
 
-use futures_core::ready;
 use http::{HeaderMap, HeaderValue, Uri};
 use hyper::rt::{Read, Write};
 use pin_project_lite::pin_project;
+use std::task::ready;
 use tower_service::Service;
 
 /// Tunnel Proxy via HTTP CONNECT

@@ -25,8 +25,8 @@ use super::connect::HttpConnector;
 use super::connect::{Alpn, Connect, Connected, Connection};
 use super::pool::{self, Ver};
 
-use crate::common::future::poll_fn;
 use crate::common::{lazy as hyper_lazy, timer, Exec, Lazy, SyncWrapper};
+use std::future::poll_fn;
 
 type BoxSendFuture = Pin<Box<dyn Future<Output = ()> + Send>>;
 
@@ -487,7 +487,7 @@ where
     fn connect_to(
         &self,
         pool_key: PoolKey,
-    ) -> impl Lazy<Output = Result<pool::Pooled<PoolClient<B>, PoolKey>, Error>> + Send + Unpin
+    ) -> impl Lazy<Output = Result<pool::Pooled<PoolClient<B>, PoolKey>, Error>> + Send + Unpin + use<C, B>
     {
         let executor = self.exec.clone();
         let pool = self.pool.clone();
@@ -498,7 +498,6 @@ where
         let ver = self.config.ver;
         let is_ver_h2 = ver == Ver::Http2;
         let connector = self.connector.clone();
-        let dst = domain_as_uri(pool_key.clone());
         hyper_lazy(move || {
             // Try to take a "connecting lock".
             //
@@ -514,6 +513,7 @@ where
                     return Either::Right(future::err(canceled));
                 }
             };
+            let dst = domain_as_uri(pool_key);
             Either::Left(
                 connector
                     .connect(super::connect::sealed::Internal, dst)

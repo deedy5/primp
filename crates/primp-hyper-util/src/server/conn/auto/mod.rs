@@ -11,7 +11,6 @@ use std::task::{Context, Poll};
 use std::{error::Error as StdError, io, time::Duration};
 
 use bytes::Bytes;
-use futures_core::ready;
 use http::{Request, Response};
 use http_body::Body;
 use hyper::{
@@ -19,6 +18,7 @@ use hyper::{
     rt::{Read, ReadBuf, Timer, Write},
     service::Service,
 };
+use std::task::ready;
 
 #[cfg(feature = "http1")]
 use hyper::server::conn::http1;

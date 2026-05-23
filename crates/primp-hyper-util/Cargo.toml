@@ -1,6 +1,6 @@
 [package]
 name = "primp-hyper-util"
-version = "0.1.21"  # upstream src is 0.1.20
+version = "0.1.21"  # based on upstream v0.1.20, cherry-picks through 2026-05-23
 license = "MIT"
 authors = ["deedy5", "Sean McArthur <sean@seanmonstar.com>"]
 edition = "2021"
@@ -35,13 +35,13 @@ rustdoc-args = [
 __internal_happy_eyeballs_tests = []
 client = [
     "hyper/client",
-    "tokio/net",
     "dep:tracing",
     "dep:futures-channel",
     "dep:tower-service",
 ]
 client-legacy = [
     "client",
+    "tokio/net",
     "dep:socket2",
     "tokio/sync",
     "dep:libc",
@@ -51,6 +51,7 @@ client-pool = [
     "client",
     "dep:futures-util",
     "dep:tower-layer",
+    "tokio/sync",
 ]
 client-proxy = [
     "client",
@@ -148,8 +149,6 @@ version = "1.7.1"
 version = "0.3"
 optional = true
 
-[dependencies.futures-core]
-version = "0.3"
 
 [dependencies.futures-util]
 version = "0.3.16"
@@ -163,7 +162,7 @@ version = "1.0"
 version = "1.0.0"
 
 [dependencies.hyper]
-version = "1.8"
+version = "1.9"
 path = "../primp-hyper"
 package = "primp-hyper"
 
@@ -183,7 +182,7 @@ optional = true
 version = "0.2.4"
 
 [dependencies.socket2]
-version = ">=0.5.9, <0.7"
+version = "0.6"
 features = ["all"]
 optional = true
 
@@ -218,7 +217,7 @@ default-features = false
 version = "0.1.0"
 
 [dev-dependencies.hyper]
-version = "1.8"
+version = "1.9"
 path = "../primp-hyper"
 package = "primp-hyper"
 features = ["full"]
@@ -244,7 +243,7 @@ version = "0.4"
 version = "0.35.0"
 
 [target.'cfg(target_os = "macos")'.dependencies.system-configuration]
-version = ">=0.5, <0.7"
+version = ">=0.7, <0.8"
 optional = true
 
 [target."cfg(windows)".dependencies.windows-registry]

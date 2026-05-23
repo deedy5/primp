@@ -1056,7 +1056,7 @@ dependencies = [
  "resolv-conf",
  "rustls",
  "smallvec",
- "system-configuration 0.7.0",
+ "system-configuration",
  "thiserror 2.0.18",
  "tokio",
  "tokio-rustls",
@@ -2138,7 +2138,6 @@ dependencies = [
  "base64",
  "bytes",
  "futures-channel",
- "futures-core",
  "futures-util",
  "http",
  "http-body",
@@ -2151,7 +2150,7 @@ dependencies = [
  "pretty_env_logger",
  "primp-hyper",
  "socket2",
- "system-configuration 0.6.1",
+ "system-configuration",
  "tokio",
  "tokio-test",
  "tower-layer",
@@ -3060,17 +3059,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "system-configuration"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c879d448e9d986b661742763247d3693ed13609438cf3d006f51f5368a5ba6b"
-dependencies = [
- "bitflags",
- "core-foundation 0.9.4",
- "system-configuration-sys",
 ]
 
 [[package]]
