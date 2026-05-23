@@ -48,9 +48,7 @@ pub(crate) fn build_safari_settings(
     };
 
     // Get cached browser emulator for Safari (Arc clone = cheap refcount increment)
-    let mut browser_emulator = safari_emulator(safari, browser_os);
-    // Set OS type on our unique clone (cached emulator retains None)
-    Arc::make_mut(&mut browser_emulator).os_type = Some(browser_os);
+    let browser_emulator = safari_emulator(safari, browser_os);
 
     let http2 = build_http2_settings();
 
@@ -118,16 +116,50 @@ fn build_http2_settings() -> crate::imp::Http2Data {
 
 fn safari_emulator(safari: Impersonate, browser_os: BrowserEmulatorOS) -> Arc<BrowserEmulator> {
     match safari {
-        Impersonate::SafariV18_5 => {
-            static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
-            EMU.get_or_init(|| Arc::new(new_safari_18_5_emulator()))
-                .clone()
-        }
-        Impersonate::SafariV26 => {
-            static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
-            EMU.get_or_init(|| Arc::new(new_safari_26_emulator()))
-                .clone()
-        }
+        Impersonate::SafariV18_5 => match browser_os {
+            BrowserEmulatorOS::IOS => {
+                static EMU_IOS: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
+                EMU_IOS
+                    .get_or_init(|| {
+                        let mut emu = new_safari_18_5_emulator();
+                        emu.os_type = Some(BrowserEmulatorOS::IOS);
+                        Arc::new(emu)
+                    })
+                    .clone()
+            }
+            _ => {
+                static EMU_MACOS: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
+                EMU_MACOS
+                    .get_or_init(|| {
+                        let mut emu = new_safari_18_5_emulator();
+                        emu.os_type = Some(BrowserEmulatorOS::MacOS);
+                        Arc::new(emu)
+                    })
+                    .clone()
+            }
+        },
+        Impersonate::SafariV26 => match browser_os {
+            BrowserEmulatorOS::IOS => {
+                static EMU_IOS: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
+                EMU_IOS
+                    .get_or_init(|| {
+                        let mut emu = new_safari_26_emulator();
+                        emu.os_type = Some(BrowserEmulatorOS::IOS);
+                        Arc::new(emu)
+                    })
+                    .clone()
+            }
+            _ => {
+                static EMU_MACOS: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
+                EMU_MACOS
+                    .get_or_init(|| {
+                        let mut emu = new_safari_26_emulator();
+                        emu.os_type = Some(BrowserEmulatorOS::MacOS);
+                        Arc::new(emu)
+                    })
+                    .clone()
+            }
+        },
         Impersonate::SafariV26_3 => {
             if browser_os == BrowserEmulatorOS::IOS {
                 static EMU_IOS: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
