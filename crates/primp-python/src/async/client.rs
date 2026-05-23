@@ -230,26 +230,19 @@ impl AsyncClient {
             client_guard.set_cookies(&url_parsed, cookie_values);
         }
 
-        // Handle follow_redirects: set policy before cloning client
-        if let Some(fr) = follow_redirects {
-            let mut client_guard = self.client.write().unwrap_or_else(|e| e.into_inner());
-            if fr {
-                client_guard.set_redirect_policy(::primp::redirect::Policy::limited(20));
-            } else {
-                client_guard.set_redirect_policy(::primp::redirect::Policy::none());
-            }
-        }
-
         // Clone the client before entering the async block to avoid holding RwLockGuard across await
-        let client = {
+        let mut client = {
             let client_guard = self.client.read().unwrap_or_else(|e| e.into_inner());
             client_guard.clone()
         };
 
-        // Restore redirect policy immediately after cloning if it was changed
-        if follow_redirects.is_some() {
-            let mut client_guard = self.client.write().unwrap_or_else(|e| e.into_inner());
-            client_guard.set_redirect_policy(::primp::redirect::Policy::limited(20));
+        // Apply follow_redirects on the private clone, not the shared client
+        if let Some(fr) = follow_redirects {
+            if fr {
+                client.set_redirect_policy(::primp::redirect::Policy::limited(20));
+            } else {
+                client.set_redirect_policy(::primp::redirect::Policy::none());
+            }
         }
 
         let future = async move {

@@ -93,13 +93,9 @@ pub fn extract_encoding(headers: &::primp::header::HeaderMap) -> &'static encodi
 mod load_ca_certs_tests {
     use super::*;
     use std::fs;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
-    #[test]
-    fn test_load_ca_certs_from_file() {
-        // Create a temporary file with a CA certificate
-        let ca_cert_path = Path::new("test_ca_cert.pem");
-        let ca_cert = "-----BEGIN CERTIFICATE-----
+    const TEST_CERT: &str = "-----BEGIN CERTIFICATE-----
 MIIDdTCCAl2gAwIBAgIVAMIIujU9wQIBADANBgkqhkiG9w0BAQUFADBGMQswCQYD
 VQQGEwJVUzETMBEGA1UECAwKQ2FsaWZvcm5pYTEWMBQGA1UEBwwNTW91bnRhaW4g
 Q29sbGVjdGlvbjEgMB4GA1UECgwXUG9zdGdyZXMgQ29uc3VsdGF0aW9uczEhMB8G
@@ -111,50 +107,42 @@ Q29sbGVjdGlvbjEgMB4GA1UECgwXUG9zdGdyZXMgQ29uc3VsdGF0aW9uczEhMB8G
 A1UECwwYUG9zdGdyZXMgQ29uc3VsdGF0aW9uczEhMB8GA1UEAwwYUG9zdGdyZXMg
 Q29uc3VsdGF0aW9uczEiMCAGCSqGSIb3DQEJARYTcGVyc29uYWwtZW1haWwuY29t
 -----END CERTIFICATE-----";
-        fs::write(ca_cert_path, ca_cert).unwrap();
 
-        // Call the function
-        let result = load_ca_certs_from_file(ca_cert_path);
+    struct TempFile {
+        path: PathBuf,
+    }
 
-        // Check the result
+    impl TempFile {
+        fn new(name: &str, content: &str) -> Self {
+            let path = PathBuf::from(name);
+            fs::write(&path, content).unwrap();
+            TempFile { path }
+        }
+    }
+
+    impl Drop for TempFile {
+        fn drop(&mut self) {
+            let _ = fs::remove_file(&self.path);
+        }
+    }
+
+    #[test]
+    fn test_load_ca_certs_from_file() {
+        let _file = TempFile::new("test_ca_cert.pem", TEST_CERT);
+        let result = load_ca_certs_from_file(Path::new("test_ca_cert.pem"));
         assert!(result.is_some());
-
-        // Clean up
-        fs::remove_file(ca_cert_path).unwrap();
     }
 
     #[test]
     fn test_load_ca_certs_with_ca_cert_file_param() {
-        // Create a temporary file with a CA certificate
-        let ca_cert_path = Path::new("test_ca_cert2.pem");
-        let ca_cert = "-----BEGIN CERTIFICATE-----
-MIIDdTCCAl2gAwIBAgIVAMIIujU9wQIBADANBgkqhkiG9w0BAQUFADBGMQswCQYD
-VQQGEwJVUzETMBEGA1UECAwKQ2FsaWZvcm5pYTEWMBQGA1UEBwwNTW91bnRhaW4g
-Q29sbGVjdGlvbjEgMB4GA1UECgwXUG9zdGdyZXMgQ29uc3VsdGF0aW9uczEhMB8G
-A1UECwwYUG9zdGdyZXMgQ29uc3VsdGF0aW9uczEhMB8GA1UEAwwYUG9zdGdyZXMg
-Q29uc3VsdGF0aW9uczEiMCAGCSqGSIb3DQEJARYTcGVyc29uYWwtZW1haWwuY29t
------END CERTIFICATE-----";
-        fs::write(ca_cert_path, ca_cert).unwrap();
-
-        // Call the function with Some path
-        let result = load_ca_certs(&Some(ca_cert_path.to_str().unwrap().to_string()));
-
-        // Check the result
+        let _file = TempFile::new("test_ca_cert2.pem", TEST_CERT);
+        let result = load_ca_certs(&Some("test_ca_cert2.pem".to_string()));
         assert!(result.is_some());
-
-        // Clean up
-        fs::remove_file(ca_cert_path).unwrap();
     }
 
     #[test]
     fn test_load_ca_certs_with_none() {
-        // Call the function with None
         let result = load_ca_certs(&None);
-
-        // The function will return Some(...) if any CA cert env vars are set
-        // (PRIMP_CA_BUNDLE, SSL_CERT_FILE, CURL_CA_BUNDLE), or None otherwise.
-        // This is expected behavior - the function falls back to env vars.
-        // We just verify the function doesn't panic and returns a valid Option.
         assert!(result.is_some() || result.is_none());
     }
 }

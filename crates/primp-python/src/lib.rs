@@ -38,7 +38,6 @@ use utils::extract_encoding;
 static RUNTIME: PyOnceLock<Runtime> = PyOnceLock::new();
 
 /// Get the global Tokio runtime, initializing it if necessary.
-#[inline(always)]
 pub(crate) fn get_runtime(py: Python<'_>) -> &Runtime {
     RUNTIME.get_or_init(py, || {
         runtime::Builder::new_current_thread()
@@ -356,23 +355,16 @@ impl Client {
             client_guard.set_cookies(&url_parsed, cookie_values);
         }
 
-        // Handle follow_redirects: set policy before cloning client
-        if let Some(fr) = follow_redirects {
-            let mut client_guard = client.write().unwrap_or_else(|e| e.into_inner());
-            if fr {
-                client_guard.set_redirect_policy(::primp::redirect::Policy::limited(20));
-            } else {
-                client_guard.set_redirect_policy(::primp::redirect::Policy::none());
-            }
-        }
-
         // Clone the inner client to avoid holding the RwLock across await points
-        let client_clone = client.read().unwrap_or_else(|e| e.into_inner()).clone();
+        let mut client_clone = client.read().unwrap_or_else(|e| e.into_inner()).clone();
 
-        // Restore redirect policy immediately after cloning if it was changed
-        if follow_redirects.is_some() {
-            let mut client_guard = client.write().unwrap_or_else(|e| e.into_inner());
-            client_guard.set_redirect_policy(::primp::redirect::Policy::limited(20));
+        // Apply follow_redirects on the private clone, not the shared client
+        if let Some(fr) = follow_redirects {
+            if fr {
+                client_clone.set_redirect_policy(::primp::redirect::Policy::limited(20));
+            } else {
+                client_clone.set_redirect_policy(::primp::redirect::Policy::none());
+            }
         }
 
         let future = async move {
