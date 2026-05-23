@@ -792,10 +792,10 @@ impl ClientBuilder {
                             ));
                         }
 
-                        let roots = if config.root_certs.is_empty() {
-                            crate::tls::default_root_store().clone()
+                        let roots: Arc<rustls::RootCertStore> = if config.root_certs.is_empty() {
+                            crate::tls::default_root_store_arc()
                         } else {
-                            crate::tls::merged_root_store(config.root_certs)?
+                            Arc::new(crate::tls::merged_root_store(config.root_certs)?)
                         };
 
                         config_builder.with_root_certificates(roots)

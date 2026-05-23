@@ -56,6 +56,7 @@ use rustls_pki_types::{ServerName, UnixTime};
 use std::{
     fmt,
     io::{BufRead, BufReader},
+    sync::Arc,
 };
 
 /// Represents a X509 certificate revocation list.
@@ -638,6 +639,19 @@ pub fn default_root_store() -> &'static rustls::RootCertStore {
         }
         roots
     })
+}
+
+/// Returns a cached `Arc<RootCertStore>`, avoiding deep clones on every call.
+///
+/// The underlying store is initialized once (loading webpki + native roots),
+/// and subsequent calls only increment the `Arc` reference count.
+#[cfg(feature = "__rustls")]
+pub fn default_root_store_arc() -> Arc<rustls::RootCertStore> {
+    static DEFAULT_ROOTS_ARC: std::sync::OnceLock<Arc<rustls::RootCertStore>> =
+        std::sync::OnceLock::new();
+    DEFAULT_ROOTS_ARC
+        .get_or_init(|| Arc::new(default_root_store().clone()))
+        .clone()
 }
 
 /// Creates a root certificate store from the cached default store plus user-provided certs.
