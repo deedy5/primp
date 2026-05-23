@@ -376,7 +376,14 @@ impl Send {
 
         stream.send_capacity_inc = false;
 
-        Poll::Ready(Some(Ok(self.capacity(stream))))
+        let capacity = self.capacity(stream);
+
+        if capacity == 0 {
+            stream.wait_send(cx);
+            return Poll::Pending;
+        }
+
+        Poll::Ready(Some(Ok(capacity)))
     }
 
     /// Current available stream send capacity
