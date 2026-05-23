@@ -22,7 +22,7 @@ use crate::upgrade::OnUpgrade;
 pub(crate) struct Dispatcher<D, Bs: Body, I, T> {
     conn: Conn<I, Bs::Data, T>,
     dispatch: D,
-    body_tx: Option<crate::body::Sender>,
+    body_tx: SenderDropGuard,
     body_rx: Pin<Box<Option<Bs>>>,
     is_closing: bool,
 }
@@ -82,7 +82,7 @@ where
         Dispatcher {
             conn,
             dispatch,
-            body_tx: None,
+            body_tx: SenderDropGuard::none(),
             body_rx: Box::pin(None),
             is_closing: false,
         }
@@ -171,8 +171,14 @@ where
         // benchmarks often use. Perhaps it should be a config option instead.
         for _ in 0..16 {
             let _ = self.poll_read(cx)?;
-            let _ = self.poll_write(cx)?;
-            let _ = self.poll_flush(cx)?;
+            let write_ready = self.poll_write(cx)?.is_ready();
+            let flush_ready = self.poll_flush(cx)?.is_ready();
+
+            // If we can write more body and the connection is ready, we should
+            // write again. If we return `Ready(Ok(())` here, we will yield
+            // without a guaranteed wake-up from the write side of the connection.
+            // This would lead to a deadlock if we also don't expect reads.
+            let wants_write_again = self.can_write_again() && (write_ready || flush_ready);
 
             // This could happen if reading paused before blocking on IO,
             // such as getting to the end of a framed message, but then
@@ -182,9 +188,28 @@ where
             //
             // Using this instead of task::current() and notify() inside
             // the Conn is noticeably faster in pipelined benchmarks.
-            if !self.conn.wants_read_again() {
-                //break;
+            let wants_read_again = self.conn.wants_read_again();
+
+            // If we cannot write or read again, we yield and rely on the
+            // wake-up from the connection futures.
+            if !(wants_write_again || wants_read_again) {
                 return Poll::Ready(Ok(()));
+            }
+
+            // If we are continuing only because "wants_write_again", check if write is ready.
+            if !wants_read_again && wants_write_again {
+                // If write was ready, just proceed with the loop
+                if write_ready {
+                    continue;
+                }
+                // Write was previously pending, but may have become ready since polling flush, so
+                // we need to check it again. If we simply proceeded, the case of an unbuffered
+                // writer where flush is always ready would cause us to hot loop.
+                if self.poll_write(cx)?.is_pending() {
+                    // write is pending, so it is safe to yield and rely on wake-up from connection
+                    // futures.
+                    return Poll::Ready(Ok(()));
+                }
             }
         }
 
@@ -204,7 +229,7 @@ where
                     match body.poll_ready(cx) {
                         Poll::Ready(Ok(())) => (),
                         Poll::Pending => {
-                            self.body_tx = Some(body);
+                            self.body_tx.set(body);
                             return Poll::Pending;
                         }
                         Poll::Ready(Err(_canceled)) => {
@@ -221,7 +246,7 @@ where
                                 let chunk = frame.into_data().unwrap_or_else(|_| unreachable!());
                                 match body.try_send_data(chunk) {
                                     Ok(()) => {
-                                        self.body_tx = Some(body);
+                                        self.body_tx.set(body);
                                     }
                                     Err(_canceled) => {
                                         if self.conn.can_read_body() {
@@ -235,7 +260,7 @@ where
                                     frame.into_trailers().unwrap_or_else(|_| unreachable!());
                                 match body.try_send_trailers(trailers) {
                                     Ok(()) => {
-                                        self.body_tx = Some(body);
+                                        self.body_tx.set(body);
                                     }
                                     Err(_canceled) => {
                                         if self.conn.can_read_body() {
@@ -253,7 +278,7 @@ where
                             // just drop, the body will close automatically
                         }
                         Poll::Pending => {
-                            self.body_tx = Some(body);
+                            self.body_tx.set(body);
                             return Poll::Pending;
                         }
                         Poll::Ready(Some(Err(e))) => {
@@ -288,7 +313,7 @@ where
                     other => {
                         let (tx, rx) =
                             IncomingBody::new_channel(other, wants.contains(Wants::EXPECT));
-                        self.body_tx = Some(tx);
+                        self.body_tx.set(tx);
                         rx
                     }
                 };
@@ -434,6 +459,12 @@ where
         self.conn.close_write();
     }
 
+    /// If there is pending data in `body_rx`, we can make progress writing if the connection is
+    /// ready.
+    fn can_write_again(&mut self) -> bool {
+        self.body_rx.is_some()
+    }
+
     fn is_done(&self) -> bool {
         if self.is_closing {
             return true;
@@ -493,6 +524,38 @@ impl<T> Drop for OptGuard<'_, T> {
     fn drop(&mut self) {
         if self.1 {
             self.0.set(None);
+        }
+    }
+}
+
+// ===== impl SenderDropGuard =====
+
+/// A drop guard for the body `Sender`.
+///
+/// If the `Dispatcher` future is dropped (e.g. the runtime driving the
+/// connection is shut down) while it still owns a body `Sender`, the guard
+/// sends an incomplete-message error so the receiver sees an error instead
+/// of a silent, clean end-of-stream.
+struct SenderDropGuard(Option<crate::body::Sender>);
+
+impl SenderDropGuard {
+    fn none() -> Self {
+        SenderDropGuard(None)
+    }
+
+    fn set(&mut self, sender: crate::body::Sender) {
+        self.0 = Some(sender);
+    }
+
+    fn take(&mut self) -> Option<crate::body::Sender> {
+        self.0.take()
+    }
+}
+
+impl Drop for SenderDropGuard {
+    fn drop(&mut self) {
+        if let Some(mut sender) = self.0.take() {
+            sender.send_error(crate::Error::new_incomplete());
         }
     }
 }

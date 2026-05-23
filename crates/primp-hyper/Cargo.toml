@@ -1,6 +1,6 @@
 [package]
 name = "primp-hyper"
-version = "1.9.0"
+version = "1.9.0"  # based on upstream v1.9.0, cherry-picks through 2026-05-23
 description = "Fork of the original hyper HTTP library."
 readme = "README.md"
 license = "MIT"
