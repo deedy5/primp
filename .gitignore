@@ -12,3 +12,6 @@
 *.swp
 *.swo
 *~
+
+# Python virtualenv
+.venv/
