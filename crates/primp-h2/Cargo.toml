@@ -1,6 +1,6 @@
 [package]
 name = "primp-h2"
-version = "0.4.15"  # based on upstream v0.4.14, cherry-picks through 2026-05-23
+version = "0.4.18"  # based on upstream v0.4.18, cherry-picks through 2026-08-20
 license = "MIT"
 authors = [
   "deedy5",
@@ -25,7 +25,7 @@ atomic-waker = "1.0.0"
 bytes = "1"
 futures-core = { version = "0.3", default-features = false }
 futures-sink = { version = "0.3", default-features = false }
-http = "1"
+http = "1.1"
 indexmap = { version = "2", features = ["std"] }
 slab = "0.4.2"
 smallvec = "1.11"
@@ -37,7 +37,7 @@ fnv = "1.0.5"
 [dev-dependencies]
 # Fuzzing
 quickcheck = { version = "1.0.3", default-features = false }
-rand = "0.8.4"
+rand = "0.10"
 
 # HPACK fixtures
 hex = "0.4.3"
@@ -47,7 +47,7 @@ serde_json = "1.0.0"
 
 # Examples
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "net"] }
-env_logger = { version = "0.10", default-features = false }
+env_logger = { version = "0.11", default-features = false }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(fuzzing)"] }

@@ -360,6 +360,11 @@ pub struct Builder {
     /// Optional ordering for HTTP/2 regular headers (for browser fingerprinting).
     /// When set, headers are encoded in this order instead of hash-based order.
     headers_order: Option<Vec<http::HeaderName>>,
+
+    /// connection-level budget for DATA framing overhead.
+    ///
+    /// When this gets exhausted, we issue a GOAWAY with `ENHANCE_YOUR_CALM`.
+    data_frame_budget: usize,
 }
 
 #[derive(Debug)]
@@ -684,6 +689,7 @@ impl Builder {
             headers_pseudo_order: None,
             headers_priority: None,
             headers_order: None,
+            data_frame_budget: proto::DEFAULT_DATA_FRAME_BUDGET,
         }
     }
 
@@ -769,6 +775,17 @@ impl Builder {
     ///
     /// Default is `None`.
     pub fn initial_stream_window_size_increment(&mut self, size: u32) -> &mut Self {
+        // A WINDOW_UPDATE increment must be 1..=2^31-1 (RFC 7540 §6.9); an
+        // invalid value would make a compliant peer reject the connection
+        // with FLOW_CONTROL_ERROR. Ignore it (keeping the default) instead
+        // of panicking — builders must not abort the process.
+        if size == 0 || size > proto::MAX_WINDOW_SIZE {
+            tracing::warn!(
+                "ignoring initial_stream_window_size_increment({size}): must be 1..={}",
+                proto::MAX_WINDOW_SIZE
+            );
+            return self;
+        }
         self.initial_stream_window_increment = Some(size);
         self
     }
@@ -1249,6 +1266,12 @@ impl Builder {
         self
     }
 
+    /// Sets the connection-level budget for DATA framing overhead.
+    pub fn data_frame_budget(&mut self, budget: usize) -> &mut Self {
+        self.data_frame_budget = budget;
+        self
+    }
+
     /// Creates a new configured HTTP/2 client backed by `io`.
     ///
     /// It is expected that `io` already be in an appropriate state to commence
@@ -1437,7 +1460,8 @@ where
                 reset_stream_max: builder.reset_stream_max,
                 remote_reset_stream_max: builder.pending_accept_reset_stream_max,
                 local_error_reset_streams_max: builder.local_max_error_reset_streams,
-                settings: builder.settings.clone(),
+                settings: builder.settings,
+                data_frame_budget: builder.data_frame_budget,
                 headers_pseudo_order: builder.headers_pseudo_order.clone(),
                 headers_priority: builder.headers_priority,
                 headers_order: builder.headers_order.clone(),
@@ -1459,7 +1483,8 @@ where
                     .inner
                     .codec
                     .buffer(frame.into())
-                    .expect("invalid WINDOW_UPDATE frame");
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+                    .map_err(crate::Error::from_io)?;
                 connection.inner.streams().inc_connection_window(incr);
             }
         }
@@ -1823,5 +1848,42 @@ impl proto::Peer for Peer {
         *response.headers_mut() = fields;
 
         Ok(response)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Builder;
+    use crate::proto::MAX_WINDOW_SIZE;
+
+    #[test]
+    fn invalid_stream_window_size_increment_is_ignored() {
+        // 0 and > 2^31-1 would put an invalid WINDOW_UPDATE on the wire
+        // (RFC 7540 §6.9), which a compliant peer must reject with
+        // FLOW_CONTROL_ERROR — the builder must not store them.
+        assert!(Builder::new()
+            .initial_stream_window_size_increment(0)
+            .initial_stream_window_increment
+            .is_none());
+        assert!(Builder::new()
+            .initial_stream_window_size_increment(MAX_WINDOW_SIZE + 1)
+            .initial_stream_window_increment
+            .is_none());
+    }
+
+    #[test]
+    fn valid_stream_window_size_increment_is_set() {
+        assert_eq!(
+            Builder::new()
+                .initial_stream_window_size_increment(1)
+                .initial_stream_window_increment,
+            Some(1)
+        );
+        assert_eq!(
+            Builder::new()
+                .initial_stream_window_size_increment(MAX_WINDOW_SIZE)
+                .initial_stream_window_increment,
+            Some(MAX_WINDOW_SIZE)
+        );
     }
 }

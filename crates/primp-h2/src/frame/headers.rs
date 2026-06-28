@@ -6,13 +6,17 @@ use crate::hpack::{self, BytesStr};
 use http::header::{self, HeaderName, HeaderValue};
 use http::{uri, HeaderMap, Method, Request, StatusCode, Uri};
 
-use bytes::{Buf, BufMut, Bytes, BytesMut};
+use bytes::{Buf, BufMut, BytesMut};
 use smallvec::SmallVec;
 
 use std::fmt;
 use std::io::Cursor;
+use std::ops::ControlFlow;
 
 type EncodeBuf<'a> = bytes::buf::Limit<&'a mut BytesMut>;
+
+const MAX_HEADER_LIST_ABUSE_MULTIPLIER: usize = 4;
+
 /// Header frame
 ///
 /// This could be either a request or a response.
@@ -213,7 +217,7 @@ struct HeaderBlock {
 
 #[derive(Debug)]
 struct EncodingHeaderBlock {
-    hpack: Bytes,
+    hpack: BytesMut,
 }
 
 const END_STREAM: u8 = 0x1;
@@ -409,7 +413,7 @@ impl Headers {
         let stream_dep = self.stream_dep;
         self.header_block
             .into_encoding(encoder)
-            .encode(&head, dst, |dst| {
+            .encode(&head, dst, Some(encoder), |dst| {
                 // Write stream dependency if PRIORITY flag is set
                 if let Some(ref dep) = stream_dep {
                     dep.encode(dst);
@@ -637,7 +641,7 @@ impl PushPromise {
 
         self.header_block
             .into_encoding(encoder)
-            .encode(&head, dst, |dst| {
+            .encode(&head, dst, Some(encoder), |dst| {
                 dst.put_u32(promised_id.into());
             })
     }
@@ -680,7 +684,7 @@ impl Continuation {
         // Get the CONTINUATION frame head
         let head = self.head();
 
-        self.header_block.encode(&head, dst, |_| {})
+        self.header_block.encode(&head, dst, None, |_| {})
     }
 }
 
@@ -782,7 +786,13 @@ impl Pseudo {
 // ===== impl EncodingHeaderBlock =====
 
 impl EncodingHeaderBlock {
-    fn encode<F>(mut self, head: &Head, dst: &mut EncodeBuf<'_>, f: F) -> Option<Continuation>
+    fn encode<F>(
+        mut self,
+        head: &Head,
+        dst: &mut EncodeBuf<'_>,
+        encoder: Option<&mut hpack::Encoder>,
+        f: F,
+    ) -> Option<Continuation>
     where
         F: FnOnce(&mut EncodeBuf<'_>),
     {
@@ -799,7 +809,8 @@ impl EncodingHeaderBlock {
 
         // Now, encode the header payload
         let continuation = if self.hpack.len() > dst.remaining_mut() {
-            dst.put((&mut self.hpack).take(dst.remaining_mut()));
+            let head_part = self.hpack.split_to(dst.remaining_mut());
+            dst.put_slice(&head_part);
 
             Some(Continuation {
                 stream_id: head.stream_id(),
@@ -807,6 +818,11 @@ impl EncodingHeaderBlock {
             })
         } else {
             dst.put_slice(&self.hpack);
+            // The block is fully written, so the buffer can be reused by the
+            // next frame on this connection.
+            if let Some(encoder) = encoder {
+                encoder.return_scratch(self.hpack);
+            }
 
             None
         };
@@ -1007,7 +1023,32 @@ impl HeaderBlock {
     ) -> Result<(), Error> {
         let mut reg = !self.fields.is_empty();
         let mut malformed = false;
+        let mut header_list_way_too_large = false;
         let mut headers_size = self.calculate_header_list_size();
+        // A 0 limit is degenerate but legal: keep the abuse escalation
+        // per-stream via `is_over_size` (431 + RST) instead of letting
+        // 0.saturating_mul(4) = 0 turn every block into a connection kill.
+        let max_header_list_abuse_size = if max_header_list_size == 0 {
+            usize::MAX
+        } else {
+            max_header_list_size.saturating_mul(MAX_HEADER_LIST_ABUSE_MULTIPLIER)
+        };
+
+        macro_rules! check_size {
+            () => {{
+                if headers_size > max_header_list_abuse_size {
+                    tracing::trace!("load_hpack; header list size over abuse max");
+                    header_list_way_too_large = true;
+                    ControlFlow::Break(())
+                } else {
+                    if headers_size >= max_header_list_size && !self.is_over_size {
+                        tracing::trace!("load_hpack; header list size over max");
+                        self.is_over_size = true;
+                    }
+                    ControlFlow::Continue(())
+                }
+            }};
+        }
 
         macro_rules! set_pseudo {
             ($field:ident, $val:expr) => {{
@@ -1021,11 +1062,11 @@ impl HeaderBlock {
                     let __val = $val;
                     headers_size +=
                         decoded_header_size(stringify!($field).len() + 1, __val.as_str().len());
-                    if headers_size < max_header_list_size {
+                    if check_size!().is_break() {
+                        return ControlFlow::Break(());
+                    }
+                    if !self.is_over_size {
                         self.pseudo.$field = Some(__val);
-                    } else if !self.is_over_size {
-                        tracing::trace!("load_hpack; header list size over max");
-                        self.is_over_size = true;
                     }
                 }
             }};
@@ -1062,14 +1103,19 @@ impl HeaderBlock {
                     } else {
                         reg = true;
 
-                        headers_size += decoded_header_size(name.as_str().len(), value.len());
-                        if headers_size < max_header_list_size {
-                            self.field_size +=
-                                decoded_header_size(name.as_str().len(), value.len());
-                            self.fields.append(name, value);
-                        } else if !self.is_over_size {
-                            tracing::trace!("load_hpack; header list size over max");
-                            self.is_over_size = true;
+                        let header_size = decoded_header_size(name.as_str().len(), value.len());
+                        headers_size += header_size;
+                        if check_size!().is_break() {
+                            return ControlFlow::Break(());
+                        }
+                        if !self.is_over_size {
+                            self.field_size += header_size;
+                            if self.fields.try_append(name, value).is_err() {
+                                // HeaderMap capacity exceeded — treat as over-size
+                                // so the stream is rejected downstream (RST_STREAM / 431)
+                                // instead of panicking on the 24,577th unique header.
+                                self.is_over_size = true;
+                            }
                         }
                     }
                 }
@@ -1080,11 +1126,21 @@ impl HeaderBlock {
                 Protocol(v) => set_pseudo!(protocol, v),
                 Status(v) => set_pseudo!(status, v),
             }
+
+            ControlFlow::Continue(())
         });
 
-        if let Err(e) = res {
-            tracing::trace!("hpack decoding error; err={:?}", e);
-            return Err(e.into());
+        match res {
+            Ok(()) => {}
+            Err(e) => {
+                tracing::trace!("hpack decoding error; err={:?}", e);
+                return Err(e.into());
+            }
+        }
+
+        if header_list_way_too_large {
+            tracing::trace!("header list way too large; aborting connection");
+            return Err(Error::HeaderListWayTooLarge);
         }
 
         if malformed {
@@ -1096,7 +1152,8 @@ impl HeaderBlock {
     }
 
     fn into_encoding(self, encoder: &mut hpack::Encoder) -> EncodingHeaderBlock {
-        let mut hpack = BytesMut::new();
+        let mut hpack = encoder.take_scratch();
+        hpack.clear();
         let pseudo_order = self.pseudo.order.clone();
 
         // Collect headers from HeaderMap into a Vec for ordered iteration
@@ -1126,9 +1183,7 @@ impl HeaderBlock {
 
         encoder.encode(headers, &mut hpack);
 
-        EncodingHeaderBlock {
-            hpack: hpack.freeze(),
-        }
+        EncodingHeaderBlock { hpack }
     }
 
     /// Calculates the size of the currently decoded header list.
