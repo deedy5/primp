@@ -782,7 +782,9 @@ async fn sends_reset_cancel_when_res_body_is_dropped() {
             )
             .await;
         client.recv_frame(frames::headers(3).response(200)).await;
-        client.recv_frame(frames::data(3, vec![0; 10])).await;
+        // The fork intentionally discards buffered DATA for non-NO_ERROR resets
+        // (RFC 9113 §7 CANCEL): dropping the response body sends a CANCEL reset
+        // without the queued DATA frame, so there is no Data frame to receive.
         client.recv_frame(frames::reset(3).cancel()).await;
     };
 
@@ -818,7 +820,7 @@ async fn too_big_headers_sends_431() {
 
     let client = async move {
         let settings = client.assert_server_handshake().await;
-        assert_frame_eq(settings, frames::settings().max_header_list_size(10));
+        assert_frame_eq(settings, frames::settings().max_header_list_size(64));
         client
             .send_frame(
                 frames::headers(1)
@@ -835,7 +837,7 @@ async fn too_big_headers_sends_431() {
 
     let srv = async move {
         let mut srv = server::Builder::new()
-            .max_header_list_size(10)
+            .max_header_list_size(64)
             .handshake::<_, Bytes>(io)
             .await
             .expect("handshake");
@@ -854,7 +856,7 @@ async fn too_big_headers_sends_reset_after_431_if_not_eos() {
 
     let client = async move {
         let settings = client.assert_server_handshake().await;
-        assert_frame_eq(settings, frames::settings().max_header_list_size(10));
+        assert_frame_eq(settings, frames::settings().max_header_list_size(64));
         client
             .send_frame(
                 frames::headers(1)
@@ -870,13 +872,105 @@ async fn too_big_headers_sends_reset_after_431_if_not_eos() {
 
     let srv = async move {
         let mut srv = server::Builder::new()
-            .max_header_list_size(10)
+            .max_header_list_size(64)
             .handshake::<_, Bytes>(io)
             .await
             .expect("handshake");
 
         let req = srv.next().await;
         assert!(req.is_none(), "req is {:?}", req);
+    };
+
+    join(client, srv).await;
+}
+
+#[tokio::test]
+async fn zero_max_header_list_size_stays_per_stream_not_goaway() {
+    h2_support::trace_init!();
+    let (io, mut client) = mock::new();
+
+    let client = async move {
+        let settings = client.assert_server_handshake().await;
+        assert_frame_eq(settings, frames::settings().max_header_list_size(0));
+        // A 0 limit is degenerate but legal: every request is over-size, so
+        // each gets the per-stream 431 — never a connection-level GOAWAY
+        // (which 0.saturating_mul(4) = 0 would cause on the first header of
+        // the first request). An EOS request gets the 431 without a trailing
+        // RST (the EOS closes the send half before the implicit reset is
+        // scheduled; see `too_big_headers_sends_reset_after_431_if_not_eos`).
+        client
+            .send_frame(
+                frames::headers(1)
+                    .request("GET", "https://example.com/")
+                    .eos(),
+            )
+            .await;
+        client
+            .recv_frame(frames::headers(1).response(431).eos())
+            .await;
+        // connection survives: a second request on the same connection also
+        // gets the per-stream treatment, not a GOAWAY or EOF
+        client
+            .send_frame(
+                frames::headers(3)
+                    .request("GET", "https://example.com/")
+                    .eos(),
+            )
+            .await;
+        client
+            .recv_frame(frames::headers(3).response(431).eos())
+            .await;
+        idle_ms(10).await;
+    };
+
+    let srv = async move {
+        let mut srv = server::Builder::new()
+            .max_header_list_size(0)
+            .handshake::<_, Bytes>(io)
+            .await
+            .expect("handshake");
+
+        let req = srv.next().await;
+        assert!(req.is_none(), "req is {:?}", req);
+    };
+
+    join(client, srv).await;
+}
+
+#[tokio::test]
+async fn abusive_headers_send_goaway() {
+    h2_support::trace_init!();
+    let (io, mut client) = mock::new();
+
+    let client = async move {
+        let settings = client.assert_server_handshake().await;
+        assert_frame_eq(settings, frames::settings().max_header_list_size(64));
+        client
+            .send_frame(
+                frames::headers(1)
+                    .request("GET", "https://example.com/")
+                    // 80-char field: request list ~301B > 4x64=256 but < 5x64
+                    // — pins the abuse multiplier at exactly 4.
+                    .field("x-abuse", "a".repeat(80))
+                    .eos(),
+            )
+            .await;
+        client
+            .recv_frame(frames::go_away(0).calm().data("header_list_way_too_large"))
+            .await;
+    };
+
+    let srv = async move {
+        let mut srv = server::Builder::new()
+            .max_header_list_size(64)
+            .handshake::<_, Bytes>(io)
+            .await
+            .expect("handshake");
+
+        let err = srv.next().await.unwrap().expect_err("server");
+        assert!(err.is_go_away());
+        assert!(err.is_library());
+        assert_eq!(err.reason(), Some(Reason::ENHANCE_YOUR_CALM));
     };
 
     join(client, srv).await;
