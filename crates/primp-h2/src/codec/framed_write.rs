@@ -120,6 +120,12 @@ where
         Poll::Ready(Ok(()))
     }
 
+    /// Returns whether a frame can be buffered without first flushing the
+    /// underlying I/O object.
+    pub(crate) fn has_capacity(&self) -> bool {
+        self.encoder.has_capacity()
+    }
+
     /// Buffer a frame.
     ///
     /// `poll_ready` must be called first to ensure that a frame may be
@@ -151,10 +157,9 @@ where
                     }
                 };
                 if n == 0 {
-                    return Poll::Ready(Err(io::Error::new(
-                        io::ErrorKind::WriteZero,
-                        "failed to write frame to socket",
-                    )));
+                    // No progress is possible; retrying would busy-loop.
+                    tracing::trace!("write returned zero, but non-zero bytes remaining");
+                    return Poll::Ready(Err(io::ErrorKind::WriteZero.into()));
                 }
             }
 
