@@ -83,6 +83,7 @@ pub(crate) struct Config {
     pub remote_reset_stream_max: usize,
     pub local_error_reset_streams_max: Option<usize>,
     pub settings: frame::Settings,
+    pub data_frame_budget: usize,
     pub headers_pseudo_order: Option<crate::frame::PseudoOrder>,
     pub headers_priority: Option<(u8, u32, bool)>,
     pub headers_order: Option<Vec<http::HeaderName>>,
@@ -127,6 +128,7 @@ where
                     .max_concurrent_streams()
                     .map(|max| max as usize),
                 local_max_error_reset_streams: config.local_error_reset_streams_max,
+                data_frame_budget: config.data_frame_budget,
                 headers_pseudo_order: config.headers_pseudo_order.clone(),
                 headers_priority: config.headers_priority,
                 headers_order: config.headers_order.clone(),
@@ -450,11 +452,17 @@ where
                 Ok(())
             }
             // Attempting to read a frame resulted in a stream level error.
-            // This is handled by resetting the frame then trying to read
-            // another frame.
+            // Locally detected stream errors are reported to the peer with
+            // RST_STREAM. Remotely initiated resets have already been applied
+            // by the streams state machine and must not be echoed back.
             Err(Error::Reset(id, reason, initiator)) => {
+                if initiator == Initiator::Remote {
+                    tracing::trace!(?id, ?reason, ?initiator, "stream reset");
+                    return Ok(());
+                }
+
                 debug_assert_eq!(initiator, Initiator::Library);
-                tracing::trace!(?id, ?reason, "stream error");
+                tracing::trace!(?id, ?reason, ?initiator, "stream error");
                 match self.streams.send_reset(id, reason) {
                     Ok(()) => (),
                     Err(crate::proto::error::GoAway { debug_data, reason }) => {

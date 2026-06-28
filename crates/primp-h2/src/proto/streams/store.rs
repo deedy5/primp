@@ -194,6 +194,17 @@ impl ops::Index<Key> for Store {
     }
 }
 
+impl Store {
+    /// Safe lookup for paths that may race with stream release (e.g. a
+    /// WINDOW_UPDATE queued for a stream that finished before the driver
+    /// flushed it). Returns `None` instead of panicking on a dangling key.
+    pub(super) fn get_mut(&mut self, key: Key) -> Option<&mut Stream> {
+        self.slab
+            .get_mut(key.index.0 as usize)
+            .filter(|s| s.id == key.stream_id)
+    }
+}
+
 impl ops::IndexMut<Key> for Store {
     fn index_mut(&mut self, key: Key) -> &mut Self::Output {
         self.slab
