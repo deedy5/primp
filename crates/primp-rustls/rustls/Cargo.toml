@@ -1,6 +1,6 @@
 [package]
 name = "primp-rustls"
-version = "0.23.40"
+version = "0.23.42"
 edition = "2021"
 rust-version = "1.89"
 license = "Apache-2.0 OR ISC OR MIT"
@@ -27,6 +27,9 @@ custom-provider = []
 fips = []
 impersonate = ["aws_lc_rs", "brotli", "zstd"]  # Enable browser TLS fingerprinting emulation features with aws-lc-rs for post-quantum support
 logging = ["log"]
+# ML-DSA verification (aws-lc-rs/rustls-webpki `unstable`). NOT FIPS-approved:
+# do not combine with a FIPS build.
+ml-dsa = ["aws_lc_rs", "webpki/aws-lc-rs-unstable"]
 prefer-post-quantum = []
 read_buf = ["rustversion", "std"]
 ring = ["dep:ring", "webpki/ring"]
@@ -44,33 +47,33 @@ rustversion = { version = "1.0.6", optional = true }
 aws-lc-rs = { version = "1.8", optional = true, features = ["aws-lc-sys", "prebuilt-nasm"] }
 brotli = { version = "8", optional = true }
 brotli-decompressor = { version = "5", optional = true }
-hashbrown = { version = "0.16", optional = true }
+hashbrown = { version = "0.17", optional = true }
 log = { version = "0.4", optional = true }
 # only required for no-std
 once_cell = { version = "1" }
 ring = { version = "0.17", optional = true }
 subtle = { version = "2" }
-webpki = { package = "rustls-webpki", version = "0.103.5", features = ["alloc", "std"], default-features = false }
+webpki = { package = "rustls-webpki", version = "0.103.13", features = ["alloc", "std"], default-features = false }
 pki-types = { package = "rustls-pki-types", version = "1", features = ["alloc"] }
 zeroize = { version = "1", features = ["zeroize_derive"] }
 zlib-rs = { version = "0.6", optional = true }
 zstd = { version = "0.13", optional = true }
 
 [dev-dependencies]
-base64 = "0.22"
+base64 = "0.23"
 bencher = "0.1"
-env_logger = "0.10"
+env_logger = "0.11"
 hex = "0.4"
 log = "0.4"
 macro_rules_attribute = "0.2"
-num-bigint = "0.4"
-rcgen = "0.13"
+num-bigint = "0.5"
+rcgen = "0.14"
 rustls-test = { path = "../rustls-test" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 time = "0.3"
 webpki-roots = "1"
-x509-parser = "0.16"
+x509-parser = "0.18"
 
 [[test]]
 name = "api"

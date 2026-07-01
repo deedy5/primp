@@ -166,6 +166,7 @@ impl ConfigBuilder<ClientConfig, WantsClientCert> {
         ClientConfig {
             provider: self.provider,
             alpn_protocols: Vec::new(),
+            check_selected_alpn: true,
             resumption: Resumption::default(),
             max_fragment_size: None,
             client_auth_cert_resolver,
@@ -182,6 +183,7 @@ impl ConfigBuilder<ClientConfig, WantsClientCert> {
             cert_compression_cache: Arc::new(compress::CompressionCache::default()),
             cert_decompressors: compress::default_cert_decompressors().to_vec(),
             ech_mode: self.state.client_ech_mode,
+            send_ticket_request: None,
             #[cfg(feature = "impersonate")]
             browser_emulation: None,
         }

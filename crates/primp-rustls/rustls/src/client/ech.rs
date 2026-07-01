@@ -883,7 +883,7 @@ mod tests {
     fn inner_client_hello_length_conceals_inner_name_length() {
         let base_inner_len = inner_hello_encoding_for_name(dns_name_of_len(1), true).len();
         assert!(
-            base_inner_len % 32 == 0,
+            base_inner_len.is_multiple_of(32),
             "inner hello length must be 32-byte padded"
         );
         assert!(
@@ -904,7 +904,7 @@ mod tests {
     fn inner_client_hello_length_does_not_leak_length_of_omitted_inner_name() {
         let base_inner_len = inner_hello_encoding_for_name(dns_name_of_len(1), false).len();
         assert!(
-            base_inner_len % 32 == 0,
+            base_inner_len.is_multiple_of(32),
             "inner hello length must be 32-byte padded"
         );
         assert!(
