@@ -166,6 +166,10 @@ pub struct ClientConfig {
     /// If empty, no ALPN extension is sent.
     pub alpn_protocols: Vec<Vec<u8>>,
 
+    /// Whether to check that the ALPN protocol selected by the server was
+    /// offered in the client hello. The default is true.
+    pub check_selected_alpn: bool,
+
     /// How and when the client can resume a previous session.
     ///
     /// # Sharing `resumption` between `ClientConfig`s
@@ -283,10 +287,26 @@ pub struct ClientConfig {
     /// How to offer Encrypted Client Hello (ECH). The default is to not offer ECH.
     pub(super) ech_mode: Option<EchMode>,
 
+    /// Request a specific number of TLS 1.3 session tickets (RFC 9149).
+    ///
+    /// `None` disables the extension (the default).
+    ///
+    /// [RFC 9149]: https://datatracker.ietf.org/doc/html/rfc9149
+    pub send_ticket_request: Option<TicketRequest>,
+
     /// Browser emulator configuration for TLS fingerprinting.
     /// If set, the client will attempt to emulate the specified browser's TLS fingerprint.
     #[cfg(feature = "impersonate")]
     pub browser_emulation: Option<super::client_emulator::BrowserEmulator>,
+}
+
+/// Desired session ticket counts for the RFC 9149 `ticket_request` extension.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TicketRequest {
+    /// Tickets desired when the server negotiates a new connection.
+    pub new_session_count: u8,
+    /// Tickets desired when the server resumes using a presented ticket.
+    pub resumption_count: u8,
 }
 
 impl ClientConfig {
