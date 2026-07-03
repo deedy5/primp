@@ -13,7 +13,7 @@ pub mod cipher_suites {
     use super::CipherSuite;
 
     /// Chrome's default cipher suite list (TLS 1.2 and 1.3)
-    /// 17 cipher suites total: 1 GREASE + 3 TLS 1.3 + 13 TLS 1.2 (matching Chrome 142)
+    /// 16 cipher suites total: 1 GREASE + 3 TLS 1.3 + 12 TLS 1.2 (matching Chrome 151)
     pub const CHROME: &[CipherSuite] = &[
         // GREASE cipher suite (for Chrome fingerprinting)
         CipherSuite::TLS_RESERVED_GREASE,
@@ -44,7 +44,7 @@ pub mod cipher_suites {
     ];
 
     /// Chrome's TLS 1.2 cipher suite list
-    /// 13 cipher suites (matching Chrome 142)
+    /// 12 cipher suites (matching Chrome 151)
     pub const CHROME_TLS12: &[CipherSuite] = &[
         CipherSuite::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
         CipherSuite::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
@@ -130,6 +130,25 @@ pub mod cipher_suites {
 pub mod signature_algorithms {
     use super::SignatureScheme;
 
+    /// Chrome/Edge 150+ default signature algorithm list.
+    ///
+    /// Real Chrome 150 / Edge 150 (tls.browserleaks.com) advertise the three
+    /// ML-DSA post-quantum schemes first, followed by the classic 8. Earlier
+    /// Chrome/Edge versions (<=149) do NOT advertise ML-DSA.
+    pub const CHROME_V150: &[SignatureScheme] = &[
+        SignatureScheme::ML_DSA_44,
+        SignatureScheme::ML_DSA_65,
+        SignatureScheme::ML_DSA_87,
+        SignatureScheme::ECDSA_NISTP256_SHA256,
+        SignatureScheme::RSA_PSS_SHA256,
+        SignatureScheme::RSA_PKCS1_SHA256,
+        SignatureScheme::ECDSA_NISTP384_SHA384,
+        SignatureScheme::RSA_PSS_SHA384,
+        SignatureScheme::RSA_PKCS1_SHA384,
+        SignatureScheme::RSA_PSS_SHA512,
+        SignatureScheme::RSA_PKCS1_SHA512,
+    ];
+
     /// Chrome's default signature algorithm list (8 algorithms)
     pub const CHROME: &[SignatureScheme] = &[
         SignatureScheme::ECDSA_NISTP256_SHA256,
@@ -142,7 +161,13 @@ pub mod signature_algorithms {
         SignatureScheme::RSA_PKCS1_SHA512,
     ];
 
-    /// Safari's default signature algorithm list (11 algorithms including sha1)
+    /// Safari's default signature algorithm list (10 algorithms including sha1).
+    ///
+    /// NOTE: `RSA_PSS_SHA384` appears twice intentionally. This matches the
+    /// actual TLS ClientHello of real Safari browsers — confirmed by all Safari
+    /// JA4 tests against tls.browserleaks.com. Removing the duplicate causes
+    /// the JA4 third-segment hash to change, producing a fingerprint mismatch
+    /// with real Safari.
     pub const SAFARI: &[SignatureScheme] = &[
         SignatureScheme::ECDSA_NISTP256_SHA256,
         SignatureScheme::RSA_PSS_SHA256,
@@ -251,7 +276,13 @@ pub mod extension_order {
     /// Edge's extension order seed (same as Chrome)
     pub const EDGE: u16 = CHROME;
 
-    /// Opera's extension order seed (different due to permute_extensions)
+    /// Opera's extension order seed (VESTIGIAL — do not use).
+    /// NOTE: `imp/opera/mod.rs::new_opera_emulator` intentionally reuses
+    /// `CHROME` (0x8daa) instead — every real Opera capture in
+    /// `tls_real_profiles/` (`opera_129/131/132/133.txt`) has the SAME JA4
+    /// extension-order hash as Chrome, so switching Opera to this seed would
+    /// produce a JA4 matching no real browser. Kept only because it is
+    /// referenced by tests/comments; dead code.
     pub const OPERA: u16 = 0x0271u16;
 
     /// Safari 18.5's extension order seed (13 extensions)
@@ -261,19 +292,4 @@ pub mod extension_order {
     /// Safari 26's extension order seed (13 extensions)
     /// Produces ja4=t13d2013h2_a09f3c656075_7f0f34a4126d
     pub const SAFARI_26: u16 = 0x6560u16;
-}
-
-/// Extension permutation flags for browser emulation
-#[cfg(feature = "impersonate")]
-pub mod extension_permutation {
-    /// Whether Chrome permutes extensions (false)
-    pub const CHROME: bool = false;
-    /// Whether Safari permutes extensions (false)
-    pub const SAFARI: bool = false;
-    /// Whether Firefox permutes extensions (false)
-    pub const FIREFOX: bool = false;
-    /// Whether Edge permutes extensions (false)
-    pub const EDGE: bool = false;
-    /// Whether Opera permutes extensions (true)
-    pub const OPERA: bool = true;
 }
