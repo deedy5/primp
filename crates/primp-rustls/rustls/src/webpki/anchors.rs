@@ -118,15 +118,13 @@ impl Extend<TrustAnchor<'static>> for RootCertStore {
 impl fmt::Debug for RootCertStore {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RootCertStore")
-            .field("roots", &format!("({} roots)", &self.roots.len()))
+            .field("roots", &format!("({} roots)", self.roots.len()))
             .finish()
     }
 }
 
 #[test]
 fn root_cert_store_debug() {
-    use core::iter;
-
     use pki_types::Der;
 
     let ta = TrustAnchor {
@@ -134,7 +132,7 @@ fn root_cert_store_debug() {
         subject_public_key_info: Der::from_slice(&[]),
         name_constraints: None,
     };
-    let store = RootCertStore::from_iter(iter::repeat(ta).take(138));
+    let store = RootCertStore::from_iter(core::iter::repeat_n(ta, 138));
 
     assert_eq!(
         format!("{store:?}"),

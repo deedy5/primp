@@ -696,9 +696,13 @@ impl TlsListElement for KeyShareEntry {
 pub(crate) struct SupportedProtocolVersions {
     pub(crate) tls13: bool,
     pub(crate) tls12: bool,
-    /// Include a GREASE version entry (0x0a0a) for browser fingerprinting
+    /// Optional GREASE version entry for browser fingerprinting. The value is
+    /// derived from the client random per connection — real Chrome picks a
+    /// fresh GREASE value for every ClientHello (each capture shows a
+    /// different one: 0xaaaa, 0xbaba, 0x0a0a, 0x5a5a, ...), it is NOT a
+    /// per-version constant. `None` sends no GREASE entry (e.g. Firefox).
     #[cfg(feature = "impersonate")]
-    pub(crate) grease: bool,
+    pub(crate) supported_versions_grease: Option<ProtocolVersion>,
 }
 
 impl SupportedProtocolVersions {
@@ -722,8 +726,8 @@ impl Codec<'_> for SupportedProtocolVersions {
     fn encode(&self, bytes: &mut Vec<u8>) {
         let inner = LengthPrefixedBuffer::new(Self::LIST_LENGTH, bytes);
         #[cfg(feature = "impersonate")]
-        if self.grease {
-            ProtocolVersion::Unknown(0x0a0a).encode(inner.buf);
+        if let Some(grease_version) = self.supported_versions_grease {
+            grease_version.encode(inner.buf);
         }
         if self.tls13 {
             ProtocolVersion::TLSv1_3.encode(inner.buf);
@@ -749,7 +753,7 @@ impl Codec<'_> for SupportedProtocolVersions {
             tls13,
             tls12,
             #[cfg(feature = "impersonate")]
-            grease: false,
+            supported_versions_grease: None,
         })
     }
 }
@@ -834,6 +838,47 @@ impl TransportParameters<'_> {
             Self::QuicDraft(v) => TransportParameters::QuicDraft(v.into_owned()),
             Self::Quic(v) => TransportParameters::Quic(v.into_owned()),
         }
+    }
+}
+
+/// RFC 9149: ClientTicketRequest extension payload.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ClientTicketRequest {
+    /// Tickets desired when the server negotiates a new connection.
+    pub new_session_count: u8,
+    /// Tickets desired when the server resumes using a presented ticket.
+    pub resumption_count: u8,
+}
+
+impl Codec<'_> for ClientTicketRequest {
+    fn encode(&self, bytes: &mut Vec<u8>) {
+        self.new_session_count.encode(bytes);
+        self.resumption_count.encode(bytes);
+    }
+
+    fn read(r: &mut Reader<'_>) -> Result<Self, InvalidMessage> {
+        Ok(Self {
+            new_session_count: u8::read(r)?,
+            resumption_count: u8::read(r)?,
+        })
+    }
+}
+
+/// RFC 9149: ServerTicketRequestHint extension payload.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ServerTicketRequestHint {
+    pub(crate) expected_count: u8,
+}
+
+impl Codec<'_> for ServerTicketRequestHint {
+    fn encode(&self, bytes: &mut Vec<u8>) {
+        self.expected_count.encode(bytes);
+    }
+
+    fn read(r: &mut Reader<'_>) -> Result<Self, InvalidMessage> {
+        Ok(Self {
+            expected_count: u8::read(r)?,
+        })
     }
 }
 
@@ -938,6 +983,10 @@ extension_struct! {
         ExtensionType::TransportParameters =>
             pub(crate) transport_parameters: Option<Payload<'a>>,
 
+        /// Ticket request (RFC9149)
+        ExtensionType::TicketRequest =>
+            pub(crate) ticket_request: Option<ClientTicketRequest>,
+
         /// Secure renegotiation (RFC5746)
         ExtensionType::RenegotiationInfo =>
             pub(crate) renegotiation_info: Option<PayloadU8>,
@@ -1004,6 +1053,7 @@ impl ClientExtensions<'_> {
             certificate_authority_names,
             key_shares,
             transport_parameters,
+            ticket_request,
             renegotiation_info,
             transport_parameters_draft,
             encrypted_client_hello,
@@ -1040,6 +1090,7 @@ impl ClientExtensions<'_> {
             certificate_authority_names,
             key_shares,
             transport_parameters: transport_parameters.map(|x| x.into_owned()),
+            ticket_request,
             renegotiation_info,
             transport_parameters_draft: transport_parameters_draft.map(|x| x.into_owned()),
             encrypted_client_hello,
@@ -1058,14 +1109,32 @@ impl ClientExtensions<'_> {
     pub(crate) fn used_extensions_in_encoding_order(&self) -> Vec<ExtensionType> {
         let mut exts = self.order_insensitive_extensions_in_random_order();
 
+        // Some browser-impersonation profiles unconditionally list
+        // `EncryptedClientHello` (0xFA) and `CompressCertificate` (0x1B) in
+        // `contiguous_extensions`. When the corresponding extension data is
+        // absent (no ECH/GREASE configured, or no cert decompressors), emitting
+        // the type with a zero-length body is non-conformant. Drop those
+        // placeholders so we never send an empty extension.
+        let contiguous = self
+            .contiguous_extensions
+            .iter()
+            .copied()
+            .filter(|ext| match *ext {
+                ExtensionType::EncryptedClientHello => self.encrypted_client_hello.is_some(),
+                ExtensionType::CompressCertificate => {
+                    self.certificate_compression_algorithms.is_some()
+                }
+                _ => true,
+            })
+            .collect::<Vec<_>>();
+
         if self.ech_before_trailing_grease
             && (self.encrypted_client_hello_outer.is_some()
                 || self.encrypted_client_hello.is_some())
         {
             // Chrome mode: insert ECH before trailing GREASE extensions in contiguous list.
             // Count trailing GREASE extensions (0x?A?A pattern).
-            let trailing_grease_count = self
-                .contiguous_extensions
+            let trailing_grease_count = contiguous
                 .iter()
                 .rev()
                 .take_while(|ext| {
@@ -1075,9 +1144,9 @@ impl ClientExtensions<'_> {
                 })
                 .count();
 
-            let split_pos = self.contiguous_extensions.len() - trailing_grease_count;
+            let split_pos = contiguous.len() - trailing_grease_count;
 
-            exts.extend(&self.contiguous_extensions[..split_pos]);
+            exts.extend(&contiguous[..split_pos]);
 
             if self.encrypted_client_hello_outer.is_some() {
                 exts.push(ExtensionType::EncryptedClientHelloOuterExtensions);
@@ -1086,22 +1155,18 @@ impl ClientExtensions<'_> {
                 exts.push(ExtensionType::EncryptedClientHello);
             }
 
-            exts.extend(&self.contiguous_extensions[split_pos..]);
+            exts.extend(&contiguous[split_pos..]);
         } else {
-            exts.extend(&self.contiguous_extensions);
+            exts.extend(&contiguous);
 
             // Add ECH and PSK only if not already in contiguous_extensions
             if self.encrypted_client_hello_outer.is_some()
-                && !self
-                    .contiguous_extensions
-                    .contains(&ExtensionType::EncryptedClientHelloOuterExtensions)
+                && !contiguous.contains(&ExtensionType::EncryptedClientHelloOuterExtensions)
             {
                 exts.push(ExtensionType::EncryptedClientHelloOuterExtensions);
             }
             if self.encrypted_client_hello.is_some()
-                && !self
-                    .contiguous_extensions
-                    .contains(&ExtensionType::EncryptedClientHello)
+                && !contiguous.contains(&ExtensionType::EncryptedClientHello)
             {
                 exts.push(ExtensionType::EncryptedClientHello);
             }
@@ -1302,6 +1367,10 @@ extension_struct! {
         ExtensionType::EarlyData =>
             pub(crate) early_data_ack: Option<()>,
 
+        /// Ticket request hint (RFC9149)
+        ExtensionType::TicketRequest =>
+            pub(crate) ticket_request: Option<ServerTicketRequestHint>,
+
         /// Encrypted inner client hello response (draft-ietf-tls-esni)
         ExtensionType::EncryptedClientHello =>
             pub(crate) encrypted_client_hello_ack: Option<ServerEncryptedClientHello>,
@@ -1328,6 +1397,7 @@ impl ServerExtensions<'_> {
             transport_parameters,
             transport_parameters_draft,
             early_data_ack,
+            ticket_request,
             encrypted_client_hello_ack,
             unknown_extensions,
         } = self;
@@ -1347,6 +1417,7 @@ impl ServerExtensions<'_> {
             transport_parameters: transport_parameters.map(|x| x.into_owned()),
             transport_parameters_draft: transport_parameters_draft.map(|x| x.into_owned()),
             early_data_ack,
+            ticket_request,
             encrypted_client_hello_ack,
             unknown_extensions,
         }
@@ -3221,6 +3292,44 @@ fn low_quality_integer_hash(mut x: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The supported_versions GREASE entry must encode the per-connection value
+    /// configured for it, not a hardcoded constant (audit finding C1: real Chrome
+    /// picks a fresh GREASE value per ClientHello — each capture shows a different
+    /// one (0xaaaa, 0xbaba, 0x0a0a, 0x5a5a), it is NOT a per-version constant).
+    #[cfg(feature = "impersonate")]
+    #[test]
+    fn supported_versions_encodes_configured_grease_value() {
+        use crate::msgs::codec::Codec;
+
+        // A drawn GREASE value (e.g. high nibble 9) must appear verbatim on the wire.
+        let with_grease = SupportedProtocolVersions {
+            tls13: true,
+            tls12: true,
+            supported_versions_grease: Some(ProtocolVersion::Unknown(0x9a9a)),
+        };
+        let mut bytes = Vec::new();
+        with_grease.encode(&mut bytes);
+        // list len 6: 0x9a9a, TLS1.3 (0x0304), TLS1.2 (0x0303)
+        assert_eq!(bytes, [6, 0x9a, 0x9a, 3, 4, 3, 3]);
+
+        // The GREASE entry reads back fine (decoding skips unknown versions).
+        let mut rd = Reader::init(&bytes);
+        SupportedProtocolVersions::read(&mut rd).expect("supported_versions must read back");
+
+        // Without grease configured, no GREASE entry is emitted — that matches
+        // Firefox, which sends no supported_versions GREASE.
+        let no_grease = SupportedProtocolVersions {
+            tls13: true,
+            tls12: true,
+            supported_versions_grease: None,
+        };
+        let mut bytes = Vec::new();
+        no_grease.encode(&mut bytes);
+        assert_eq!(bytes, [4, 3, 4, 3, 3]);
+        let mut rd = Reader::init(&bytes);
+        SupportedProtocolVersions::read(&mut rd).expect("supported_versions must read back");
+    }
 
     #[test]
     fn test_ech_config_dupe_exts() {

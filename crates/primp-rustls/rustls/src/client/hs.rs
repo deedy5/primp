@@ -14,7 +14,7 @@ use crate::bs_debug;
 use crate::check::inappropriate_handshake_message;
 use crate::client::client_conn::ClientConnectionData;
 #[cfg(feature = "impersonate")]
-use crate::client::client_emulator::BrowserType;
+use crate::client::client_emulator::{BrowserEmulator, BrowserType};
 use crate::client::common::ClientHelloDetails;
 use crate::client::ech::EchState;
 use crate::client::{tls13, ClientConfig, EchMode, EchStatus};
@@ -33,9 +33,10 @@ use crate::msgs::base::{PayloadU16, PayloadU8};
 use crate::msgs::enums::{Compression, ExtensionType};
 use crate::msgs::handshake::{
     CertificateStatusRequest, ClientExtensions, ClientExtensionsInput, ClientHelloPayload,
-    ClientSessionTicket, EncryptedClientHello, HandshakeMessagePayload, HandshakePayload,
-    HelloRetryRequest, KeyShareEntry, ProtocolName, PskKeyExchangeModes, Random, ServerNamePayload,
-    SessionId, SupportedEcPointFormats, SupportedProtocolVersions, TransportParameters,
+    ClientSessionTicket, ClientTicketRequest, EncryptedClientHello, HandshakeMessagePayload,
+    HandshakePayload, HelloRetryRequest, KeyShareEntry, ProtocolName, PskKeyExchangeModes, Random,
+    ServerNamePayload, SessionId, SupportedEcPointFormats, SupportedProtocolVersions,
+    TransportParameters,
 };
 use crate::msgs::message::{Message, MessagePayload};
 use crate::msgs::persist;
@@ -61,8 +62,425 @@ const GREASE_EXT_FIRST_PLACEHOLDER: u16 = 0x6a6a;
 #[cfg(feature = "impersonate")]
 const GREASE_EXT_LAST_PLACEHOLDER: u16 = 0x0a0a;
 
+/// Exact ordered ClientHello extension list for a browser-emulation profile,
+/// taken verbatim from the `tls_real_profiles/` captures.
+///
+/// Branched by `version.major`: Chrome/Edge 148/149/150/151 each have their
+/// own list (147 falls back to 146); Opera 131/132/133/134 each have their
+/// own list (130 falls back to 129). Firefox and Safari return `None` for
+/// rustls' default seed-randomized ordering.
+///
+/// Unlisted extensions (e.g. `cookie`, `ticket_request`) take a best-effort
+/// seed-sorted slot, since captures are first-hello only. The two GREASE
+/// placeholders must stay first and last for `emit_client_hello` substitution.
 #[cfg(feature = "impersonate")]
-fn generate_distinct_grease(random: &[u8; 32]) -> (u16, u16, u16, u16) {
+fn emulator_extension_order(be: &BrowserEmulator) -> Option<Vec<ExtensionType>> {
+    use ExtensionType::*;
+    let grease_first = Unknown(GREASE_EXT_FIRST_PLACEHOLDER);
+    let grease_last = Unknown(GREASE_EXT_LAST_PLACEHOLDER);
+
+    match be.browser_type {
+        BrowserType::Chrome => {
+            if be.version.major == 151 {
+                // Real Chrome 151 (tls_real_profiles/chrome_151.txt):
+                // GREASE, compress_certificate, server_name, ALPS(0x44cd),
+                // ec_point_formats, key_share, renegotiation_info,
+                // signature_algorithms, psk_key_exchange_modes, ALPN,
+                // supported_versions, ECH, session_ticket, supported_groups,
+                // SCT, extended_master_secret, status_request, GREASE
+                Some(vec![
+                    grease_first,
+                    CompressCertificate,
+                    ServerName,
+                    Unknown(0x44cd),
+                    ECPointFormats,
+                    KeyShare,
+                    RenegotiationInfo,
+                    SignatureAlgorithms,
+                    PSKKeyExchangeModes,
+                    ALProtocolNegotiation,
+                    SupportedVersions,
+                    EncryptedClientHello,
+                    SessionTicket,
+                    EllipticCurves,
+                    SCT,
+                    ExtendedMasterSecret,
+                    StatusRequest,
+                    grease_last,
+                ])
+            } else if be.version.major >= 150 {
+                // Real Chrome 150 (tls_real_profiles/chrome_150.txt):
+                // GREASE, renegotiation_info, server_name, signature_algorithms,
+                // ALPN, ECH, session_ticket, supported_groups, ec_point_formats,
+                // extended_main_secret, SCT, key_share, supported_versions,
+                // compress_certificate, status_request, ALPS(0x44cd),
+                // psk_key_exchange_modes, GREASE
+                Some(vec![
+                    grease_first,
+                    RenegotiationInfo,
+                    ServerName,
+                    SignatureAlgorithms,
+                    ALProtocolNegotiation,
+                    EncryptedClientHello,
+                    SessionTicket,
+                    EllipticCurves,
+                    ECPointFormats,
+                    ExtendedMasterSecret,
+                    SCT,
+                    KeyShare,
+                    SupportedVersions,
+                    CompressCertificate,
+                    StatusRequest,
+                    Unknown(0x44cd),
+                    PSKKeyExchangeModes,
+                    grease_last,
+                ])
+            } else if be.version.major == 149 {
+                // Real Chrome 149 (tls_real_profiles/chrome_149.txt)
+                Some(vec![
+                    grease_first,
+                    SignatureAlgorithms,
+                    StatusRequest,
+                    RenegotiationInfo,
+                    SessionTicket,
+                    KeyShare,
+                    ALProtocolNegotiation,
+                    ServerName,
+                    ECPointFormats,
+                    EncryptedClientHello,
+                    ExtendedMasterSecret,
+                    SupportedVersions,
+                    CompressCertificate,
+                    PSKKeyExchangeModes,
+                    EllipticCurves,
+                    Unknown(0x44cd),
+                    SCT,
+                    grease_last,
+                ])
+            } else if be.version.major == 148 {
+                // Real Chrome 148 (tls_real_profiles/chrome_148.txt)
+                Some(vec![
+                    grease_first,
+                    StatusRequest,
+                    EncryptedClientHello,
+                    KeyShare,
+                    SessionTicket,
+                    ALProtocolNegotiation,
+                    ServerName,
+                    SupportedVersions,
+                    ExtendedMasterSecret,
+                    CompressCertificate,
+                    Unknown(0x44cd),
+                    RenegotiationInfo,
+                    SignatureAlgorithms,
+                    PSKKeyExchangeModes,
+                    ECPointFormats,
+                    SCT,
+                    EllipticCurves,
+                    grease_last,
+                ])
+            } else {
+                // Chrome 146 (and 147 / earlier) order
+                // (tls_real_profiles/chrome_146.txt)
+                Some(vec![
+                    grease_first,
+                    EncryptedClientHello,
+                    SupportedVersions,
+                    SCT,
+                    Unknown(0x44cd),
+                    EllipticCurves,
+                    RenegotiationInfo,
+                    KeyShare,
+                    StatusRequest,
+                    SessionTicket,
+                    ServerName,
+                    SignatureAlgorithms,
+                    ALProtocolNegotiation,
+                    ECPointFormats,
+                    CompressCertificate,
+                    ExtendedMasterSecret,
+                    PSKKeyExchangeModes,
+                    grease_last,
+                ])
+            }
+        }
+        BrowserType::Edge => {
+            if be.version.major == 151 {
+                // Real Edge 151 (tls_real_profiles/edge_151.txt):
+                // GREASE, SCT, signature_algorithms, extended_master_secret,
+                // ALPS(0x44cd), psk_key_exchange_modes, ECH, renegotiation_info,
+                // supported_versions, session_ticket, ALPN, status_request,
+                // key_share, supported_groups, ec_point_formats, server_name,
+                // compress_certificate, GREASE
+                Some(vec![
+                    grease_first,
+                    SCT,
+                    SignatureAlgorithms,
+                    ExtendedMasterSecret,
+                    Unknown(0x44cd),
+                    PSKKeyExchangeModes,
+                    EncryptedClientHello,
+                    RenegotiationInfo,
+                    SupportedVersions,
+                    SessionTicket,
+                    ALProtocolNegotiation,
+                    StatusRequest,
+                    KeyShare,
+                    EllipticCurves,
+                    ECPointFormats,
+                    ServerName,
+                    CompressCertificate,
+                    grease_last,
+                ])
+            } else if be.version.major >= 150 {
+                // Real Edge 150 (tls_real_profiles/edge_150.txt):
+                // GREASE, status_request, renegotiation_info, SCT, ALPN, ECH,
+                // extended_main_secret, session_ticket, ec_point_formats,
+                // supported_groups, compress_certificate, server_name,
+                // supported_versions, ALPS(0x44cd), psk_key_exchange_modes,
+                // key_share, signature_algorithms, GREASE
+                Some(vec![
+                    grease_first,
+                    StatusRequest,
+                    RenegotiationInfo,
+                    SCT,
+                    ALProtocolNegotiation,
+                    EncryptedClientHello,
+                    ExtendedMasterSecret,
+                    SessionTicket,
+                    ECPointFormats,
+                    EllipticCurves,
+                    CompressCertificate,
+                    ServerName,
+                    SupportedVersions,
+                    Unknown(0x44cd),
+                    PSKKeyExchangeModes,
+                    KeyShare,
+                    SignatureAlgorithms,
+                    grease_last,
+                ])
+            } else if be.version.major == 149 {
+                // Real Edge 149 (tls_real_profiles/edge_149.txt)
+                Some(vec![
+                    grease_first,
+                    EllipticCurves,
+                    KeyShare,
+                    ALProtocolNegotiation,
+                    RenegotiationInfo,
+                    ServerName,
+                    SCT,
+                    StatusRequest,
+                    ExtendedMasterSecret,
+                    SessionTicket,
+                    Unknown(0x44cd),
+                    CompressCertificate,
+                    PSKKeyExchangeModes,
+                    SupportedVersions,
+                    EncryptedClientHello,
+                    SignatureAlgorithms,
+                    ECPointFormats,
+                    grease_last,
+                ])
+            } else if be.version.major == 148 {
+                // Real Edge 148 (tls_real_profiles/edge_148.txt)
+                Some(vec![
+                    grease_first,
+                    SCT,
+                    StatusRequest,
+                    KeyShare,
+                    PSKKeyExchangeModes,
+                    SessionTicket,
+                    RenegotiationInfo,
+                    SignatureAlgorithms,
+                    ALProtocolNegotiation,
+                    SupportedVersions,
+                    EncryptedClientHello,
+                    ServerName,
+                    ExtendedMasterSecret,
+                    EllipticCurves,
+                    Unknown(0x44cd),
+                    CompressCertificate,
+                    ECPointFormats,
+                    grease_last,
+                ])
+            } else {
+                // Edge 146 (and 147 / earlier) order (tls_real_profiles/edge_146.txt)
+                Some(vec![
+                    grease_first,
+                    RenegotiationInfo,
+                    ExtendedMasterSecret,
+                    SessionTicket,
+                    SCT,
+                    StatusRequest,
+                    SignatureAlgorithms,
+                    CompressCertificate,
+                    ServerName,
+                    KeyShare,
+                    ECPointFormats,
+                    EllipticCurves,
+                    EncryptedClientHello,
+                    ALProtocolNegotiation,
+                    Unknown(0x44cd),
+                    PSKKeyExchangeModes,
+                    SupportedVersions,
+                    grease_last,
+                ])
+            }
+        }
+        BrowserType::Opera => {
+            if be.version.major == 135 {
+                // Real Opera 135 (capture): Chrome-151-based
+                // (UA "Chrome/151.0.0.0 ... OPR/135.0.0.0") with its own order:
+                // GREASE, status_request, signature_algorithms, key_share, SCT,
+                // ALPS(0x44cd), ALPN, supported_groups, psk_key_exchange_modes,
+                // supported_versions, session_ticket, renegotiation_info,
+                // server_name, ec_point_formats, ECH, compress_certificate,
+                // extended_main_secret, GREASE
+                Some(vec![
+                    grease_first,
+                    StatusRequest,
+                    SignatureAlgorithms,
+                    KeyShare,
+                    SCT,
+                    Unknown(0x44cd),
+                    ALProtocolNegotiation,
+                    EllipticCurves,
+                    PSKKeyExchangeModes,
+                    SupportedVersions,
+                    SessionTicket,
+                    RenegotiationInfo,
+                    ServerName,
+                    ECPointFormats,
+                    EncryptedClientHello,
+                    CompressCertificate,
+                    ExtendedMasterSecret,
+                    grease_last,
+                ])
+            } else if be.version.major == 134 {
+                // Real Opera 134 (capture): Chrome-150-based
+                // (UA "Chrome/150.0.0.0 ... OPR/134.0.0.0") but with its own order:
+                // GREASE, ALPN, session_ticket, extended_main_secret,
+                // supported_groups, signature_algorithms, server_name, ECH,
+                // status_request, compress_certificate, psk_key_exchange_modes,
+                // key_share, renegotiation_info, SCT, supported_versions,
+                // ec_point_formats, ALPS(0x44cd), GREASE
+                Some(vec![
+                    grease_first,
+                    ALProtocolNegotiation,
+                    SessionTicket,
+                    ExtendedMasterSecret,
+                    EllipticCurves,
+                    SignatureAlgorithms,
+                    ServerName,
+                    EncryptedClientHello,
+                    StatusRequest,
+                    CompressCertificate,
+                    PSKKeyExchangeModes,
+                    KeyShare,
+                    RenegotiationInfo,
+                    SCT,
+                    SupportedVersions,
+                    ECPointFormats,
+                    Unknown(0x44cd),
+                    grease_last,
+                ])
+            } else if be.version.major == 133 {
+                // Real Opera 133 (tls_real_profiles/opera_133.txt)
+                Some(vec![
+                    grease_first,
+                    SupportedVersions,
+                    KeyShare,
+                    ALProtocolNegotiation,
+                    SignatureAlgorithms,
+                    SCT,
+                    RenegotiationInfo,
+                    EllipticCurves,
+                    CompressCertificate,
+                    PSKKeyExchangeModes,
+                    SessionTicket,
+                    ECPointFormats,
+                    ExtendedMasterSecret,
+                    ServerName,
+                    EncryptedClientHello,
+                    Unknown(0x44cd),
+                    StatusRequest,
+                    grease_last,
+                ])
+            } else if be.version.major == 132 {
+                // Real Opera 132 (tls_real_profiles/opera_132.txt)
+                Some(vec![
+                    grease_first,
+                    RenegotiationInfo,
+                    StatusRequest,
+                    EncryptedClientHello,
+                    ECPointFormats,
+                    PSKKeyExchangeModes,
+                    EllipticCurves,
+                    SupportedVersions,
+                    ExtendedMasterSecret,
+                    CompressCertificate,
+                    KeyShare,
+                    ServerName,
+                    SCT,
+                    ALProtocolNegotiation,
+                    Unknown(0x44cd),
+                    SessionTicket,
+                    SignatureAlgorithms,
+                    grease_last,
+                ])
+            } else if be.version.major == 131 {
+                // Real Opera 131 (tls_real_profiles/opera_131.txt)
+                Some(vec![
+                    grease_first,
+                    SupportedVersions,
+                    PSKKeyExchangeModes,
+                    Unknown(0x44cd),
+                    EncryptedClientHello,
+                    SCT,
+                    SessionTicket,
+                    KeyShare,
+                    ALProtocolNegotiation,
+                    CompressCertificate,
+                    EllipticCurves,
+                    ExtendedMasterSecret,
+                    ServerName,
+                    ECPointFormats,
+                    RenegotiationInfo,
+                    StatusRequest,
+                    SignatureAlgorithms,
+                    grease_last,
+                ])
+            } else {
+                // Opera 129 (and 130 / earlier) order
+                // (tls_real_profiles/opera_129.txt)
+                Some(vec![
+                    grease_first,
+                    EncryptedClientHello,
+                    KeyShare,
+                    RenegotiationInfo,
+                    ExtendedMasterSecret,
+                    CompressCertificate,
+                    EllipticCurves,
+                    ServerName,
+                    ALProtocolNegotiation,
+                    StatusRequest,
+                    SupportedVersions,
+                    PSKKeyExchangeModes,
+                    SCT,
+                    ECPointFormats,
+                    Unknown(0x44cd),
+                    SignatureAlgorithms,
+                    SessionTicket,
+                    grease_last,
+                ])
+            }
+        }
+        _ => None,
+    }
+}
+
+#[cfg(feature = "impersonate")]
+fn generate_distinct_grease(random: &[u8; 32]) -> (u16, u16, u16, u16, u16) {
     let mut used: u16 = 0; // bit N set means high-nibble N is taken
 
     let mut pick = |b: u8| -> u16 {
@@ -83,6 +501,7 @@ fn generate_distinct_grease(random: &[u8; 32]) -> (u16, u16, u16, u16) {
         pick(random[18]),
         pick(random[2]),
         pick(random[3]),
+        pick(random[19]),
     )
 }
 
@@ -125,6 +544,26 @@ pub(super) struct ClientHelloInput {
     pub(super) extra_key_exchanges: Vec<Box<dyn ActiveKeyExchange>>,
 }
 
+/// Seed controlling the encoded TLS extension order in the ClientHello.
+///
+/// When emulating, the profile's pinned `extension_order_seed` is used so the
+/// JA4 fingerprint matches the real browser; otherwise a random per-connection
+/// seed is used, matching real Chrome's per-connection variation.
+#[cfg(feature = "impersonate")]
+fn choose_extension_order_seed(config: &ClientConfig) -> u16 {
+    config
+        .browser_emulation
+        .as_ref()
+        .and_then(|be| be.extension_order_seed)
+        .unwrap_or_else(|| crate::rand::random_u16(config.provider.secure_random).unwrap_or(0))
+}
+
+/// Non-impersonation builds only have the per-connection random seed.
+#[cfg(not(feature = "impersonate"))]
+fn choose_extension_order_seed(config: &ClientConfig) -> u16 {
+    crate::rand::random_u16(config.provider.secure_random).unwrap_or(0)
+}
+
 impl ClientHelloInput {
     pub(super) fn new(
         server_name: ServerName<'static>,
@@ -165,11 +604,13 @@ impl ClientHelloInput {
             None => SessionId::random(config.provider.secure_random)?,
         };
 
-        // Generate a random extension order seed for browser emulation.
-        // Real Chrome uses a different seed per connection (derived from TLS random).
-        // For non-browser-emulation, the seed is also random.
-        let extension_order_seed =
-            crate::rand::random_u16(config.provider.secure_random).unwrap_or(0);
+        // Choose the extension order seed. When a browser is being emulated and
+        // that profile pins a deterministic seed, use it so the resulting JA4
+        // fingerprint matches the real browser (the seed controls the encoded
+        // extension order). Otherwise fall back to a per-connection random seed,
+        // which matches real Chrome's behaviour of varying the order per
+        // connection when no fixed fingerprint is requested.
+        let extension_order_seed = choose_extension_order_seed(&config);
 
         #[cfg(all(feature = "logging", feature = "impersonate"))]
         {
@@ -270,18 +711,31 @@ fn emit_client_hello_for_retry(
     let mut supported_versions = SupportedProtocolVersions {
         tls12: config.supports_version(ProtocolVersion::TLSv1_2) && !forbids_tls12,
         tls13: config.supports_version(ProtocolVersion::TLSv1_3),
-        grease: false,
+        supported_versions_grease: None,
     };
 
-    // Add GREASE to supported_versions only for Chrome-based browsers
-    // Firefox doesn't send GREASE in supported_versions
+    // Generate all 5 distinct GREASE values (matching real Chrome behavior:
+    // cipher suites, named groups, extension bookends, supported_versions)
+    #[cfg(feature = "impersonate")]
+    let grease_vals: Option<(u16, u16, u16, u16, u16)> = if config.browser_emulation.is_some() {
+        Some(generate_distinct_grease(&input.random.0))
+    } else {
+        None
+    };
+
+    // Add GREASE to supported_versions only for Chrome-based browsers,
+    // with a per-connection value derived from the client random.
+    // Firefox doesn't send GREASE in supported_versions.
     #[cfg(feature = "impersonate")]
     if let Some(be) = config.browser_emulation.as_ref() {
         if matches!(
             be.browser_type,
             BrowserType::Chrome | BrowserType::Edge | BrowserType::Opera
         ) {
-            supported_versions.grease = true;
+            if let Some((_, _, _, _, sv_grease)) = grease_vals {
+                supported_versions.supported_versions_grease =
+                    Some(ProtocolVersion::Unknown(sv_grease));
+            }
         }
     }
 
@@ -314,17 +768,9 @@ fn emit_client_hello_for_retry(
         .map(|skxg| skxg.name())
         .collect();
 
-    // Generate all 4 distinct GREASE values (matching real Chrome behavior)
-    #[cfg(feature = "impersonate")]
-    let grease_vals: Option<(u16, u16, u16, u16)> = if config.browser_emulation.is_some() {
-        Some(generate_distinct_grease(&input.random.0))
-    } else {
-        None
-    };
-
     // Replace hardcoded GREASE named group (0x0a0a) with dynamic value from random
     #[cfg(feature = "impersonate")]
-    if let Some((_, grease_ng, _, _)) = grease_vals {
+    if let Some((_, grease_ng, _, _, _)) = grease_vals {
         for ng in named_groups_vec.iter_mut() {
             if *ng == NamedGroup::GREASE {
                 *ng = NamedGroup::Unknown(grease_ng);
@@ -614,6 +1060,13 @@ fn emit_client_hello_for_retry(
             psk: false,
             psk_dhe: true,
         });
+
+        if let Some(ticket_req) = &config.send_ticket_request {
+            exts.ticket_request = Some(ClientTicketRequest {
+                new_session_count: ticket_req.new_session_count,
+                resumption_count: ticket_req.resumption_count,
+            });
+        }
     }
 
     input.hello.offered_cert_compression =
@@ -686,7 +1139,7 @@ fn emit_client_hello_for_retry(
 
     // Replace hardcoded GREASE cipher suite (0x0a0a) with dynamic value from random
     #[cfg(feature = "impersonate")]
-    if let Some((grease_cs, _, _, _)) = grease_vals {
+    if let Some((grease_cs, _, _, _, _)) = grease_vals {
         for cs in cipher_suites.iter_mut() {
             if *cs == CipherSuite::TLS_RESERVED_GREASE {
                 *cs = CipherSuite::Unknown(grease_cs);
@@ -727,90 +1180,16 @@ fn emit_client_hello_for_retry(
         cipher_suites.push(CipherSuite::TLS_EMPTY_RENEGOTIATION_INFO_SCSV);
     }
 
-    // Set the final extension order for Chrome-based browsers
-    // This must be done AFTER all extensions are added
+    // Set the final extension order for browser-emulation profiles.
+    // This must be done AFTER all extensions are added. The order is selected
+    // per browser family and version (see `emulator_extension_order`): Chrome
+    // and Edge reorder their extensions starting at version 150.
     #[cfg(feature = "impersonate")]
     if let Some(be) = config.browser_emulation.as_ref() {
-        if matches!(be.browser_type, BrowserType::Chrome | BrowserType::Edge) {
-            // GREASE, ECH, supported_versions, SCT, ALPS(0x44cd), supported_groups,
-            // renegotiation_info, key_share, status_request, session_ticket, server_name,
-            // signature_algorithms, ALPN, ec_point_formats, compress_certificate,
-            // extended_main_secret, psk_key_exchange_modes, GREASE
-            exts.contiguous_extensions = vec![
-                ExtensionType::Unknown(GREASE_EXT_FIRST_PLACEHOLDER), // GREASE (first)
-                ExtensionType::EncryptedClientHello,                  // ECH GREASE (position 1)
-                ExtensionType::SupportedVersions,                     // 43 (0x002b)
-                ExtensionType::SCT,                                   // 18 (0x0012)
-                ExtensionType::Unknown(0x44cd),                       // ALPS (17613, new codepoint)
-                ExtensionType::EllipticCurves, // 10 (0x000a) supported_groups
-                ExtensionType::RenegotiationInfo, // 65281 (0xff01)
-                ExtensionType::KeyShare,       // 51 (0x0033)
-                ExtensionType::StatusRequest,  // 5 (0x0005)
-                ExtensionType::SessionTicket,  // 35 (0x0023)
-                ExtensionType::ServerName,     // 0 (0x0000)
-                ExtensionType::SignatureAlgorithms, // 13 (0x000d)
-                ExtensionType::ALProtocolNegotiation, // 16 (0x0010)
-                ExtensionType::ECPointFormats, // 11 (0x000b)
-                ExtensionType::CompressCertificate, // 27 (0x001b)
-                ExtensionType::ExtendedMasterSecret, // 23 (0x0017)
-                ExtensionType::PSKKeyExchangeModes, // 45 (0x002d)
-                ExtensionType::Unknown(GREASE_EXT_LAST_PLACEHOLDER), // GREASE (last, placeholder)
-            ];
-            // ECH is at position 1 in contiguous_extensions, no need for ech_before_trailing_grease
-            exts.ech_before_trailing_grease = false;
-        }
-        // GREASE, renegotiation_info, extended_main_secret, session_ticket, SCT, status_request,
-        // signature_algorithms, compress_certificate, server_name, key_share, ec_point_formats,
-        // supported_groups, ECH, ALPN, ALPS(0x44cd), psk_key_exchange_modes, supported_versions, GREASE
-        if be.browser_type == BrowserType::Edge {
-            exts.contiguous_extensions = vec![
-                ExtensionType::Unknown(GREASE_EXT_FIRST_PLACEHOLDER), // GREASE (first)
-                ExtensionType::RenegotiationInfo,                     // 65281
-                ExtensionType::ExtendedMasterSecret,                  // 23
-                ExtensionType::SessionTicket,                         // 35
-                ExtensionType::SCT,                                   // 18
-                ExtensionType::StatusRequest,                         // 5
-                ExtensionType::SignatureAlgorithms,                   // 13
-                ExtensionType::CompressCertificate,                   // 27
-                ExtensionType::ServerName,                            // 0
-                ExtensionType::KeyShare,                              // 51
-                ExtensionType::ECPointFormats,                        // 11
-                ExtensionType::EllipticCurves,                        // 10
-                ExtensionType::EncryptedClientHello,                  // 65037 (ECH GREASE)
-                ExtensionType::ALProtocolNegotiation,                 // 16
-                ExtensionType::Unknown(0x44cd),                       // ALPS
-                ExtensionType::PSKKeyExchangeModes,                   // 45
-                ExtensionType::SupportedVersions,                     // 43
-                ExtensionType::Unknown(GREASE_EXT_LAST_PLACEHOLDER),  // GREASE (last, placeholder)
-            ];
-            exts.ech_before_trailing_grease = false;
-        }
-        // Opera uses hardcoded order matching real Opera 129 from tls.browserleaks.com
-        if be.browser_type == BrowserType::Opera {
-            // GREASE, ECH, key_share, renegotiation_info, extended_main_secret,
-            // compress_certificate, supported_groups, server_name, ALPN, status_request,
-            // supported_versions, psk_key_exchange_modes, SCT, ec_point_formats,
-            // ALPS(0x44cd), signature_algorithms, session_ticket, GREASE
-            exts.contiguous_extensions = vec![
-                ExtensionType::Unknown(GREASE_EXT_FIRST_PLACEHOLDER), // GREASE (first)
-                ExtensionType::EncryptedClientHello,                  // ECH
-                ExtensionType::KeyShare,                              // 51
-                ExtensionType::RenegotiationInfo,                     // 65281
-                ExtensionType::ExtendedMasterSecret,                  // 23
-                ExtensionType::CompressCertificate,                   // 27
-                ExtensionType::EllipticCurves,                        // 10
-                ExtensionType::ServerName,                            // 0
-                ExtensionType::ALProtocolNegotiation,                 // 16
-                ExtensionType::StatusRequest,                         // 5
-                ExtensionType::SupportedVersions,                     // 43
-                ExtensionType::PSKKeyExchangeModes,                   // 45
-                ExtensionType::SCT,                                   // 18
-                ExtensionType::ECPointFormats,                        // 11
-                ExtensionType::Unknown(0x44cd),                       // ALPS
-                ExtensionType::SignatureAlgorithms,                   // 13
-                ExtensionType::SessionTicket,                         // 35
-                ExtensionType::Unknown(GREASE_EXT_LAST_PLACEHOLDER),  // GREASE (last)
-            ];
+        if let Some(order) = emulator_extension_order(be) {
+            exts.contiguous_extensions = order;
+            // The GREASE placeholders are at the first/last positions in the
+            // returned order, so no trailing-GREASE splitting is needed.
             exts.ech_before_trailing_grease = false;
         }
     }
@@ -818,7 +1197,7 @@ fn emit_client_hello_for_retry(
     // Replace GREASE extension types with dynamic values from random
     // This must happen AFTER contiguous_extensions is set for Chrome-based browsers
     #[cfg(feature = "impersonate")]
-    if let Some((_, _, grease_ext_first, grease_ext_last)) = grease_vals {
+    if let Some((_, _, grease_ext_first, grease_ext_last, _)) = grease_vals {
         // Update contiguous_extensions GREASE entries (first and last positions)
         let contig_len = exts.contiguous_extensions.len();
         if contig_len >= 2 {
@@ -1077,11 +1456,12 @@ pub(super) fn process_alpn_protocol(
     common: &mut CommonState,
     offered_protocols: &[ProtocolName],
     selected: Option<&ProtocolName>,
+    check_selected_offered: bool,
 ) -> Result<(), Error> {
     common.alpn_protocol = selected.map(ToOwned::to_owned);
 
     if let Some(alpn_protocol) = &common.alpn_protocol {
-        if !offered_protocols.contains(alpn_protocol) {
+        if check_selected_offered && !offered_protocols.contains(alpn_protocol) {
             return Err(common.send_fatal_alert(
                 AlertDescription::IllegalParameter,
                 PeerMisbehaved::SelectedUnofferedApplicationProtocol,
@@ -1223,6 +1603,7 @@ impl State<ClientConnectionData> for ExpectServerHello {
                 cx.common,
                 &self.input.hello.alpn_protocols,
                 server_hello.selected_protocol.as_ref().map(|s| s.as_ref()),
+                self.input.config.check_selected_alpn,
             )?;
         }
 
@@ -1645,5 +2026,566 @@ impl Deref for ClientSessionValue {
 
     fn deref(&self) -> &Self::Target {
         self.common()
+    }
+}
+
+#[cfg(all(test, feature = "impersonate"))]
+mod tests {
+    use super::choose_extension_order_seed;
+    use super::BrowserType;
+    use crate::client::client_emulator::BrowserEmulator;
+    use crate::client::ClientConfig;
+    use crate::verify::{
+        DigitallySignedStruct, HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier,
+    };
+    use alloc::vec;
+    use alloc::vec::Vec;
+    use core::fmt::Debug;
+    use pki_types::{CertificateDer, ServerName, UnixTime};
+
+    /// Regression guard: asserts the per-browser/per-version ClientHello extension
+    /// order matches the ground-truth captures (chrome_146/148/149/150/151,
+    /// edge_146/148/149/150/151, opera_129/131/132/133/134) verbatim. Every
+    /// captured minor version is checked independently; Firefox/Safari return
+    /// `None`.
+    #[test]
+    fn emulator_extension_order_matches_captures() {
+        use super::emulator_extension_order;
+        use super::{GREASE_EXT_FIRST_PLACEHOLDER, GREASE_EXT_LAST_PLACEHOLDER};
+        use crate::client::client_emulator::BrowserVersion;
+        use crate::msgs::enums::ExtensionType::*;
+
+        let gf = Unknown(GREASE_EXT_FIRST_PLACEHOLDER);
+        let gl = Unknown(GREASE_EXT_LAST_PLACEHOLDER);
+
+        let chrome149 = emulator_extension_order(&BrowserEmulator::new(
+            BrowserType::Chrome,
+            BrowserVersion::new(149, 0, 0),
+        ))
+        .unwrap();
+        assert_eq!(
+            chrome149,
+            vec![
+                gf,
+                SignatureAlgorithms,
+                StatusRequest,
+                RenegotiationInfo,
+                SessionTicket,
+                KeyShare,
+                ALProtocolNegotiation,
+                ServerName,
+                ECPointFormats,
+                EncryptedClientHello,
+                ExtendedMasterSecret,
+                SupportedVersions,
+                CompressCertificate,
+                PSKKeyExchangeModes,
+                EllipticCurves,
+                Unknown(0x44cd),
+                SCT,
+                gl,
+            ]
+        );
+
+        let chrome148 = emulator_extension_order(&BrowserEmulator::new(
+            BrowserType::Chrome,
+            BrowserVersion::new(148, 0, 0),
+        ))
+        .unwrap();
+        assert_eq!(
+            chrome148,
+            vec![
+                gf,
+                StatusRequest,
+                EncryptedClientHello,
+                KeyShare,
+                SessionTicket,
+                ALProtocolNegotiation,
+                ServerName,
+                SupportedVersions,
+                ExtendedMasterSecret,
+                CompressCertificate,
+                Unknown(0x44cd),
+                RenegotiationInfo,
+                SignatureAlgorithms,
+                PSKKeyExchangeModes,
+                ECPointFormats,
+                SCT,
+                EllipticCurves,
+                gl,
+            ]
+        );
+
+        let chrome150 = emulator_extension_order(&BrowserEmulator::new(
+            BrowserType::Chrome,
+            BrowserVersion::new(150, 0, 0),
+        ))
+        .unwrap();
+        assert_eq!(
+            chrome150,
+            vec![
+                gf,
+                RenegotiationInfo,
+                ServerName,
+                SignatureAlgorithms,
+                ALProtocolNegotiation,
+                EncryptedClientHello,
+                SessionTicket,
+                EllipticCurves,
+                ECPointFormats,
+                ExtendedMasterSecret,
+                SCT,
+                KeyShare,
+                SupportedVersions,
+                CompressCertificate,
+                StatusRequest,
+                Unknown(0x44cd),
+                PSKKeyExchangeModes,
+                gl,
+            ]
+        );
+
+        let edge149 = emulator_extension_order(&BrowserEmulator::new(
+            BrowserType::Edge,
+            BrowserVersion::new(149, 0, 0),
+        ))
+        .unwrap();
+        assert_eq!(
+            edge149,
+            vec![
+                gf,
+                EllipticCurves,
+                KeyShare,
+                ALProtocolNegotiation,
+                RenegotiationInfo,
+                ServerName,
+                SCT,
+                StatusRequest,
+                ExtendedMasterSecret,
+                SessionTicket,
+                Unknown(0x44cd),
+                CompressCertificate,
+                PSKKeyExchangeModes,
+                SupportedVersions,
+                EncryptedClientHello,
+                SignatureAlgorithms,
+                ECPointFormats,
+                gl,
+            ]
+        );
+
+        let edge148 = emulator_extension_order(&BrowserEmulator::new(
+            BrowserType::Edge,
+            BrowserVersion::new(148, 0, 0),
+        ))
+        .unwrap();
+        assert_eq!(
+            edge148,
+            vec![
+                gf,
+                SCT,
+                StatusRequest,
+                KeyShare,
+                PSKKeyExchangeModes,
+                SessionTicket,
+                RenegotiationInfo,
+                SignatureAlgorithms,
+                ALProtocolNegotiation,
+                SupportedVersions,
+                EncryptedClientHello,
+                ServerName,
+                ExtendedMasterSecret,
+                EllipticCurves,
+                Unknown(0x44cd),
+                CompressCertificate,
+                ECPointFormats,
+                gl,
+            ]
+        );
+
+        let edge150 = emulator_extension_order(&BrowserEmulator::new(
+            BrowserType::Edge,
+            BrowserVersion::new(150, 0, 0),
+        ))
+        .unwrap();
+        assert_eq!(
+            edge150,
+            vec![
+                gf,
+                StatusRequest,
+                RenegotiationInfo,
+                SCT,
+                ALProtocolNegotiation,
+                EncryptedClientHello,
+                ExtendedMasterSecret,
+                SessionTicket,
+                ECPointFormats,
+                EllipticCurves,
+                CompressCertificate,
+                ServerName,
+                SupportedVersions,
+                Unknown(0x44cd),
+                PSKKeyExchangeModes,
+                KeyShare,
+                SignatureAlgorithms,
+                gl,
+            ]
+        );
+
+        let chrome151 = emulator_extension_order(&BrowserEmulator::new(
+            BrowserType::Chrome,
+            BrowserVersion::new(151, 0, 0),
+        ))
+        .unwrap();
+        assert_eq!(
+            chrome151,
+            vec![
+                gf,
+                CompressCertificate,
+                ServerName,
+                Unknown(0x44cd),
+                ECPointFormats,
+                KeyShare,
+                RenegotiationInfo,
+                SignatureAlgorithms,
+                PSKKeyExchangeModes,
+                ALProtocolNegotiation,
+                SupportedVersions,
+                EncryptedClientHello,
+                SessionTicket,
+                EllipticCurves,
+                SCT,
+                ExtendedMasterSecret,
+                StatusRequest,
+                gl,
+            ]
+        );
+
+        let edge151 = emulator_extension_order(&BrowserEmulator::new(
+            BrowserType::Edge,
+            BrowserVersion::new(151, 0, 0),
+        ))
+        .unwrap();
+        assert_eq!(
+            edge151,
+            vec![
+                gf,
+                SCT,
+                SignatureAlgorithms,
+                ExtendedMasterSecret,
+                Unknown(0x44cd),
+                PSKKeyExchangeModes,
+                EncryptedClientHello,
+                RenegotiationInfo,
+                SupportedVersions,
+                SessionTicket,
+                ALProtocolNegotiation,
+                StatusRequest,
+                KeyShare,
+                EllipticCurves,
+                ECPointFormats,
+                ServerName,
+                CompressCertificate,
+                gl,
+            ]
+        );
+
+        let opera129 = emulator_extension_order(&BrowserEmulator::new(
+            BrowserType::Opera,
+            BrowserVersion::new(129, 0, 0),
+        ))
+        .unwrap();
+        assert_eq!(
+            opera129,
+            vec![
+                gf,
+                EncryptedClientHello,
+                KeyShare,
+                RenegotiationInfo,
+                ExtendedMasterSecret,
+                CompressCertificate,
+                EllipticCurves,
+                ServerName,
+                ALProtocolNegotiation,
+                StatusRequest,
+                SupportedVersions,
+                PSKKeyExchangeModes,
+                SCT,
+                ECPointFormats,
+                Unknown(0x44cd),
+                SignatureAlgorithms,
+                SessionTicket,
+                gl,
+            ]
+        );
+
+        let opera131 = emulator_extension_order(&BrowserEmulator::new(
+            BrowserType::Opera,
+            BrowserVersion::new(131, 0, 0),
+        ))
+        .unwrap();
+        assert_eq!(
+            opera131,
+            vec![
+                gf,
+                SupportedVersions,
+                PSKKeyExchangeModes,
+                Unknown(0x44cd),
+                EncryptedClientHello,
+                SCT,
+                SessionTicket,
+                KeyShare,
+                ALProtocolNegotiation,
+                CompressCertificate,
+                EllipticCurves,
+                ExtendedMasterSecret,
+                ServerName,
+                ECPointFormats,
+                RenegotiationInfo,
+                StatusRequest,
+                SignatureAlgorithms,
+                gl,
+            ]
+        );
+
+        let opera132 = emulator_extension_order(&BrowserEmulator::new(
+            BrowserType::Opera,
+            BrowserVersion::new(132, 0, 0),
+        ))
+        .unwrap();
+        assert_eq!(
+            opera132,
+            vec![
+                gf,
+                RenegotiationInfo,
+                StatusRequest,
+                EncryptedClientHello,
+                ECPointFormats,
+                PSKKeyExchangeModes,
+                EllipticCurves,
+                SupportedVersions,
+                ExtendedMasterSecret,
+                CompressCertificate,
+                KeyShare,
+                ServerName,
+                SCT,
+                ALProtocolNegotiation,
+                Unknown(0x44cd),
+                SessionTicket,
+                SignatureAlgorithms,
+                gl,
+            ]
+        );
+
+        let opera133 = emulator_extension_order(&BrowserEmulator::new(
+            BrowserType::Opera,
+            BrowserVersion::new(133, 0, 0),
+        ))
+        .unwrap();
+        assert_eq!(
+            opera133,
+            vec![
+                gf,
+                SupportedVersions,
+                KeyShare,
+                ALProtocolNegotiation,
+                SignatureAlgorithms,
+                SCT,
+                RenegotiationInfo,
+                EllipticCurves,
+                CompressCertificate,
+                PSKKeyExchangeModes,
+                SessionTicket,
+                ECPointFormats,
+                ExtendedMasterSecret,
+                ServerName,
+                EncryptedClientHello,
+                Unknown(0x44cd),
+                StatusRequest,
+                gl,
+            ]
+        );
+
+        let opera134 = emulator_extension_order(&BrowserEmulator::new(
+            BrowserType::Opera,
+            BrowserVersion::new(134, 0, 0),
+        ))
+        .unwrap();
+        assert_eq!(
+            opera134,
+            vec![
+                gf,
+                ALProtocolNegotiation,
+                SessionTicket,
+                ExtendedMasterSecret,
+                EllipticCurves,
+                SignatureAlgorithms,
+                ServerName,
+                EncryptedClientHello,
+                StatusRequest,
+                CompressCertificate,
+                PSKKeyExchangeModes,
+                KeyShare,
+                RenegotiationInfo,
+                SCT,
+                SupportedVersions,
+                ECPointFormats,
+                Unknown(0x44cd),
+                gl,
+            ]
+        );
+
+        let opera135 = emulator_extension_order(&BrowserEmulator::new(
+            BrowserType::Opera,
+            BrowserVersion::new(135, 0, 0),
+        ))
+        .unwrap();
+        assert_eq!(
+            opera135,
+            vec![
+                gf,
+                StatusRequest,
+                SignatureAlgorithms,
+                KeyShare,
+                SCT,
+                Unknown(0x44cd),
+                ALProtocolNegotiation,
+                EllipticCurves,
+                PSKKeyExchangeModes,
+                SupportedVersions,
+                SessionTicket,
+                RenegotiationInfo,
+                ServerName,
+                ECPointFormats,
+                EncryptedClientHello,
+                CompressCertificate,
+                ExtendedMasterSecret,
+                gl,
+            ]
+        );
+
+        // Firefox / Safari keep rustls' default ordering.
+        assert!(emulator_extension_order(&BrowserEmulator::new(
+            BrowserType::Firefox,
+            BrowserVersion::new(140, 0, 0),
+        ))
+        .is_none());
+        assert!(emulator_extension_order(&BrowserEmulator::new(
+            BrowserType::Safari,
+            BrowserVersion::new(18, 5, 0),
+        ))
+        .is_none());
+    }
+
+    #[derive(Debug)]
+    struct AcceptAllVerifier;
+
+    impl ServerCertVerifier for AcceptAllVerifier {
+        fn verify_server_cert(
+            &self,
+            _end_entity: &CertificateDer<'_>,
+            _intermediates: &[CertificateDer<'_>],
+            _server_name: &ServerName<'_>,
+            _ocsp_response: &[u8],
+            _now: UnixTime,
+        ) -> Result<ServerCertVerified, crate::Error> {
+            Ok(ServerCertVerified::assertion())
+        }
+
+        fn verify_tls12_signature(
+            &self,
+            _message: &[u8],
+            _cert: &CertificateDer<'_>,
+            _dss: &DigitallySignedStruct,
+        ) -> Result<HandshakeSignatureValid, crate::Error> {
+            Ok(HandshakeSignatureValid::assertion())
+        }
+
+        fn verify_tls13_signature(
+            &self,
+            _message: &[u8],
+            _cert: &CertificateDer<'_>,
+            _dss: &DigitallySignedStruct,
+        ) -> Result<HandshakeSignatureValid, crate::Error> {
+            Ok(HandshakeSignatureValid::assertion())
+        }
+
+        fn supported_verify_schemes(&self) -> Vec<crate::SignatureScheme> {
+            vec![crate::SignatureScheme::ECDSA_NISTP256_SHA256]
+        }
+    }
+
+    fn test_config() -> ClientConfig {
+        ClientConfig::builder()
+            .dangerous()
+            .with_custom_certificate_verifier(alloc::sync::Arc::new(AcceptAllVerifier))
+            .with_no_client_auth()
+    }
+
+    #[test]
+    fn emulator_seed_is_used_for_extension_order() {
+        let mut config = test_config();
+        // Without emulation the seed is random (non-deterministic); we only
+        // assert it does not panic and defaults to the random path.
+        let _ = choose_extension_order_seed(&config);
+
+        // With a pinned emulator seed, the exact seed must be selected so the
+        // JA4 extension-order fingerprint matches the profile.
+        config.browser_emulation = Some(
+            BrowserEmulator::chrome("120.0.0")
+                .unwrap()
+                .with_extension_order_seed(0x8daa),
+        );
+        assert_eq!(choose_extension_order_seed(&config), 0x8daa);
+
+        config.browser_emulation = Some(
+            BrowserEmulator::safari("18.5")
+                .unwrap()
+                .with_extension_order_seed(0x9a7c),
+        );
+        assert_eq!(choose_extension_order_seed(&config), 0x9a7c);
+    }
+
+    /// GREASE values must be per-connection (derived from the client random),
+    /// valid (0x?A?A), distinct per position, and vary with the random.
+    /// The supported_versions GREASE must NOT reuse the cipher-suite GREASE:
+    /// real browsers draw them independently (equal in only 1/14 captures).
+    #[test]
+    fn grease_values_vary_per_random_and_are_distinct() {
+        use super::generate_distinct_grease;
+
+        let is_grease = |v: u16| {
+            let b = v.to_le_bytes();
+            b[0] == b[1] && (b[0] & 0x0f) == 0x0a && (b[0] >> 4) != 0
+        };
+
+        let random_a = [0x12u8; 32];
+        let random_b = [0xa7u8; 32];
+
+        let (cs, ng, ext_first, ext_last, sv) = generate_distinct_grease(&random_a);
+        let (b1, b2, b3, b4, b5) = generate_distinct_grease(&random_b);
+
+        // Deterministic for the same random...
+        assert_eq!(
+            generate_distinct_grease(&random_a),
+            (cs, ng, ext_first, ext_last, sv)
+        );
+
+        // ...and a different random yields different values.
+        assert_ne!((cs, ng, ext_first, ext_last, sv), (b1, b2, b3, b4, b5));
+
+        // All five are valid GREASE values, distinct from each other.
+        let all = [cs, ng, ext_first, ext_last, sv];
+        for (i, v) in all.iter().enumerate() {
+            assert!(is_grease(*v), "value {i} ({v:#06x}) is not a GREASE value");
+            assert!(!all[..i].contains(v), "value {v:#06x} duplicated");
+        }
+
+        // Regression: the supported_versions GREASE must not reuse the
+        // cipher-suite GREASE (both used to be drawn from random[0]).
+        assert_ne!(
+            sv, cs,
+            "SV GREASE must be independent of the cipher-suite GREASE"
+        );
     }
 }

@@ -189,7 +189,7 @@ mod tests {
         conn.process_new_packets().unwrap();
 
         let KxState::Start(skxg) = &conn.kx_state else {
-            panic!("unexpected kx_state");
+            core::panic!("unexpected kx_state");
         };
         assert_eq!(skxg.name(), FAKE_FFDHE_GROUP.name());
     }
@@ -349,7 +349,7 @@ fn minimal_client_hello() -> ClientHelloPayload {
                 tls12: true,
                 tls13: true,
                 #[cfg(feature = "impersonate")]
-                grease: false,
+                supported_versions_grease: None,
             }),
             key_shares: Some(vec![KeyShareEntry {
                 group: NamedGroup::X25519,

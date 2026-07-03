@@ -231,6 +231,97 @@ static SUPPORTED_SIG_ALGS: WebPkiSupportedAlgorithms = WebPkiSupportedAlgorithms
     ],
 };
 
+/// [`SUPPORTED_SIG_ALGS`] plus the experimental ML-DSA schemes
+/// (mldsa44/65/87, TLS 0x0904/0x0905/0x0906).
+///
+/// Use only as the verification set for profiles that actually advertise
+/// ML-DSA in the ClientHello (Chrome/Edge 150+, Opera 134+). Applying it
+/// unconditionally would let a client accept a signature scheme it never
+/// offered. The lists are deliberately separate so the default provider stays
+/// ML-DSA-free; keep them in sync with [`SUPPORTED_SIG_ALGS`].
+#[cfg(feature = "ml-dsa")]
+pub static SUPPORTED_SIG_ALGS_WITH_MLDSA: WebPkiSupportedAlgorithms = WebPkiSupportedAlgorithms {
+    all: &[
+        webpki_algs::ECDSA_P256_SHA256,
+        webpki_algs::ECDSA_P256_SHA384,
+        webpki_algs::ECDSA_P256_SHA512,
+        webpki_algs::ECDSA_P384_SHA256,
+        webpki_algs::ECDSA_P384_SHA384,
+        webpki_algs::ECDSA_P384_SHA512,
+        webpki_algs::ECDSA_P521_SHA256,
+        webpki_algs::ECDSA_P521_SHA384,
+        webpki_algs::ECDSA_P521_SHA512,
+        webpki_algs::ED25519,
+        webpki_algs::RSA_PSS_2048_8192_SHA256_LEGACY_KEY,
+        webpki_algs::RSA_PSS_2048_8192_SHA384_LEGACY_KEY,
+        webpki_algs::RSA_PSS_2048_8192_SHA512_LEGACY_KEY,
+        webpki_algs::RSA_PKCS1_2048_8192_SHA256,
+        webpki_algs::RSA_PKCS1_2048_8192_SHA384,
+        webpki_algs::RSA_PKCS1_2048_8192_SHA512,
+        webpki_algs::RSA_PKCS1_2048_8192_SHA256_ABSENT_PARAMS,
+        webpki_algs::RSA_PKCS1_2048_8192_SHA384_ABSENT_PARAMS,
+        webpki_algs::RSA_PKCS1_2048_8192_SHA512_ABSENT_PARAMS,
+        webpki_algs::ML_DSA_44,
+        webpki_algs::ML_DSA_65,
+        webpki_algs::ML_DSA_87,
+    ],
+    mapping: &[
+        // Note: for TLS1.2 the curve is not fixed by SignatureScheme. For TLS1.3 it is.
+        (
+            SignatureScheme::ECDSA_NISTP384_SHA384,
+            &[
+                webpki_algs::ECDSA_P384_SHA384,
+                webpki_algs::ECDSA_P256_SHA384,
+                webpki_algs::ECDSA_P521_SHA384,
+            ],
+        ),
+        (
+            SignatureScheme::ECDSA_NISTP256_SHA256,
+            &[
+                webpki_algs::ECDSA_P256_SHA256,
+                webpki_algs::ECDSA_P384_SHA256,
+                webpki_algs::ECDSA_P521_SHA256,
+            ],
+        ),
+        (
+            SignatureScheme::ECDSA_NISTP521_SHA512,
+            &[
+                webpki_algs::ECDSA_P521_SHA512,
+                webpki_algs::ECDSA_P384_SHA512,
+                webpki_algs::ECDSA_P256_SHA512,
+            ],
+        ),
+        (SignatureScheme::ED25519, &[webpki_algs::ED25519]),
+        (
+            SignatureScheme::RSA_PSS_SHA512,
+            &[webpki_algs::RSA_PSS_2048_8192_SHA512_LEGACY_KEY],
+        ),
+        (
+            SignatureScheme::RSA_PSS_SHA384,
+            &[webpki_algs::RSA_PSS_2048_8192_SHA384_LEGACY_KEY],
+        ),
+        (
+            SignatureScheme::RSA_PSS_SHA256,
+            &[webpki_algs::RSA_PSS_2048_8192_SHA256_LEGACY_KEY],
+        ),
+        (
+            SignatureScheme::RSA_PKCS1_SHA512,
+            &[webpki_algs::RSA_PKCS1_2048_8192_SHA512],
+        ),
+        (
+            SignatureScheme::RSA_PKCS1_SHA384,
+            &[webpki_algs::RSA_PKCS1_2048_8192_SHA384],
+        ),
+        (
+            SignatureScheme::RSA_PKCS1_SHA256,
+            &[webpki_algs::RSA_PKCS1_2048_8192_SHA256],
+        ),
+        (SignatureScheme::ML_DSA_44, &[webpki_algs::ML_DSA_44]),
+        (SignatureScheme::ML_DSA_65, &[webpki_algs::ML_DSA_65]),
+        (SignatureScheme::ML_DSA_87, &[webpki_algs::ML_DSA_87]),
+    ],
+};
+
 /// All defined key exchange groups supported by aws-lc-rs appear in this module.
 ///
 /// [`ALL_KX_GROUPS`] is provided as an array of all of these values.
@@ -335,5 +426,39 @@ mod tests {
                 .len(),
             super::SUPPORTED_SIG_ALGS.all.len(),
         );
+    }
+
+    /// The ML-DSA set is a strict superset of the base set; the base set never
+    /// contains ML-DSA.
+    #[cfg(feature = "ml-dsa")]
+    #[test]
+    fn mldsa_sig_algs_is_superset_of_base() {
+        use crate::enums::SignatureScheme;
+
+        let base = &super::SUPPORTED_SIG_ALGS;
+        let mldsa = &super::SUPPORTED_SIG_ALGS_WITH_MLDSA;
+
+        assert!(base
+            .all
+            .iter()
+            .all(|alg| mldsa.all.iter().any(|b| std::ptr::eq(*b, *alg))));
+        assert!(!base
+            .all
+            .iter()
+            .any(|alg| alg.public_key_alg_id().as_ref() == pki_types::alg_id::ML_DSA_44.as_ref()));
+
+        let base_schemes = base.supported_schemes();
+        let mldsa_schemes = mldsa.supported_schemes();
+        for s in [
+            SignatureScheme::ML_DSA_44,
+            SignatureScheme::ML_DSA_65,
+            SignatureScheme::ML_DSA_87,
+        ] {
+            assert!(
+                !base_schemes.contains(&s),
+                "base SUPPORTED_SIG_ALGS must not advertise {s:?}"
+            );
+            assert!(mldsa_schemes.contains(&s), "MLDSA set must advertise {s:?}");
+        }
     }
 }

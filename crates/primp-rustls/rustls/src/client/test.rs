@@ -59,6 +59,47 @@ mod tests {
         assert!(ch.extensions.session_ticket.is_none());
     }
 
+    /// RFC 9149 `ticket_request` is TLS 1.3-only — not offered in a
+    /// TLS 1.2-only ClientHello (registry rustls gates it on `tls13`).
+    #[test]
+    fn test_no_ticket_request_on_tls_1_2_only() {
+        let mut config =
+            ClientConfig::builder_with_provider(super::provider::default_provider().into())
+                .with_protocol_versions(&[&version::TLS12])
+                .unwrap()
+                .with_root_certificates(roots())
+                .with_no_client_auth();
+        config.send_ticket_request = Some(crate::client::TicketRequest {
+            new_session_count: 3,
+            resumption_count: 1,
+        });
+        let ch = client_hello_sent_for_config(config).unwrap();
+        assert!(
+            ch.extensions.ticket_request.is_none(),
+            "ticket_request (RFC 9149) must not be offered in a TLS 1.2-only ClientHello"
+        );
+    }
+
+    /// `ticket_request` IS offered when TLS 1.3 is enabled and requested.
+    #[test]
+    fn test_ticket_request_offered_on_tls_1_3() {
+        let mut config =
+            ClientConfig::builder_with_provider(super::provider::default_provider().into())
+                .with_safe_default_protocol_versions()
+                .unwrap()
+                .with_root_certificates(roots())
+                .with_no_client_auth();
+        config.send_ticket_request = Some(crate::client::TicketRequest {
+            new_session_count: 3,
+            resumption_count: 1,
+        });
+        let ch = client_hello_sent_for_config(config).unwrap();
+        assert!(
+            ch.extensions.ticket_request.is_some(),
+            "ticket_request (RFC 9149) must be offered when TLS 1.3 is enabled"
+        );
+    }
+
     #[test]
     fn test_no_renegotiation_scsv_on_tls_1_3() {
         let ch = client_hello_sent_for_config(
@@ -672,7 +713,7 @@ fn client_hello_sent_for_config(config: ClientConfig) -> Result<ClientHelloPaylo
                 },
             ..
         } => Ok(ch),
-        other => panic!("unexpected message {other:?}"),
+        other => core::panic!("unexpected message {other:?}"),
     }
 }
 
