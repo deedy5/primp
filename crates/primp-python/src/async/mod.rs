@@ -1,3 +1,4 @@
+pub mod bridge;
 pub mod client;
 pub mod response;
 

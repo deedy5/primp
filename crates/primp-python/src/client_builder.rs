@@ -1,10 +1,6 @@
-//! Common client configuration shared between sync and async clients.
-//!
-//! This module eliminates code duplication by providing shared configuration
-//! structures and functions used by both `Client` and `AsyncClient`.
+//! Client configuration shared by the sync and async `Client` types.
 
 use std::sync::{Arc, RwLock};
-use std::time::Duration;
 
 use foldhash::fast::RandomState;
 use indexmap::IndexMap;
@@ -30,11 +26,8 @@ pub type IndexMapSSR = IndexMap<String, String, RandomState>;
 
 /// Parse a resolver string into an `Arc<dyn Resolve>`.
 ///
-/// Supported formats:
-/// - `doh://<host>/path` → DoH resolver (e.g. `doh://cloudflare-dns.com/dns-query`)
-/// - `dot://<host>` → DoT resolver (e.g. `dot://1.1.1.1`)
-/// - `dns://<host>` or bare `<host>` → plain DNS resolver on port 53
-/// - `system` → system resolver
+/// `doh://host/path` → DoH, `dot://host` → DoT, `dns://host` or bare host
+/// → plain DNS on port 53, `system` → system resolver.
 fn parse_single_resolver(s: &str) -> PrimpResult<Arc<dyn Resolve>> {
     if let Some(url) = s.strip_prefix("doh://") {
         let doh_url = format!("https://{url}");
@@ -55,11 +48,10 @@ fn parse_single_resolver(s: &str) -> PrimpResult<Arc<dyn Resolve>> {
     }
 }
 
-/// Parse `dns_resolver` Python argument into a `Vec<Arc<dyn Resolve>>`.
+/// Parse the `dns_resolver` Python argument into a `Vec<Arc<dyn Resolve>>`.
 ///
-/// - `None` → system default
-/// - `str` → single resolver
-/// - `list[str]` → fallback chain (order matters: first success wins)
+/// `None` → system default; `str` → single resolver; `list[str]` → fallback
+/// chain (first success wins).
 pub fn parse_dns_resolver(
     obj: Option<pyo3::Bound<'_, pyo3::types::PyAny>>,
 ) -> PrimpResult<Vec<Arc<dyn Resolve>>> {
@@ -90,42 +82,11 @@ pub fn parse_dns_resolver(
     ))
 }
 
-/// Applies common configuration to a client builder.
-///
-/// This function handles all configuration that is shared between
-/// sync and async clients, including:
-/// - Impersonation settings
-/// - Headers
-/// - Cookie store
-/// - Referer
-/// - Proxy
-/// - Timeout
-/// - Redirects
-/// - SSL verification
-/// - HTTPS-only mode
-/// - HTTP2-only mode
-///
-/// # Arguments
-///
-/// * `builder` - The client builder to configure
-/// * `headers` - Optional default headers
-/// * `cookie_store` - Whether to enable cookie storage
-/// * `referer` - Whether to automatically set Referer header
-/// * `proxy` - Optional proxy URL
-/// * `timeout` - Optional timeout in seconds
-/// * `impersonate` - Optional browser impersonation target
-/// * `impersonate_os` - Optional OS impersonation target
-/// * `follow_redirects` - Whether to follow redirects
-/// * `max_redirects` - Maximum number of redirects
-/// * `verify` - Whether to verify SSL certificates
-/// * `ca_cert_file` - Optional path to CA certificate file
-/// * `https_only` - Whether to restrict to HTTPS only
-/// * `http2_only` - Whether to use HTTP/2 only
-/// * `dns_resolvers` - Parsed DNS resolvers (empty = system default)
-///
-/// # Returns
-///
-/// A tuple containing the configured builder and the resolved proxy URL.
+/// Apply the shared client configuration: impersonation, default headers,
+/// cookie store, referer, proxy (env `PRIMP_PROXY` fallback), timeouts,
+/// redirects (default limit 20), TLS verification/`ca_cert_file`, `https_only`,
+/// `http2_only`, and the DNS resolver chain. Returns the configured builder and
+/// the resolved proxy URL.
 pub fn configure_client_builder(
     mut builder: ClientBuilder,
     headers: Option<IndexMapSSR>,
@@ -135,6 +96,7 @@ pub fn configure_client_builder(
     timeout: Option<f64>,
     connect_timeout: Option<f64>,
     read_timeout: Option<f64>,
+    dns_timeout: Option<f64>,
     impersonate: Option<&str>,
     impersonate_os: Option<&str>,
     follow_redirects: Option<bool>,
@@ -153,7 +115,6 @@ pub fn configure_client_builder(
         } else {
             *get_random_element(IMPERSONATEOS_LIST)
         };
-        // IMPORTANT: Call impersonate_os BEFORE impersonate, because impersonate reads os_type from config
         builder = builder.impersonate_os(imp_os);
         builder = builder.impersonate(imp_val);
     } else if let Some(os) = impersonate_os {
@@ -184,17 +145,22 @@ pub fn configure_client_builder(
 
     // Timeout
     if let Some(seconds) = timeout {
-        builder = builder.timeout(Duration::from_secs_f64(seconds));
+        builder = builder.timeout(crate::utils::timeout_duration(seconds)?);
     }
 
     // Connect timeout
     if let Some(seconds) = connect_timeout {
-        builder = builder.connect_timeout(Duration::from_secs_f64(seconds));
+        builder = builder.connect_timeout(crate::utils::timeout_duration(seconds)?);
     }
 
     // Read timeout
     if let Some(seconds) = read_timeout {
-        builder = builder.read_timeout(Duration::from_secs_f64(seconds));
+        builder = builder.read_timeout(crate::utils::timeout_duration(seconds)?);
+    }
+
+    // DNS resolution timeout
+    if let Some(seconds) = dns_timeout {
+        builder = builder.dns_timeout(crate::utils::timeout_duration(seconds)?);
     }
 
     // Redirects
@@ -254,20 +220,85 @@ pub fn parse_cookies_from_header(cookie_str: &str) -> IndexMapSSR {
 
 /// Converts an IndexMap of cookies to HeaderValue for setting cookies.
 pub fn cookies_to_header_values(cookies: &IndexMapSSR) -> Vec<HeaderValue> {
-    // Pre-allocate with known capacity
     let mut result = Vec::with_capacity(cookies.len());
     for (key, value) in cookies {
-        if let Ok(header) = HeaderValue::from_str(&format!("{}={}", key, value)) {
+        let mut s = String::with_capacity(key.len() + 1 + value.len());
+        s.push_str(key);
+        s.push('=');
+        s.push_str(value);
+        if let Ok(header) = HeaderValue::from_str(&s) {
             result.push(header);
         }
     }
     result
 }
 
-/// Parse a string as either a URL or a domain name, returning a `Url`.
+/// Build the one-shot `Cookie` header for a request (Python `cookies=`
+/// semantics: `client < request`, one-shot, never stored).
 ///
-/// If the input is a valid URL, it is used directly.
-/// Otherwise, it is treated as a domain and wrapped as `https://{domain}/`.
+/// Client-level cookies are first persisted to the store so they last across
+/// requests; the JAR itself is merged by the core cookie service on every
+/// request hop (fresh per redirect), with these one-shots taking precedence
+/// over same-named jar cookies. An invalid `k=v` pair is skipped rather than
+/// dropping the whole header.
+pub fn build_request_cookie_header(
+    client: &PrimpClient,
+    url: &Url,
+    client_cookies: Option<&IndexMapSSR>,
+    request_cookies: Option<&IndexMapSSR>,
+) -> Option<String> {
+    // 1. Push client-level cookies to the persistent store so they persist
+    //    across requests (matching old behavior and `requests`/`httpx`).
+    if let Some(cookies) = client_cookies {
+        if !cookies.is_empty() {
+            let header_values = cookies_to_header_values(cookies);
+            client.set_cookies(url, header_values);
+        }
+    }
+
+    // 2. Merge: client cookies are the base, request cookies override them
+    //    (both one-shot — never stored into the jar).
+    let mut merged = IndexMapSSR::default();
+    if let Some(cookies) = client_cookies {
+        for (k, v) in cookies {
+            merged.insert(k.clone(), v.clone());
+        }
+    }
+    if let Some(cookies) = request_cookies {
+        for (k, v) in cookies {
+            merged.insert(k.clone(), v.clone());
+        }
+    }
+
+    if merged.is_empty() {
+        return None;
+    }
+
+    let mut header = String::new();
+    for (k, v) in &merged {
+        let mut pair = String::with_capacity(k.len() + 1 + v.len());
+        pair.push_str(k);
+        pair.push('=');
+        pair.push_str(v);
+        // Skip only the invalid pair instead of dropping the whole header
+        // (a control character in one cookie value must not kill the rest).
+        if HeaderValue::from_str(&pair).is_err() {
+            continue;
+        }
+        if !header.is_empty() {
+            header.push_str("; ");
+        }
+        header.push_str(&pair);
+    }
+
+    if header.is_empty() {
+        None
+    } else {
+        Some(header)
+    }
+}
+
+/// Parse a string as a URL, or treat a bare domain as `https://{domain}/`.
 pub fn parse_url_or_domain(input: &str) -> Result<Url, url::ParseError> {
     if let Ok(url) = Url::parse(input) {
         if url.scheme() == "http" || url.scheme() == "https" {
@@ -319,22 +350,36 @@ pub fn client_headers_update(
     Ok(())
 }
 
-pub fn client_set_proxy(client: &Arc<RwLock<PrimpClient>>, proxy: String) -> PrimpResult<String> {
-    let rproxy = Proxy::all(proxy.clone())?;
+pub fn client_set_proxy(
+    client: &Arc<RwLock<PrimpClient>>,
+    proxy: Option<String>,
+) -> PrimpResult<Option<String>> {
     let mut c = client.write().unwrap_or_else(|e| e.into_inner());
-    c.set_proxies(vec![rproxy]);
-    Ok(proxy)
+    match proxy {
+        Some(url) => {
+            let rproxy = Proxy::all(url.clone())?;
+            c.set_proxies(vec![rproxy]);
+            Ok(Some(url))
+        }
+        None => {
+            c.set_proxies(vec![]);
+            Ok(None)
+        }
+    }
 }
 
 pub fn client_get_cookies(
     client: &Arc<RwLock<PrimpClient>>,
     url: &str,
 ) -> PrimpResult<IndexMapSSR> {
-    let parsed = Url::parse(url).map_err(|e| PrimpErrorEnum::InvalidURL(e.to_string()))?;
+    let parsed = parse_url_or_domain(url).map_err(|e| PrimpErrorEnum::InvalidURL(e.to_string()))?;
     let c = client.read().unwrap_or_else(|e| e.into_inner());
-    let cookie = c
-        .get_cookies(&parsed)
-        .ok_or_else(|| PrimpErrorEnum::Custom("No cookies found for URL".to_string()))?;
+    // An empty jar for the URL returns `None` from the core; surface an
+    // empty dict (like `Response.cookies` and requests/httpx) rather than
+    // raising.
+    let Some(cookie) = c.get_cookies(&parsed) else {
+        return Ok(IndexMapSSR::default());
+    };
     let cookie_str = cookie.to_str()?;
     Ok(parse_cookies_from_header(cookie_str))
 }
@@ -344,11 +389,12 @@ pub fn client_set_cookies(
     url: &str,
     cookies: Option<IndexMapSSR>,
 ) -> PrimpResult<()> {
+    let Some(cookies) = cookies else {
+        return Ok(());
+    };
     let parsed = parse_url_or_domain(url).map_err(|e| PrimpErrorEnum::InvalidURL(e.to_string()))?;
-    if let Some(cookies) = cookies {
-        let header_values = cookies_to_header_values(&cookies);
-        let c = client.read().unwrap_or_else(|e| e.into_inner());
-        c.set_cookies(&parsed, header_values);
-    }
+    let header_values = cookies_to_header_values(&cookies);
+    let c = client.read().unwrap_or_else(|e| e.into_inner());
+    c.set_cookies(&parsed, header_values);
     Ok(())
 }

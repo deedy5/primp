@@ -1,6 +1,6 @@
 [package]
 name = "primp"
-version = "1.3.1"
+version = "2.0.0"
 description = "HTTP client with browser impersonation capabilities"
 keywords = ["http", "request", "client", "impersonate"]
 categories = ["web-programming::http-client"]
@@ -14,24 +14,17 @@ autotests = true
 include = [
     "README.md",
     "Cargo.toml",
-    "LICENSE-MIT",
+    "LICENSE",
     "src/**/*.rs"
 ]
 
 [package.metadata.docs.rs]
-# all-features excluded: http3 incompatible with quinn from crates.io (uses upstream rustls)
-features = ["impersonate", "socks", "hickory-dns", "rustls-no-provider"]
-rustdoc-args = ["--cfg", "docsrs", "--cfg", "reqwest_unstable"]
-rustc-args = ["--cfg", "reqwest_unstable"]
-targets = ["x86_64-unknown-linux-gnu", "wasm32-unknown-unknown"]
+features = ["hickory-dns"]
+rustdoc-args = ["--cfg", "docsrs"]
+targets = ["x86_64-unknown-linux-gnu"]
 
 [features]
-default = ["impersonate"]
-
-impersonate = [
-    "dep:rand",
-    "default-tls",
-    "http2",
+default = [
     "cookies",
     "gzip",
     "brotli",
@@ -43,45 +36,96 @@ impersonate = [
     "multipart",
     "stream",
     "system-proxy",
+    "charset",
 ]
 
-# Individual features (for fine-grained control, or used by impersonate)
-default-tls = ["reqwest/default-tls"]
-http2 = ["reqwest/http2"]
-cookies = ["reqwest/cookies"]
-gzip = ["reqwest/gzip"]
-brotli = ["reqwest/brotli"]
-zstd = ["reqwest/zstd"]
-deflate = ["reqwest/deflate"]
-query = ["reqwest/query"]
-form = ["reqwest/form"]
-json = ["reqwest/json"]
-multipart = ["reqwest/multipart"]
-stream = ["reqwest/stream"]
-system-proxy = ["reqwest/system-proxy"]
-
-# Additional optional features
-hickory-dns = ["reqwest/hickory-dns"]
-socks = ["reqwest/socks"]
-http3 = ["reqwest/http3"]
-rustls-no-provider = ["reqwest/rustls-no-provider"]
+charset = ["dep:encoding_rs", "dep:mime"]
+cookies = ["dep:cookie_crate", "dep:cookie_store", "dep:psl"]
+gzip = ["tower-http/decompression-gzip"]
+brotli = ["tower-http/decompression-br"]
+zstd = ["tower-http/decompression-zstd"]
+deflate = ["tower-http/decompression-deflate"]
+query = ["dep:serde", "dep:serde_urlencoded"]
+form = ["dep:serde", "dep:serde_urlencoded"]
+json = ["dep:serde", "dep:serde_json"]
+multipart = ["dep:mime_guess", "dep:futures-util", "dep:futures-core"]
+stream = ["tokio/fs", "dep:futures-util", "dep:tokio-util", "dep:futures-core"]
+system-proxy = ["hyper-util/client-proxy-system"]
+hickory-dns = [
+    "dep:hickory-resolver",
+    "dep:once_cell",
+    "hickory-resolver/https-aws-lc-rs",
+    "hickory-resolver/tls-aws-lc-rs",
+    "hickory-resolver/webpki-roots",
+]
+http3 = ["dep:h3", "dep:h3-quinn", "dep:quinn", "dep:futures-core", "tokio/macros"]
 
 [dependencies]
-reqwest = { version = "0.13", path = "../primp-reqwest", package = "primp-reqwest", default-features = false }
+base64 = "0.23"
 http = "1.1"
 url = "2.4"
-rand = { version = "0.10", optional = true }
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+bytes = "1.2"
+futures-core = { version = "0.3.28", default-features = false, optional = true }
+futures-util = { version = "0.3.28", default-features = false, optional = true }
+sync_wrapper = { version = "1.0", features = ["futures"] }
+serde = { version = "1.0", optional = true }
+serde_urlencoded = { version = "0.7.1", optional = true }
+serde_json = { version = "1.0", optional = true }
+mime_guess = { version = "2.0", default-features = false, optional = true }
+rand = "0.10"
+encoding_rs = { version = "0.8", optional = true }
+http-body = "1"
+http-body-util = "0.1.2"
+hyper = { version = "1.8", features = ["http1", "http2", "client"] }
+hyper-util = { version = "0.1", features = ["http1", "http2", "client", "client-legacy", "client-proxy", "tokio"] }
 h2 = { version = "0.4", path = "../primp-h2", package = "primp-h2", features = ["unstable"] }
-rustls = { version = "0.23", path = "../primp-rustls/rustls", package = "primp-rustls", default-features = false, features = ["std", "tls12", "impersonate", "zlib"] }
+log = "0.4.17"
+percent-encoding = "2.3"
+tokio = { version = "1.0", default-features = false, features = ["net", "time", "io-util", "macros"] }
+tower = { version = "0.5.2", default-features = false, features = ["retry", "timeout", "util"] }
+tower-service = "0.3"
+tower-http = { version = "0.7.0", default-features = false, features = ["follow-redirect"] }
+pin-project-lite = "0.2.11"
+rustls-pki-types = { version = "1.9.0", features = ["std"] }
+mime = { version = "0.3.16", optional = true }
+rustls = { version = "0.23", path = "../primp-rustls/rustls", package = "primp-rustls", default-features = false, features = ["std", "tls12", "impersonate", "aws-lc-rs", "zlib", "ml-dsa"] }
+webpki-roots = { version = "1" }
+rustls-native-certs = { version = "0.8" }
+cookie_crate = { version = "0.18.0", package = "cookie", optional = true }
+cookie_store = { version = "0.22.0", optional = true }
+psl = { version = "2.1", optional = true }
+tokio-util = { version = "0.7.9", default-features = false, features = ["io"], optional = true }
+hickory-resolver = { version = "0.26", optional = true, features = ["tokio", "system-config"] }
+once_cell = { version = "1.18", optional = true }
+h3 = { version = "0.0.8", optional = true }
+h3-quinn = { version = "0.0.10", optional = true }
+quinn = { version = "0.11.1", default-features = false, features = ["runtime-tokio", "rustls-aws-lc-rs"], optional = true }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+[dev-dependencies]
+rcgen = "0.14"
 tokio = { version = "1.0", default-features = false, features = ["macros", "rt-multi-thread"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-criterion = "0.7"
+criterion = "0.8"
+env_logger = "0.11"
+hyper = { version = "1.8", default-features = false, features = ["http1", "http2", "client", "server"] }
+hyper-util = { version = "0.1", features = ["http1", "http2", "client", "client-legacy", "server-auto", "server-graceful", "tokio"] }
+flate2 = "1.0.13"
+brotli_crate = { package = "brotli", version = "8" }
+zstd_crate = { package = "zstd", version = "0.13" }
+doc-comment = "0.3"
+futures-util = { version = "0.3.28", default-features = false, features = ["std", "alloc"] }
+tower = { version = "0.5.2", default-features = false, features = ["limit"] }
+num_cpus = "1.0"
+libc = "0.2"
+tokio-rustls = "0.26"
+huginn-net-tls = "2.0.0-rc"
+md5 = "0.8"
 
 [[bench]]
 name = "client_creation"
+harness = false
+
+[[bench]]
+name = "request_roundtrip"
 harness = false
