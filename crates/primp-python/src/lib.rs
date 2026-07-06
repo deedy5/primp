@@ -1,10 +1,10 @@
 #![allow(clippy::too_many_arguments)]
 use std::sync::{Arc, RwLock};
-use std::time::Duration;
 
 use ::primp::{multipart, Body, Client as PrimpClient, Method, Response as PrimpResponse, Url};
 use pyo3::prelude::*;
 use pyo3::sync::PyOnceLock;
+use pyo3::types::PyDict;
 use pythonize::depythonize;
 use serde_json::Value;
 use tokio::{
@@ -15,7 +15,7 @@ use tokio_util::codec::{BytesCodec, FramedRead};
 
 mod client_builder;
 use client_builder::{
-    configure_client_builder, cookies_to_header_values, parse_dns_resolver, IndexMapSSR,
+    build_request_cookie_header, configure_client_builder, parse_dns_resolver, IndexMapSSR,
 };
 
 mod error;
@@ -37,13 +37,21 @@ use utils::extract_encoding;
 // Tokio global one-thread runtime
 static RUNTIME: PyOnceLock<Runtime> = PyOnceLock::new();
 
-/// Get the global Tokio runtime, initializing it if necessary.
-pub(crate) fn get_runtime(py: Python<'_>) -> &Runtime {
-    RUNTIME.get_or_init(py, || {
+/// Get the global Tokio runtime, initializing it via `PyOnceLock` if necessary.
+///
+/// Returns a `PyErr` (not a panic) on creation failure, so a host-resource
+/// failure surfaces as a Python exception rather than aborting the interpreter
+/// under `panic = "abort"`.
+pub(crate) fn get_runtime(py: Python<'_>) -> PyResult<&Runtime> {
+    RUNTIME.get_or_try_init(py, || {
         runtime::Builder::new_current_thread()
             .enable_all()
             .build()
-            .expect("Failed to create Tokio runtime")
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to create Tokio runtime: {e}"
+                ))
+            })
     })
 }
 
@@ -61,10 +69,12 @@ pub struct Client {
     proxy: Option<String>,
     #[pyo3(get, set)]
     timeout: Option<f64>,
-    #[pyo3(get, set)]
+    #[pyo3(get)]
     connect_timeout: Option<f64>,
     #[pyo3(get, set)]
     read_timeout: Option<f64>,
+    #[pyo3(get)]
+    dns_timeout: Option<f64>,
     #[pyo3(get)]
     impersonate: Option<String>,
     #[pyo3(get)]
@@ -72,17 +82,19 @@ pub struct Client {
     #[pyo3(get, set)]
     base_url: Option<String>,
     cookies: Option<IndexMapSSR>,
+    #[pyo3(get, set)]
+    max_redirects: Option<usize>,
+    #[pyo3(get, set)]
+    follow_redirects: Option<bool>,
 }
 
 pub fn extract_cookies_to_indexmap(headers: &http::HeaderMap) -> IndexMapSSR {
     let mut cookie_map = IndexMapSSR::default();
     for cookie_header in headers.get_all(http::header::SET_COOKIE).iter() {
         if let Ok(cookie_str) = cookie_header.to_str() {
-            if let Some((name, value)) = cookie_str.split_once('=') {
-                cookie_map.insert(
-                    name.trim().to_string(),
-                    value.split(';').next().unwrap_or("").trim().to_string(),
-                );
+            if let Some((name, rest)) = cookie_str.split_once('=') {
+                let value = rest.split(';').next().unwrap_or("").trim();
+                cookie_map.insert(name.trim().to_string(), value.to_string());
             }
         }
     }
@@ -90,6 +102,9 @@ pub fn extract_cookies_to_indexmap(headers: &http::HeaderMap) -> IndexMapSSR {
 }
 
 /// Convert a non-Object `serde_json::Value` to a raw string body.
+///
+/// Objects are routed through `.form()`/`.json()` instead, but a stray
+/// `Object` is serialized here rather than panicked, to avoid an FFI abort.
 pub(crate) fn body_value_to_string(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
@@ -97,67 +112,23 @@ pub(crate) fn body_value_to_string(v: &Value) -> String {
         Value::Bool(b) => b.to_string(),
         Value::Null => String::new(),
         Value::Array(arr) => serde_json::to_string(arr).unwrap_or_default(),
-        Value::Object(_) => unreachable!("body_value_to_string should not be called with Object"),
+        Value::Object(_) => serde_json::to_string(v).unwrap_or_default(),
     }
 }
 
 #[pymethods]
 impl Client {
-    /// Initializes an HTTP client that can impersonate web browsers.
+    /// Initialize an HTTP client that impersonates web browsers.
     ///
-    /// This function creates a new HTTP client instance that can impersonate various web browsers.
-    /// It allows for customization of headers, proxy settings, timeout, impersonation type, SSL certificate verification,
-    /// and HTTP version preferences.
+    /// Customizes headers, proxy, timeouts, impersonation, TLS verification, and
+    /// HTTP-version preference. With `impersonate` set, `headers` are ignored.
     ///
-    /// # Arguments
-    ///
-    /// * `auth` - A tuple containing the username and an optional password for basic authentication. Default is None.
-    /// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
-    /// * `params` - A map of query parameters to append to the URL. Default is None.
-    /// * `headers` - An optional map of HTTP headers to send with requests. If `impersonate` is set, this will be ignored.
-    /// * `cookie_store` - Enable a persistent cookie store. Received cookies will be preserved and included
-    ///         in additional requests. Default is `true`.
-    /// * `referer` - Enable or disable automatic setting of the `Referer` header. Default is `true`.
-    /// * `proxy` - An optional proxy URL for HTTP requests.
-    /// * `timeout` - An optional total timeout for HTTP requests in seconds.
-    /// * `connect_timeout` - An optional timeout for establishing connections in seconds.
-    /// * `read_timeout` - An optional timeout for reading the response body in seconds.
-    /// * `impersonate` - An optional entity to impersonate. Supported browsers and versions include Chrome, Safari, Edge.
-    /// * `impersonate_os` - An optional entity to impersonate OS. Supported OS: android, ios, linux, macos, windows.
-    /// * `follow_redirects` - A boolean to enable or disable following redirects. Default is `true`.
-    /// * `max_redirects` - The maximum number of redirects to follow. Default is 20. Applies if `follow_redirects` is `true`.
-    /// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is `true`.
-    /// * `ca_cert_file` - Path to CA certificate store. Default is None.
-    /// * `https_only` - Restrict the Client to be used with HTTPS only requests. Default is `false`.
-    /// * `http2_only` - If true - use only HTTP/2, if false - use only HTTP/1. Default is `false`.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// from primp import Client
-    ///
-    /// client = Client(
-    ///     auth=("name", "password"),
-    ///     params={"p1k": "p1v", "p2k": "p2v"},
-    ///     headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.150 Safari/537.36"},
-    ///     cookie_store=False,
-    ///     referer=False,
-    ///     proxy="http://127.0.0.1:8080",
-    ///     timeout=10,
-    ///     impersonate="chrome_144",
-    ///     impersonate_os="windows",
-    ///     follow_redirects=True,
-    ///     max_redirects=1,
-    ///     verify=True,
-    ///     ca_cert_file="/cert/cacert.pem",
-    ///     https_only=True,
-    ///     http2_only=True,
-    /// )
-    /// ```
+    /// Defaults: `cookie_store=true`, `referer=true`, `follow_redirects=true`,
+    /// `max_redirects=20`, `verify=true`, `https_only=false`, `http2_only=false`.
     #[new]
     #[pyo3(signature = (auth=None, auth_bearer=None, params=None, headers=None, cookie_store=true,
         referer=true, proxy=None, timeout=None, connect_timeout=None, read_timeout=None,
-        impersonate=None, impersonate_os=None, follow_redirects=true,
+        dns_timeout=None, impersonate=None, impersonate_os=None, follow_redirects=true,
         max_redirects=20, verify=true, ca_cert_file=None, https_only=false, http2_only=false,
         dns_resolver=None, base_url=None, cookies=None))]
     fn new(
@@ -172,6 +143,7 @@ impl Client {
         timeout: Option<f64>,
         connect_timeout: Option<f64>,
         read_timeout: Option<f64>,
+        dns_timeout: Option<f64>,
         impersonate: Option<String>,
         impersonate_os: Option<String>,
         follow_redirects: Option<bool>,
@@ -195,6 +167,7 @@ impl Client {
                 timeout,
                 connect_timeout,
                 read_timeout,
+                dns_timeout,
                 impersonate.as_deref(),
                 impersonate_os.as_deref(),
                 follow_redirects,
@@ -219,10 +192,13 @@ impl Client {
             timeout,
             connect_timeout,
             read_timeout,
+            dns_timeout,
             impersonate,
             impersonate_os,
             base_url,
             cookies,
+            max_redirects,
+            follow_redirects,
         })
     }
 
@@ -246,8 +222,8 @@ impl Client {
     }
 
     #[setter]
-    pub fn set_proxy(&mut self, proxy: String) -> PrimpResult<()> {
-        self.proxy = Some(client_builder::client_set_proxy(&self.client, proxy)?);
+    pub fn set_proxy(&mut self, proxy: Option<String>) -> PrimpResult<()> {
+        self.proxy = client_builder::client_set_proxy(&self.client, proxy)?;
         Ok(())
     }
 
@@ -261,34 +237,17 @@ impl Client {
         client_builder::client_set_cookies(&self.client, url, cookies)
     }
 
-    /// Constructs an HTTP request with the given method, URL, and optionally sets a timeout, headers, and query parameters.
-    /// Sends the request and returns a `Response` object containing the server's response.
+    /// Build and send a request, returning a `Response`.
     ///
-    /// # Arguments
+    /// Per-request options (override the client for this call only):
+    /// `params`, `headers`, `cookies`, `content`, `data`, `json`, `files`,
+    /// `auth`, `auth_bearer`, `timeout`, `read_timeout`, `follow_redirects`,
+    /// `stream`.
     ///
-    /// * `method` - The HTTP method to use (e.g., "GET", "POST").
-    /// * `url` - The URL to which the request will be made.
-    /// * `params` - A map of query parameters to append to the URL. Default is None.
-    /// * `headers` - A map of HTTP headers to send with the request. Default is None.
-    /// * `cookies` - An optional map of cookies to send with requests as the `Cookie` header.
-    /// * `content` - The content to send in the request body as bytes. Default is None.
-    /// * `data` - The form data to send in the request body. Default is None.
-    /// * `json` -  A JSON serializable object to send in the request body. Default is None.
-    /// * `files` - A map of file fields to file paths to be sent as multipart/form-data. Default is None.
-    /// * `auth` - A tuple containing the username and an optional password for basic authentication. Default is None.
-    /// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
-    /// * `timeout` - The timeout for the request in seconds. Default is None.
-    /// * `read_timeout` - The read timeout in seconds (max gap between bytes). Default is None.
-    /// * `follow_redirects` - Whether to follow redirects for this request. Default is None (uses client setting).
-    /// * `stream` - If True, returns a Response for streaming the response body. Default is False.
-    ///
-    /// # Returns
-    ///
-    /// * `Response` - A response object containing the server's response to the request.
-    ///
-    /// # Errors
-    ///
-    /// * `PyException` - If there is an error making the request.
+    /// Client-scoped and NOT settable per request — only at construction (or
+    /// via module-level helpers, which build a throwaway client):
+    /// `impersonate`, `impersonate_os`, `connect_timeout`, `https_only`,
+    /// `http2_only`.
     #[pyo3(signature = (method, url, params=None, headers=None, cookies=None, content=None,
         data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None,
         read_timeout=None, follow_redirects=None, stream=false))]
@@ -317,6 +276,13 @@ impl Client {
             .map(depythonize)
             .transpose()
             .map_err(Into::<PrimpErrorEnum>::into)?;
+        if data.is_some() && files.is_some() {
+            return Err(PrimpErrorEnum::Custom(
+                "data and files cannot both be provided (use files alone for multipart uploads)"
+                    .into(),
+            )
+            .into());
+        }
         let json_value: Option<Value> = json
             .map(depythonize)
             .transpose()
@@ -337,43 +303,61 @@ impl Client {
             url.to_string()
         };
 
-        // Apply client-level cookies
-        if let Some(ref client_cookies) = self.cookies {
-            if !client_cookies.is_empty() {
-                let url_parsed = Url::parse(&resolved_url).map_err(Into::<PrimpErrorEnum>::into)?;
-                let cookie_values = cookies_to_header_values(client_cookies);
-                let client_guard = client.read().unwrap_or_else(|e| e.into_inner());
-                client_guard.set_cookies(&url_parsed, cookie_values);
-            }
-        }
-
-        // Request-level cookies
-        if let Some(cookies) = cookies.filter(|c| !c.is_empty()) {
+        // Cookies: client-level persist in the store; per-request are merged
+        // into a one-shot `Cookie` header so they don't leak into the store
+        // (matches `requests`/`httpx`). The jar itself is merged per hop by
+        // the core cookie service, so redirect chains get fresh Set-Cookies.
+        let request_cookie_header: Option<String> = {
             let url_parsed = Url::parse(&resolved_url).map_err(Into::<PrimpErrorEnum>::into)?;
-            let cookie_values = cookies_to_header_values(&cookies);
             let client_guard = client.read().unwrap_or_else(|e| e.into_inner());
-            client_guard.set_cookies(&url_parsed, cookie_values);
-        }
+            build_request_cookie_header(
+                &client_guard,
+                &url_parsed,
+                self.cookies.as_ref(),
+                cookies.as_ref(),
+            )
+        };
 
         // Clone the inner client to avoid holding the RwLock across await points
-        let mut client_clone = client.read().unwrap_or_else(|e| e.into_inner()).clone();
+        let client_clone = client.read().unwrap_or_else(|e| e.into_inner()).clone();
 
-        // Apply follow_redirects on the private clone, not the shared client
-        if let Some(fr) = follow_redirects {
-            if fr {
-                client_clone.set_redirect_policy(::primp::redirect::Policy::limited(20));
-            } else {
-                client_clone.set_redirect_policy(::primp::redirect::Policy::none());
-            }
-        }
+        // Per-request redirect override via a request extension — the shared
+        // client is never mutated. Param wins over the `follow_redirects`
+        // attribute; `max_redirects` caps `Follow`.
+        let resolved_follow_redirects = follow_redirects.or(self.follow_redirects);
+        let client_max_redirects = self.max_redirects;
 
         let future = async move {
             // Create request builder using the cloned client
             let mut request_builder = client_clone.request(method, &resolved_url);
 
+            // Per-request redirect override, carried on the request extensions.
+            if let Some(fr) = resolved_follow_redirects {
+                let override_policy = if fr {
+                    ::primp::RedirectOverride::Follow(client_max_redirects.unwrap_or(20))
+                } else {
+                    ::primp::RedirectOverride::Disabled
+                };
+                request_builder = request_builder.redirect_override(override_policy);
+            }
+
             // Params
             if let Some(p) = params.as_ref().or(self.params.as_ref()) {
                 request_builder = request_builder.query(p);
+            }
+
+            // Set the one-shot Cookie header (jar is merged per hop by the
+            // core cookie service; see `OneShotCookies` request config).
+            if let Some(cookie_str) = request_cookie_header {
+                match http::HeaderValue::from_str(&cookie_str) {
+                    Ok(hv) => {
+                        request_builder = request_builder.header(http::header::COOKIE, hv.clone());
+                        request_builder = request_builder.one_shot_cookies(hv);
+                    }
+                    Err(e) => {
+                        tracing::warn!("primp: invalid characters in cookie header, skipping: {e}");
+                    }
+                }
             }
 
             // Headers
@@ -425,12 +409,14 @@ impl Client {
 
             // Timeout
             if let Some(seconds) = resolved_timeout {
-                request_builder = request_builder.timeout(Duration::from_secs_f64(seconds));
+                request_builder = request_builder.timeout(crate::utils::timeout_duration(seconds)?);
             }
 
-            // Per-request read timeout
-            if let Some(seconds) = read_timeout {
-                request_builder = request_builder.read_timeout(Duration::from_secs_f64(seconds));
+            // Per-request read timeout (falls back to client-level setting)
+            let resolved_read_timeout = read_timeout.or(self.read_timeout);
+            if let Some(seconds) = resolved_read_timeout {
+                request_builder =
+                    request_builder.read_timeout(crate::utils::timeout_duration(seconds)?);
             }
 
             // Send the request and await the response
@@ -446,8 +432,10 @@ impl Client {
         };
 
         // Execute an async future, releasing the Python GIL for concurrency.
-        // Use Tokio global runtime to block on the future.
-        let runtime = get_runtime(py);
+        // Use Tokio global runtime to block on the future. The redirect
+        // override is request-scoped (a per-request extension), so no
+        // post-hoc restore is needed here.
+        let runtime = get_runtime(py)?;
         let response: Result<(PrimpResponse, String, u16), PrimpErrorEnum> =
             py.detach(move || runtime.block_on(future));
 
@@ -770,30 +758,9 @@ impl Client {
     }
 }
 
-/// Send a GET request with a temporary client.
-///
-/// # Arguments
-///
-/// * `url` - The URL to which the request will be made.
-/// * `params` - A map of query parameters to append to the URL. Default is None.
-/// * `headers` - A map of HTTP headers to send with the request. Default is None.
-/// * `cookies` - An optional map of cookies to send with requests as the `Cookie` header.
-/// * `content` - The content to send in the request body as bytes. Default is None.
-/// * `data` - The form data to send in the request body. Default is None.
-/// * `json` -  A JSON serializable object to send in the request body. Default is None.
-/// * `files` - A map of file fields to file paths to be sent as multipart/form-data. Default is None.
-/// * `auth` - A tuple containing the username and an optional password for basic authentication. Default is None.
-/// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
-/// * `timeout` - The total timeout for the request in seconds. Default is None.
-/// * `connect_timeout` - The timeout for establishing a connection in seconds. Default is None.
-/// * `read_timeout` - The timeout for reading the response body in seconds. Default is None.
-/// * `impersonate` - An optional entity to impersonate. Default is None.
-/// * `impersonate_os` - An optional OS to impersonate. Default is None.
-/// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is true.
-/// * `ca_cert_file` - Path to CA certificate store. Default is None.
-/// * `stream` - If True, returns a Response for streaming the response body. Default is False.
+/// Send a GET request with a temporary (throwaway) client.
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, dns_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
 fn get(
     py: Python,
     url: &str,
@@ -809,6 +776,7 @@ fn get(
     timeout: Option<f64>,
     connect_timeout: Option<f64>,
     read_timeout: Option<f64>,
+    dns_timeout: Option<f64>,
     impersonate: Option<String>,
     impersonate_os: Option<String>,
     verify: Option<bool>,
@@ -828,6 +796,7 @@ fn get(
         timeout,
         connect_timeout,
         None,
+        dns_timeout,
         impersonate,
         impersonate_os,
         None,
@@ -859,30 +828,9 @@ fn get(
     )
 }
 
-/// Send a HEAD request with a temporary client.
-///
-/// # Arguments
-///
-/// * `url` - The URL to which the request will be made.
-/// * `params` - A map of query parameters to append to the URL. Default is None.
-/// * `headers` - A map of HTTP headers to send with the request. Default is None.
-/// * `cookies` - An optional map of cookies to send with requests as the `Cookie` header.
-/// * `content` - The content to send in the request body as bytes. Default is None.
-/// * `data` - The form data to send in the request body. Default is None.
-/// * `json` -  A JSON serializable object to send in the request body. Default is None.
-/// * `files` - A map of file fields to file paths to be sent as multipart/form-data. Default is None.
-/// * `auth` - A tuple containing the username and an optional password for basic authentication. Default is None.
-/// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
-/// * `timeout` - The total timeout for the request in seconds. Default is None.
-/// * `connect_timeout` - The timeout for establishing a connection in seconds. Default is None.
-/// * `read_timeout` - The timeout for reading the response body in seconds. Default is None.
-/// * `impersonate` - An optional entity to impersonate. Default is None.
-/// * `impersonate_os` - An optional OS to impersonate. Default is None.
-/// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is true.
-/// * `ca_cert_file` - Path to CA certificate store. Default is None.
-/// * `stream` - If True, returns a Response for streaming the response body. Default is False.
+/// Send a HEAD request with a temporary (throwaway) client.
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, dns_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
 fn head(
     py: Python,
     url: &str,
@@ -898,6 +846,7 @@ fn head(
     timeout: Option<f64>,
     connect_timeout: Option<f64>,
     read_timeout: Option<f64>,
+    dns_timeout: Option<f64>,
     impersonate: Option<String>,
     impersonate_os: Option<String>,
     verify: Option<bool>,
@@ -917,6 +866,7 @@ fn head(
         timeout,
         connect_timeout,
         None,
+        dns_timeout,
         impersonate,
         impersonate_os,
         None,
@@ -948,30 +898,9 @@ fn head(
     )
 }
 
-/// Send an OPTIONS request with a temporary client.
-///
-/// # Arguments
-///
-/// * `url` - The URL to which the request will be made.
-/// * `params` - A map of query parameters to append to the URL. Default is None.
-/// * `headers` - A map of HTTP headers to send with the request. Default is None.
-/// * `cookies` - An optional map of cookies to send with requests as the `Cookie` header.
-/// * `content` - The content to send in the request body as bytes. Default is None.
-/// * `data` - The form data to send in the request body. Default is None.
-/// * `json` -  A JSON serializable object to send in the request body. Default is None.
-/// * `files` - A map of file fields to file paths to be sent as multipart/form-data. Default is None.
-/// * `auth` - A tuple containing the username and an optional password for basic authentication. Default is None.
-/// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
-/// * `timeout` - The total timeout for the request in seconds. Default is None.
-/// * `connect_timeout` - The timeout for establishing a connection in seconds. Default is None.
-/// * `read_timeout` - The timeout for reading the response body in seconds. Default is None.
-/// * `impersonate` - An optional entity to impersonate. Default is None.
-/// * `impersonate_os` - An optional OS to impersonate. Default is None.
-/// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is true.
-/// * `ca_cert_file` - Path to CA certificate store. Default is None.
-/// * `stream` - If True, returns a Response for streaming the response body. Default is False.
+/// Send an OPTIONS request with a temporary (throwaway) client.
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, dns_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
 fn options(
     py: Python,
     url: &str,
@@ -987,6 +916,7 @@ fn options(
     timeout: Option<f64>,
     connect_timeout: Option<f64>,
     read_timeout: Option<f64>,
+    dns_timeout: Option<f64>,
     impersonate: Option<String>,
     impersonate_os: Option<String>,
     verify: Option<bool>,
@@ -1006,6 +936,7 @@ fn options(
         timeout,
         connect_timeout,
         None,
+        dns_timeout,
         impersonate,
         impersonate_os,
         None,
@@ -1037,30 +968,9 @@ fn options(
     )
 }
 
-/// Send a DELETE request with a temporary client.
-///
-/// # Arguments
-///
-/// * `url` - The URL to which the request will be made.
-/// * `params` - A map of query parameters to append to the URL. Default is None.
-/// * `headers` - A map of HTTP headers to send with the request. Default is None.
-/// * `cookies` - An optional map of cookies to send with requests as the `Cookie` header.
-/// * `content` - The content to send in the request body as bytes. Default is None.
-/// * `data` - The form data to send in the request body. Default is None.
-/// * `json` -  A JSON serializable object to send in the request body. Default is None.
-/// * `files` - A map of file fields to file paths to be sent as multipart/form-data. Default is None.
-/// * `auth` - A tuple containing the username and an optional password for basic authentication. Default is None.
-/// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
-/// * `timeout` - The total timeout for the request in seconds. Default is None.
-/// * `connect_timeout` - The timeout for establishing a connection in seconds. Default is None.
-/// * `read_timeout` - The timeout for reading the response body in seconds. Default is None.
-/// * `impersonate` - An optional entity to impersonate. Default is None.
-/// * `impersonate_os` - An optional OS to impersonate. Default is None.
-/// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is true.
-/// * `ca_cert_file` - Path to CA certificate store. Default is None.
-/// * `stream` - If True, returns a Response for streaming the response body. Default is False.
+/// Send a DELETE request with a temporary (throwaway) client.
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, dns_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
 fn delete(
     py: Python,
     url: &str,
@@ -1076,6 +986,7 @@ fn delete(
     timeout: Option<f64>,
     connect_timeout: Option<f64>,
     read_timeout: Option<f64>,
+    dns_timeout: Option<f64>,
     impersonate: Option<String>,
     impersonate_os: Option<String>,
     verify: Option<bool>,
@@ -1095,6 +1006,7 @@ fn delete(
         timeout,
         connect_timeout,
         None,
+        dns_timeout,
         impersonate,
         impersonate_os,
         None,
@@ -1126,30 +1038,9 @@ fn delete(
     )
 }
 
-/// Send a POST request with a temporary client.
-///
-/// # Arguments
-///
-/// * `url` - The URL to which the request will be made.
-/// * `params` - A map of query parameters to append to the URL. Default is None.
-/// * `headers` - A map of HTTP headers to send with the request. Default is None.
-/// * `cookies` - An optional map of cookies to send with requests as the `Cookie` header.
-/// * `content` - The content to send in the request body as bytes. Default is None.
-/// * `data` - The form data to send in the request body. Default is None.
-/// * `json` - A JSON serializable object to send in the request body. Default is None.
-/// * `files` - A map of file fields to file paths to be sent as multipart/form-data. Default is None.
-/// * `auth` - A tuple containing the username and an optional password for basic authentication. Default is None.
-/// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
-/// * `timeout` - The total timeout for the request in seconds. Default is None.
-/// * `connect_timeout` - The timeout for establishing a connection in seconds. Default is None.
-/// * `read_timeout` - The timeout for reading the response body in seconds. Default is None.
-/// * `impersonate` - An optional entity to impersonate. Default is None.
-/// * `impersonate_os` - An optional OS to impersonate. Default is None.
-/// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is true.
-/// * `ca_cert_file` - Path to CA certificate store. Default is None.
-/// * `stream` - If True, returns a Response for streaming the response body. Default is False.
+/// Send a POST request with a temporary (throwaway) client.
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, dns_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
 fn post(
     py: Python,
     url: &str,
@@ -1165,6 +1056,7 @@ fn post(
     timeout: Option<f64>,
     connect_timeout: Option<f64>,
     read_timeout: Option<f64>,
+    dns_timeout: Option<f64>,
     impersonate: Option<String>,
     impersonate_os: Option<String>,
     verify: Option<bool>,
@@ -1184,6 +1076,7 @@ fn post(
         timeout,
         connect_timeout,
         None,
+        dns_timeout,
         impersonate,
         impersonate_os,
         None,
@@ -1215,30 +1108,9 @@ fn post(
     )
 }
 
-/// Send a PUT request with a temporary client.
-///
-/// # Arguments
-///
-/// * `url` - The URL to which the request will be made.
-/// * `params` - A map of query parameters to append to the URL. Default is None.
-/// * `headers` - A map of HTTP headers to send with the request. Default is None.
-/// * `cookies` - An optional map of cookies to send with requests as the `Cookie` header.
-/// * `content` - The content to send in the request body as bytes. Default is None.
-/// * `data` - The form data to send in the request body. Default is None.
-/// * `json` - A JSON serializable object to send in the request body. Default is None.
-/// * `files` - A map of file fields to file paths to be sent as multipart/form-data. Default is None.
-/// * `auth` - A tuple containing the username and an optional password for basic authentication. Default is None.
-/// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
-/// * `timeout` - The total timeout for the request in seconds. Default is None.
-/// * `connect_timeout` - The timeout for establishing a connection in seconds. Default is None.
-/// * `read_timeout` - The timeout for reading the response body in seconds. Default is None.
-/// * `impersonate` - An optional entity to impersonate. Default is None.
-/// * `impersonate_os` - An optional OS to impersonate. Default is None.
-/// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is true.
-/// * `ca_cert_file` - Path to CA certificate store. Default is None.
-/// * `stream` - If True, returns a Response for streaming the response body. Default is False.
+/// Send a PUT request with a temporary (throwaway) client.
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, dns_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
 fn put(
     py: Python,
     url: &str,
@@ -1254,6 +1126,7 @@ fn put(
     timeout: Option<f64>,
     connect_timeout: Option<f64>,
     read_timeout: Option<f64>,
+    dns_timeout: Option<f64>,
     impersonate: Option<String>,
     impersonate_os: Option<String>,
     verify: Option<bool>,
@@ -1273,6 +1146,7 @@ fn put(
         timeout,
         connect_timeout,
         None,
+        dns_timeout,
         impersonate,
         impersonate_os,
         None,
@@ -1304,30 +1178,9 @@ fn put(
     )
 }
 
-/// Send a PATCH request with a temporary client.
-///
-/// # Arguments
-///
-/// * `url` - The URL to which the request will be made.
-/// * `params` - A map of query parameters to append to the URL. Default is None.
-/// * `headers` - A map of HTTP headers to send with the request. Default is None.
-/// * `cookies` - An optional map of cookies to send with requests as the `Cookie` header.
-/// * `content` - The content to send in the request body as bytes. Default is None.
-/// * `data` - The form data to send in the request body. Default is None.
-/// * `json` - A JSON serializable object to send in the request body. Default is None.
-/// * `files` - A map of file fields to file paths to be sent as multipart/form-data. Default is None.
-/// * `auth` - A tuple containing the username and an optional password for basic authentication. Default is None.
-/// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
-/// * `timeout` - The total timeout for the request in seconds. Default is None.
-/// * `connect_timeout` - The timeout for establishing a connection in seconds. Default is None.
-/// * `read_timeout` - The timeout for reading the response body in seconds. Default is None.
-/// * `impersonate` - An optional entity to impersonate. Default is None.
-/// * `impersonate_os` - An optional OS to impersonate. Default is None.
-/// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is true.
-/// * `ca_cert_file` - Path to CA certificate store. Default is None.
-/// * `stream` - If True, returns a Response for streaming the response body. Default is False.
+/// Send a PATCH request with a temporary (throwaway) client.
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, dns_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
 fn patch(
     py: Python,
     url: &str,
@@ -1343,6 +1196,7 @@ fn patch(
     timeout: Option<f64>,
     connect_timeout: Option<f64>,
     read_timeout: Option<f64>,
+    dns_timeout: Option<f64>,
     impersonate: Option<String>,
     impersonate_os: Option<String>,
     verify: Option<bool>,
@@ -1362,6 +1216,7 @@ fn patch(
         timeout,
         connect_timeout,
         None,
+        dns_timeout,
         impersonate,
         impersonate_os,
         None,
@@ -1393,31 +1248,9 @@ fn patch(
     )
 }
 
-/// Send a request with a custom method using a temporary client.
-///
-/// # Arguments
-///
-/// * `method` - The HTTP method to use (e.g., "GET", "POST").
-/// * `url` - The URL to which the request will be made.
-/// * `params` - A map of query parameters to append to the URL. Default is None.
-/// * `headers` - A map of HTTP headers to send with the request. Default is None.
-/// * `cookies` - An optional map of cookies to send with requests as the `Cookie` header.
-/// * `content` - The content to send in the request body as bytes. Default is None.
-/// * `data` - The form data to send in the request body. Default is None.
-/// * `json` - A JSON serializable object to send in the request body. Default is None.
-/// * `files` - A map of file fields to file paths to be sent as multipart/form-data. Default is None.
-/// * `auth` - A tuple containing the username and an optional password for basic authentication. Default is None.
-/// * `auth_bearer` - A string representing the bearer token for bearer token authentication. Default is None.
-/// * `timeout` - The total timeout for the request in seconds. Default is None.
-/// * `connect_timeout` - The timeout for establishing a connection in seconds. Default is None.
-/// * `read_timeout` - The timeout for reading the response body in seconds. Default is None.
-/// * `impersonate` - An optional entity to impersonate. Default is None.
-/// * `impersonate_os` - An optional OS to impersonate. Default is None.
-/// * `verify` - An optional boolean indicating whether to verify SSL certificates. Default is true.
-/// * `ca_cert_file` - Path to CA certificate store. Default is None.
-/// * `stream` - If True, returns a Response for streaming the response body. Default is False.
+/// Send a request with a custom method using a temporary (throwaway) client.
 #[pyfunction]
-#[pyo3(signature = (method, url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
+#[pyo3(signature = (method, url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, dns_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
 fn request(
     py: Python,
     method: &str,
@@ -1434,6 +1267,7 @@ fn request(
     timeout: Option<f64>,
     connect_timeout: Option<f64>,
     read_timeout: Option<f64>,
+    dns_timeout: Option<f64>,
     impersonate: Option<String>,
     impersonate_os: Option<String>,
     verify: Option<bool>,
@@ -1453,6 +1287,7 @@ fn request(
         timeout,
         connect_timeout,
         None,
+        dns_timeout,
         impersonate,
         impersonate_os,
         None,
@@ -1489,13 +1324,17 @@ fn request(
 fn primp(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     pyo3_log::init();
 
+    // Async bridge: `_wrap_awaitable` coroutine + atexit abort of in-flight
+    // bridge tasks (prevents post-finalize panics under `panic = "abort"`).
+    crate::r#async::bridge::init(_py, m)?;
+
     // Re-export exception types from error module - new hierarchy
     use error::{
-        BodyError, BuilderError, ConnectError, DecodeError, PrimpError, RedirectError,
+        BodyError, BuilderError, ConnectError, DNSError, DecodeError, PrimpError, RedirectError,
         RequestError, StatusError, TimeoutError, UpgradeError,
     };
 
-    // Add exception types - new primp-reqwest native hierarchy
+    // Add exception types - primp native hierarchy
     // Base exception
     m.add("PrimpError", _py.get_type::<PrimpError>())?;
 
@@ -1506,6 +1345,7 @@ fn primp(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("RequestError", _py.get_type::<RequestError>())?;
     m.add("ConnectError", _py.get_type::<ConnectError>())?;
     m.add("TimeoutError", _py.get_type::<TimeoutError>())?;
+    m.add("DNSError", _py.get_type::<DNSError>())?;
 
     // Other errors
     m.add("StatusError", _py.get_type::<StatusError>())?;
@@ -1513,6 +1353,31 @@ fn primp(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("BodyError", _py.get_type::<BodyError>())?;
     m.add("DecodeError", _py.get_type::<DecodeError>())?;
     m.add("UpgradeError", _py.get_type::<UpgradeError>())?;
+
+    // Create a combined JSONDecodeError inheriting from both DecodeError
+    // (PrimpError subclass) and json.JSONDecodeError (ValueError subclass)
+    // so JSON parse failures are catchable via both `except PrimpError`
+    // and `except json.JSONDecodeError`. This mirrors the `requests` library
+    // pattern and preserves position info (.doc, .pos, .lineno, .colno).
+    {
+        let locals = PyDict::new(_py);
+        locals.set_item("decode_err", _py.get_type::<DecodeError>().clone())?;
+        locals.set_item(
+            "json_dec_err",
+            _py.import("json")?.getattr("JSONDecodeError")?.clone(),
+        )?;
+        let combined = _py.eval(
+            c"type('JSONDecodeError', (decode_err, json_dec_err), {'__module__': 'primp'})",
+            None,
+            Some(&locals),
+        )?;
+        m.add("JSONDecodeError", combined)?;
+    }
+
+    // Combined DNSTimeoutError (DNSError + TimeoutError) so a DNS lookup
+    // timeout is catchable via either parent. Built once here and cached for
+    // GIL-free per-error conversion (`error::init_dnstimeout_error`).
+    crate::error::init_dnstimeout_error(_py, m)?;
 
     // Response classes
     m.add_class::<Response>()?;

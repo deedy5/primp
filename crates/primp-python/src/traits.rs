@@ -57,7 +57,18 @@ impl HeadersTraits for HeaderMap {
             IndexMapSSR::with_capacity_and_hasher(self.len(), RandomState::default());
         for (key, value) in self {
             if let Ok(v) = value.to_str() {
-                index_map.insert(key.as_str().to_string(), v.to_string());
+                // `IndexMap` stores a single value per key, but HTTP headers can
+                // appear multiple times. Join repeated values with ", " per RFC 7230
+                // so callers don't silently lose data (e.g. multiple `Vary` entries).
+                match index_map.entry(key.as_str().to_string()) {
+                    indexmap::map::Entry::Occupied(mut e) => {
+                        e.get_mut().push_str(", ");
+                        e.get_mut().push_str(v);
+                    }
+                    indexmap::map::Entry::Vacant(e) => {
+                        e.insert(v.to_string());
+                    }
+                }
             }
         }
         index_map

@@ -7,12 +7,10 @@ use pyo3::{
     types::{PyBytes, PyDict, PyString},
     IntoPyObjectExt,
 };
-use pythonize::pythonize;
-use serde_json::from_slice;
 use tokio::sync::Mutex as TMutex;
 
 use crate::client_builder::IndexMapSSR;
-use crate::error::{body_collection_error, BodyError, PrimpErrorEnum};
+use crate::error::{body_collection_error, BodyError, DecodeError, PrimpErrorEnum};
 use crate::traits::HeadersTraits;
 use crate::utils::extract_encoding;
 
@@ -26,6 +24,35 @@ pub async fn collect_body_bytes(resp: &mut ::primp::Response) -> Result<Bytes, P
             Err(e) => return Err(body_collection_error(&e.to_string())),
         }
     }
+}
+
+/// Byte index just past the n-th char of `s`.
+///
+/// Used by text iterators to split buffered text at exact char boundaries,
+/// so multi-byte UTF-8 is never split mid-sequence.
+pub fn chars_to_byte_pos(s: &str, n: usize) -> usize {
+    s.char_indices().nth(n).map(|(i, _)| i).unwrap_or(s.len())
+}
+
+/// Upper bound for a user-supplied `chunk_size`.
+///
+/// Iterators grow their buffer lazily with the received body; the cap keeps a
+/// single absurd chunk (e.g. `2**60`) from aborting on alloc failure under
+/// `panic = "abort"`.
+pub(crate) const MAX_CHUNK_SIZE: usize = 1 << 30; // 1 GiB
+
+/// Validate a user-supplied `chunk_size` (bytes for `iter_bytes`, chars for
+/// `iter_text`). Returns a `String` message so callers can build a PyErr
+/// without the GIL; the crate never panics on numeric input.
+pub(crate) fn parse_chunk_size(chunk_size: Option<usize>) -> Result<usize, String> {
+    let size = chunk_size.unwrap_or(8192);
+    if size == 0 {
+        return Err("chunk_size must be greater than 0".to_string());
+    }
+    if size > MAX_CHUNK_SIZE {
+        return Err(format!("chunk_size must be at most {MAX_CHUNK_SIZE}"));
+    }
+    Ok(size)
 }
 
 /// Raise HTTPError for 4xx/5xx status codes.
@@ -62,7 +89,7 @@ pub fn read_body_bytes<'py>(
     py: Python<'py>,
 ) -> PyResult<Bytes> {
     let r = Arc::clone(resp);
-    let runtime = crate::get_runtime(py);
+    let runtime = crate::get_runtime(py)?;
     py.detach(|| {
         runtime.block_on(async {
             let mut guard = r.lock().await;
@@ -109,7 +136,7 @@ pub fn get_encoding<'py>(
     }
 
     let r = Arc::clone(resp);
-    let runtime = crate::get_runtime(py);
+    let runtime = crate::get_runtime(py)?;
     let encoding: String = py.detach(|| {
         runtime.block_on(async {
             let guard = r.lock().await;
@@ -149,21 +176,32 @@ pub fn json<'py>(
     streaming: bool,
     py: Python<'py>,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let content = get_content(resp, content_cache, streaming, py)?.unbind();
-    let raw_bytes = content.as_bytes(py);
-    let json_value: serde_json::Value = match from_slice(raw_bytes) {
-        Ok(v) => v,
-        Err(e) => {
-            let json_module = py.import("json")?;
-            let error_type = json_module.getattr("JSONDecodeError")?;
-            let doc = String::from_utf8_lossy(raw_bytes).to_string();
-            let msg = e.to_string();
-            let pos = e.line().saturating_sub(1);
-            return Err(PyErr::from_value(error_type.call1((&msg, &doc, pos))?));
-        }
-    };
-    let result = pythonize(py, &json_value)?;
-    Ok(result)
+    let content = get_content(resp, content_cache, streaming, py)?;
+    let raw_bytes = content.as_bytes();
+    jiter::PythonParse::default()
+        .python_parse(py, raw_bytes)
+        .map_err(|e| {
+            // Raise a combined JSONDecodeError (subclass of both DecodeError
+            // and json.JSONDecodeError) so JSON parse failures are catchable
+            // via both `except PrimpError` and `except json.JSONDecodeError`,
+            // matching the `requests` library pattern. Falls back to plain
+            // DecodeError if the combined type cannot be retrieved.
+            let build = || -> PyResult<PyErr> {
+                let primp_mod = py.import("primp")?;
+                let err_type = primp_mod.getattr("JSONDecodeError")?;
+                let msg = e.to_string();
+                let doc = String::from_utf8_lossy(raw_bytes).to_string();
+                let char_pos =
+                    String::from_utf8_lossy(raw_bytes.get(..e.index).unwrap_or(raw_bytes))
+                        .chars()
+                        .count();
+                let instance = err_type.call1((msg, doc, char_pos))?;
+                Ok(PyErr::from_value(instance))
+            };
+            build().unwrap_or_else(|_| {
+                DecodeError::new_err(format!("Invalid JSON: {e} (near byte {})", e.index))
+            })
+        })
 }
 
 /// Get response headers from cache or response.
@@ -177,7 +215,7 @@ pub fn get_headers<'py>(
     }
 
     let r = Arc::clone(resp);
-    let runtime = crate::get_runtime(py);
+    let runtime = crate::get_runtime(py)?;
     let headers: IndexMapSSR = py.detach(|| {
         runtime.block_on(async {
             let guard = r.lock().await;
@@ -206,7 +244,7 @@ pub fn get_cookies<'py>(
     }
 
     let r = Arc::clone(resp);
-    let runtime = crate::get_runtime(py);
+    let runtime = crate::get_runtime(py)?;
     let cookies: IndexMapSSR = py.detach(|| {
         runtime.block_on(async {
             let guard = r.lock().await;
@@ -272,4 +310,90 @@ pub fn text_rich<'py>(
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
     })?;
     Ok(text)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{chars_to_byte_pos, parse_chunk_size, MAX_CHUNK_SIZE};
+
+    #[test]
+    fn n_zero_is_zero() {
+        assert_eq!(chars_to_byte_pos("hello", 0), 0);
+    }
+
+    #[test]
+    fn ascii_byte_index_matches_char_index() {
+        assert_eq!(chars_to_byte_pos("hello", 1), 1);
+        assert_eq!(chars_to_byte_pos("hello", 3), 3);
+        assert_eq!(chars_to_byte_pos("hello", 5), 5);
+    }
+
+    #[test]
+    fn n_beyond_len_returns_str_len() {
+        assert_eq!(chars_to_byte_pos("hi", 10), 2);
+    }
+
+    #[test]
+    fn n_exactly_len_returns_str_len() {
+        assert_eq!(chars_to_byte_pos("hi", 2), 2);
+    }
+
+    #[test]
+    fn multibyte_chars_skip_extra_bytes() {
+        // "héllo" — 'é' is 2 bytes in UTF-8, total 6 bytes for 5 chars.
+        let s = "héllo";
+        assert_eq!(s.len(), 6);
+        assert_eq!(chars_to_byte_pos(s, 1), 1);
+        assert_eq!(chars_to_byte_pos(s, 2), 3);
+        assert_eq!(chars_to_byte_pos(s, 5), 6);
+    }
+
+    #[test]
+    fn four_byte_chars_skip_three_extra_bytes() {
+        // "a😀b" — '😀' is 4 bytes in UTF-8, total 6 bytes for 3 chars.
+        let s = "a😀b";
+        assert_eq!(s.len(), 6);
+        assert_eq!(chars_to_byte_pos(s, 1), 1);
+        assert_eq!(chars_to_byte_pos(s, 2), 5);
+        assert_eq!(chars_to_byte_pos(s, 3), 6);
+    }
+
+    #[test]
+    fn empty_string() {
+        assert_eq!(chars_to_byte_pos("", 0), 0);
+        assert_eq!(chars_to_byte_pos("", 5), 0);
+    }
+
+    #[test]
+    fn chunk_size_defaults_to_8192() {
+        assert_eq!(parse_chunk_size(None).unwrap(), 8192);
+    }
+
+    #[test]
+    fn chunk_size_zero_rejected() {
+        let err = parse_chunk_size(Some(0)).unwrap_err();
+        assert!(err.contains("greater than 0"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn chunk_size_above_cap_rejected() {
+        let err = parse_chunk_size(Some(1 << 40)).unwrap_err();
+        assert!(err.contains("at most"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn chunk_size_at_cap_accepted() {
+        assert_eq!(
+            parse_chunk_size(Some(MAX_CHUNK_SIZE)).unwrap(),
+            MAX_CHUNK_SIZE
+        );
+    }
+
+    #[test]
+    fn chunk_size_just_below_cap_accepted() {
+        assert_eq!(
+            parse_chunk_size(Some(MAX_CHUNK_SIZE - 1)).unwrap(),
+            MAX_CHUNK_SIZE - 1
+        );
+    }
 }
