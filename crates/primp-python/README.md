@@ -55,11 +55,11 @@ asyncio.run(main())
 
 | Browser | Profiles |
 |:--------|:---------|
-| Chrome | `chrome_144`, `chrome_145`, `chrome_146`, `chrome_147`, `chrome_148`, `chrome` |
-| Safari | `safari_18.5`, `safari_26`, `safari_26.3`, `safari` |
-| Edge | `edge_144`, `edge_145`, `edge_146`, `edge_147`, `edge_148`, `edge` |
-| Firefox | `firefox_140`, `firefox_146`, `firefox_147`, `firefox_148`, `firefox` |
-| Opera | `opera_126`, `opera_127`, `opera_128`, `opera_129`, `opera_130`, `opera_131`, `opera` |
+| Chrome | `chrome_144`, `chrome_145`, `chrome_146`, `chrome_147`, `chrome_148`, `chrome_149`, `chrome_150`, `chrome_151`, `chrome_152`, `chrome` |
+| Safari | `safari_18.5`, `safari_26`, `safari_26.3`, `safari_26.4`, `safari` |
+| Edge | `edge_144`, `edge_145`, `edge_146`, `edge_147`, `edge_148`, `edge_149`, `edge_150`, `edge_151`, `edge` |
+| Firefox | `firefox_140`, `firefox_146`, `firefox_147`, `firefox_148`, `firefox_149`, `firefox_150`, `firefox_151`, `firefox` |
+| Opera | `opera_126`, `opera_127`, `opera_128`, `opera_129`, `opera_130`, `opera_131`, `opera_132`, `opera_133`, `opera_134`, `opera` |
 | Random | `random` |
 
 **OS:** `android`, `ios`, `linux`, `macos`, `windows`, `random`

@@ -1,8 +1,4 @@
-//! Safari browser impersonation settings.
-//!
-//! This module provides configuration for impersonating various Safari browser versions.
-//! Each version has its own TLS fingerprint, ALPN protocols, and default HTTP headers
-//! that mimic the real Safari browser behavior.
+//! Safari browser impersonation settings (per-version TLS, HTTP/2, and headers).
 //!
 //! # Usage
 //!
@@ -20,9 +16,8 @@
 //! }
 //! ```
 
+use super::{PseudoId, PseudoOrder, SettingId, SettingsOrder};
 pub use crate::imp::Impersonate;
-#[cfg(feature = "http2")]
-use crate::imp::{PseudoId, PseudoOrder, SettingId, SettingsOrder};
 use rustls::client::{BrowserEmulator, BrowserEmulatorOS, BrowserType, BrowserVersion};
 use rustls::crypto::emulation;
 use std::sync::{Arc, OnceLock};
@@ -66,11 +61,8 @@ pub(crate) fn build_safari_settings(
 /// Builds a User-Agent string for a Safari version and OS.
 /// Safari only supports MacOS and iOS; other OSes default to MacOS.
 fn build_user_agent(safari: Impersonate, os: crate::imp::ImpersonateOS) -> &'static str {
-    // Random is resolved before this is called; only MacOS and IOS reach here
-    let os = match os {
-        crate::imp::ImpersonateOS::IOS => crate::imp::ImpersonateOS::IOS,
-        _ => crate::imp::ImpersonateOS::MacOS,
-    };
+    // Random is resolved before this is called; the inner match's `_` arm
+    // already routes any non-iOS value (including Random) to the macOS UA.
     match safari {
         Impersonate::SafariV18_5 => match os {
             crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",
@@ -80,10 +72,13 @@ fn build_user_agent(safari: Impersonate, os: crate::imp::ImpersonateOS) -> &'sta
             crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1",
             _ => "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
         },
-        // Safari 26.3: macOS uses Safari 26 UA, iOS uses Safari 18.5 UA
         Impersonate::SafariV26_3 => match os {
-            crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",
+            crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 26_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.3 Mobile/15E148 Safari/604.1",
             _ => "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.3 Safari/605.1.15",
+        },
+        Impersonate::SafariV26_4 => match os {
+            crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 26_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.4 Mobile/15E148 Safari/604.1",
+            _ => "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.4 Safari/605.1.15",
         },
         _ => unreachable!(),
     }
@@ -100,7 +95,6 @@ fn build_safari_base_headers(user_agent: &'static str) -> http::HeaderMap {
 }
 
 /// Builds HTTP/2 settings for Safari.
-#[cfg(feature = "http2")]
 fn build_http2_settings() -> crate::imp::Http2Data {
     crate::imp::Http2Data {
         initial_stream_window_size: Some(crate::imp::SAFARI_INITIAL_STREAM_WINDOW),
@@ -112,6 +106,30 @@ fn build_http2_settings() -> crate::imp::Http2Data {
         headers_pseudo_order: Some(safari_pseudo_order().clone()),
         ..Default::default()
     }
+}
+
+fn safari_settings_order() -> &'static SettingsOrder {
+    static ORDER: OnceLock<SettingsOrder> = OnceLock::new();
+    ORDER.get_or_init(|| {
+        SettingsOrder::builder()
+            .push(SettingId::EnablePush)
+            .push(SettingId::MaxConcurrentStreams)
+            .push(SettingId::InitialWindowSize)
+            .push(SettingId::NoRfc7540Priorities)
+            .build_without_extend()
+    })
+}
+
+fn safari_pseudo_order() -> &'static PseudoOrder {
+    static ORDER: OnceLock<PseudoOrder> = OnceLock::new();
+    ORDER.get_or_init(|| {
+        PseudoOrder::builder()
+            .push(PseudoId::Method)
+            .push(PseudoId::Scheme)
+            .push(PseudoId::Authority)
+            .push(PseudoId::Path)
+            .build()
+    })
 }
 
 fn safari_emulator(safari: Impersonate, browser_os: BrowserEmulatorOS) -> Arc<BrowserEmulator> {
@@ -173,6 +191,19 @@ fn safari_emulator(safari: Impersonate, browser_os: BrowserEmulatorOS) -> Arc<Br
                     .clone()
             }
         }
+        Impersonate::SafariV26_4 => {
+            if browser_os == BrowserEmulatorOS::IOS {
+                static EMU_IOS: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
+                EMU_IOS
+                    .get_or_init(|| Arc::new(new_safari_26_4_ios_emulator()))
+                    .clone()
+            } else {
+                static EMU_MACOS: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
+                EMU_MACOS
+                    .get_or_init(|| Arc::new(new_safari_26_4_macos_emulator()))
+                    .clone()
+            }
+        }
         _ => unreachable!(),
     }
 }
@@ -217,6 +248,27 @@ fn new_safari_26_3_macos_emulator() -> BrowserEmulator {
     emulator
 }
 
+fn new_safari_26_4_ios_emulator() -> BrowserEmulator {
+    let mut emulator = BrowserEmulator::new(BrowserType::Safari, BrowserVersion::new(26, 4, 0));
+    emulator.cipher_suites = Some(emulation::cipher_suites::SAFARI.to_vec());
+    emulator.named_groups = Some(emulation::named_groups::SAFARI.to_vec());
+    emulator.signature_algorithms = Some(emulation::signature_algorithms::SAFARI.to_vec());
+    emulator.extension_order_seed = Some(emulation::extension_order::SAFARI_26);
+    emulator.os_type = Some(BrowserEmulatorOS::IOS);
+    emulator
+}
+
+fn new_safari_26_4_macos_emulator() -> BrowserEmulator {
+    let mut emulator = BrowserEmulator::new(BrowserType::Safari, BrowserVersion::new(26, 4, 0));
+    emulator.cipher_suites = Some(emulation::cipher_suites::SAFARI.to_vec());
+    emulator.named_groups = Some(emulation::named_groups::SAFARI.to_vec());
+    emulator.signature_algorithms = Some(emulation::signature_algorithms::SAFARI.to_vec());
+    emulator.extension_order_seed = Some(emulation::extension_order::SAFARI_18_5);
+    emulator.include_status_request_v2 = true;
+    emulator.os_type = Some(BrowserEmulatorOS::MacOS);
+    emulator
+}
+
 fn safari_base_headers() -> &'static http::HeaderMap {
     static BASE: OnceLock<http::HeaderMap> = OnceLock::new();
     BASE.get_or_init(|| {
@@ -243,210 +295,283 @@ fn safari_base_headers() -> &'static http::HeaderMap {
     })
 }
 
-#[cfg(feature = "http2")]
-fn safari_settings_order() -> &'static SettingsOrder {
-    static ORDER: OnceLock<SettingsOrder> = OnceLock::new();
-    ORDER.get_or_init(|| {
-        SettingsOrder::builder()
-            .push(SettingId::EnablePush)
-            .push(SettingId::MaxConcurrentStreams)
-            .push(SettingId::InitialWindowSize)
-            .push(SettingId::NoRfc7540Priorities)
-            .build_without_extend()
-    })
-}
-
-#[cfg(feature = "http2")]
-fn safari_pseudo_order() -> &'static PseudoOrder {
-    static ORDER: OnceLock<PseudoOrder> = OnceLock::new();
-    ORDER.get_or_init(|| {
-        PseudoOrder::builder()
-            .push(PseudoId::Method)
-            .push(PseudoId::Scheme)
-            .push(PseudoId::Authority)
-            .push(PseudoId::Path)
-            .build()
-    })
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::imp::{Impersonate, ImpersonateOS};
-    use crate::Client;
-    use serde::{Deserialize, Serialize};
+    use crate::imp::{get_browser_settings, Impersonate, ImpersonateOS};
 
-    #[derive(Debug, Serialize, Deserialize)]
-    pub struct BrowserLeaksResponse {
-        pub user_agent: String,
-        pub ja4: String,
-        pub akamai_hash: String,
-        pub akamai_text: String,
-    }
-
-    // Safari 18.5 test constants
     const SAFARI185_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Safari/605.1.15";
-    const SAFARI185_JA4: &str = "t13d2014h2_a09f3c656075_e42f34c56612";
-    const SAFARI185_AKAMAI_HASH: &str = "c52879e43202aeb92740be6e8c86ea96";
-    const SAFARI185_AKAMAI_TEXT: &str = "2:0;3:100;4:2097152;9:1|10420225|0|m,s,a,p";
     const SAFARI185_IOS_USER_AGENT: &str = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1";
-    const SAFARI185_IOS_JA4: &str = "t13d2014h2_a09f3c656075_e42f34c56612";
-    const SAFARI185_IOS_AKAMAI_HASH: &str = "c52879e43202aeb92740be6e8c86ea96";
-    const SAFARI185_IOS_AKAMAI_TEXT: &str = "2:0;3:100;4:2097152;9:1|10420225|0|m,s,a,p";
-
     const SAFARI26_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15";
-    const SAFARI26_JA4: &str = "t13d2013h2_a09f3c656075_7f0f34a4126d";
-    const SAFARI26_AKAMAI_HASH: &str = "c52879e43202aeb92740be6e8c86ea96";
-    const SAFARI26_AKAMAI_TEXT: &str = "2:0;3:100;4:2097152;9:1|10420225|0|m,s,a,p";
     const SAFARI26_IOS_USER_AGENT: &str = "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1";
-    const SAFARI26_IOS_JA4: &str = "t13d2013h2_a09f3c656075_7f0f34a4126d";
-    const SAFARI26_IOS_AKAMAI_HASH: &str = "c52879e43202aeb92740be6e8c86ea96";
-    const SAFARI26_IOS_AKAMAI_TEXT: &str = "2:0;3:100;4:2097152;9:1|10420225|0|m,s,a,p";
-
-    #[tokio::test]
-    #[cfg(feature = "impersonate")]
-    async fn test_safari185() {
-        let client = Client::builder()
-            .impersonate_os(ImpersonateOS::MacOS)
-            .impersonate(Impersonate::SafariV18_5)
-            .build()
-            .unwrap();
-
-        let response = client
-            .get("https://tls.browserleaks.com/json")
-            .send()
-            .await
-            .unwrap();
-
-        let json: BrowserLeaksResponse = response.json().await.unwrap();
-
-        assert_eq!(json.user_agent, SAFARI185_USER_AGENT);
-        assert_eq!(json.ja4, SAFARI185_JA4);
-        assert_eq!(json.akamai_hash, SAFARI185_AKAMAI_HASH);
-        assert_eq!(json.akamai_text, SAFARI185_AKAMAI_TEXT);
-    }
-
-    #[tokio::test]
-    #[cfg(feature = "impersonate")]
-    async fn test_safari185_ios() {
-        let client = Client::builder()
-            .impersonate_os(ImpersonateOS::IOS)
-            .impersonate(Impersonate::SafariV18_5)
-            .build()
-            .unwrap();
-
-        let response = client
-            .get("https://tls.browserleaks.com/json")
-            .send()
-            .await
-            .unwrap();
-
-        let json: BrowserLeaksResponse = response.json().await.unwrap();
-
-        assert_eq!(json.user_agent, SAFARI185_IOS_USER_AGENT);
-        assert_eq!(json.ja4, SAFARI185_IOS_JA4);
-        assert_eq!(json.akamai_hash, SAFARI185_IOS_AKAMAI_HASH);
-        assert_eq!(json.akamai_text, SAFARI185_IOS_AKAMAI_TEXT);
-    }
-
-    #[tokio::test]
-    #[cfg(feature = "impersonate")]
-    async fn test_safari26() {
-        let client = Client::builder()
-            .impersonate_os(ImpersonateOS::MacOS)
-            .impersonate(Impersonate::SafariV26)
-            .build()
-            .unwrap();
-
-        let response = client
-            .get("https://tls.browserleaks.com/json")
-            .send()
-            .await
-            .unwrap();
-
-        let json: BrowserLeaksResponse = response.json().await.unwrap();
-
-        assert_eq!(json.user_agent, SAFARI26_USER_AGENT);
-        assert_eq!(json.ja4, SAFARI26_JA4);
-        assert_eq!(json.akamai_hash, SAFARI26_AKAMAI_HASH);
-        assert_eq!(json.akamai_text, SAFARI26_AKAMAI_TEXT);
-    }
-
-    #[tokio::test]
-    #[cfg(feature = "impersonate")]
-    async fn test_safari26_ios() {
-        let client = Client::builder()
-            .impersonate_os(ImpersonateOS::IOS)
-            .impersonate(Impersonate::SafariV26)
-            .build()
-            .unwrap();
-
-        let response = client
-            .get("https://tls.browserleaks.com/json")
-            .send()
-            .await
-            .unwrap();
-
-        let json: BrowserLeaksResponse = response.json().await.unwrap();
-
-        assert_eq!(json.user_agent, SAFARI26_IOS_USER_AGENT);
-        assert_eq!(json.ja4, SAFARI26_IOS_JA4);
-        assert_eq!(json.akamai_hash, SAFARI26_IOS_AKAMAI_HASH);
-        assert_eq!(json.akamai_text, SAFARI26_IOS_AKAMAI_TEXT);
-    }
-
     const SAFARI26_3_MACOS_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.3 Safari/605.1.15";
+    const SAFARI26_3_IOS_USER_AGENT: &str = "Mozilla/5.0 (iPhone; CPU iPhone OS 26_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.3 Mobile/15E148 Safari/604.1";
+
+    const SAFARI_AKAMAI_TEXT: &str = "2:0;3:100;4:2097152;9:1|10420225|0|m,s,a,p";
+    const SAFARI_AKAMAI_HASH: &str = "c52879e43202aeb92740be6e8c86ea96";
+
+    const SAFARI185_MACOS_JA4: &str = "t13d2014h2_a09f3c656075_e42f34c56612";
+    const SAFARI185_MACOS_JA4_RO: &str = "t13d2014h2_1301,1302,1303,c02c,c02b,cca9,c030,c02f,cca8,c00a,c009,c014,c013,009d,009c,0035,002f,c008,c012,000a_0000,0012,0010,0005,000a,000b,000d,0015,0017,001b,002b,002d,0033,ff01_0403,0804,0401,0503,0805,0805,0501,0806,0601,0201";
+    const SAFARI185_IOS_JA4: &str = "t13d2014h2_a09f3c656075_e42f34c56612";
+    const SAFARI185_IOS_JA4_RO: &str = "t13d2014h2_1301,1302,1303,c02c,c02b,cca9,c030,c02f,cca8,c00a,c009,c014,c013,009d,009c,0035,002f,c008,c012,000a_0000,0012,0010,0005,000a,000b,000d,0015,0017,001b,002b,002d,0033,ff01_0403,0804,0401,0503,0805,0805,0501,0806,0601,0201";
+    const SAFARI26_MACOS_JA4: &str = "t13d2013h2_a09f3c656075_7f0f34a4126d";
+    const SAFARI26_MACOS_JA4_RO: &str = "t13d2013h2_1301,1302,1303,c02c,c02b,cca9,c030,c02f,cca8,c00a,c009,c014,c013,009d,009c,0035,002f,c008,c012,000a_0012,0000,0010,0005,000a,000b,000d,0017,001b,002b,002d,0033,ff01_0403,0804,0401,0503,0805,0805,0501,0806,0601,0201";
+    const SAFARI26_IOS_JA4: &str = "t13d2013h2_a09f3c656075_7f0f34a4126d";
+    const SAFARI26_IOS_JA4_RO: &str = "t13d2013h2_1301,1302,1303,c02c,c02b,cca9,c030,c02f,cca8,c00a,c009,c014,c013,009d,009c,0035,002f,c008,c012,000a_0012,0000,0010,0005,000a,000b,000d,0017,001b,002b,002d,0033,ff01_0403,0804,0401,0503,0805,0805,0501,0806,0601,0201";
     const SAFARI26_3_MACOS_JA4: &str = "t13d2014h2_a09f3c656075_e42f34c56612";
-    const SAFARI26_3_MACOS_AKAMAI_HASH: &str = "c52879e43202aeb92740be6e8c86ea96";
-    const SAFARI26_3_MACOS_AKAMAI_TEXT: &str = "2:0;3:100;4:2097152;9:1|10420225|0|m,s,a,p";
+    const SAFARI26_3_MACOS_JA4_RO: &str = "t13d2014h2_1301,1302,1303,c02c,c02b,cca9,c030,c02f,cca8,c00a,c009,c014,c013,009d,009c,0035,002f,c008,c012,000a_0000,0012,0010,0005,000a,000b,000d,0015,0017,001b,002b,002d,0033,ff01_0403,0804,0401,0503,0805,0805,0501,0806,0601,0201";
+    const SAFARI26_3_IOS_JA4: &str = "t13d2013h2_a09f3c656075_7f0f34a4126d";
+    const SAFARI26_3_IOS_JA4_RO: &str = "t13d2013h2_1301,1302,1303,c02c,c02b,cca9,c030,c02f,cca8,c00a,c009,c014,c013,009d,009c,0035,002f,c008,c012,000a_0012,0000,0010,0005,000a,000b,000d,0017,001b,002b,002d,0033,ff01_0403,0804,0401,0503,0805,0805,0501,0806,0601,0201";
 
-    #[tokio::test]
-    #[cfg(feature = "impersonate")]
-    async fn test_safari26_3_macos() {
-        let client = Client::builder()
-            .impersonate_os(ImpersonateOS::MacOS)
-            .impersonate(Impersonate::SafariV26_3)
-            .build()
-            .unwrap();
-
-        let response = client
-            .get("https://tls.browserleaks.com/json")
-            .send()
-            .await
-            .unwrap();
-
-        let json: BrowserLeaksResponse = response.json().await.unwrap();
-
-        assert_eq!(json.user_agent, SAFARI26_3_MACOS_USER_AGENT);
-        assert_eq!(json.ja4, SAFARI26_3_MACOS_JA4);
-        assert_eq!(json.akamai_hash, SAFARI26_3_MACOS_AKAMAI_HASH);
-        assert_eq!(json.akamai_text, SAFARI26_3_MACOS_AKAMAI_TEXT);
+    #[test]
+    fn safari185_macos_offline() {
+        let (ja4, ja4_ro) =
+            super::super::extract_ja4_os(Impersonate::SafariV18_5, Some(ImpersonateOS::MacOS));
+        assert_eq!(ja4, SAFARI185_MACOS_JA4, "Safari 18.5 MacOS JA4 mismatch");
+        assert_eq!(
+            ja4_ro, SAFARI185_MACOS_JA4_RO,
+            "Safari 18.5 MacOS JA4_ro mismatch"
+        );
+        let settings = get_browser_settings(Impersonate::SafariV18_5, Some(ImpersonateOS::MacOS));
+        assert_eq!(
+            settings
+                .headers
+                .get("user-agent")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            SAFARI185_USER_AGENT
+        );
+        let text = super::super::compute_akamai_text(&settings.http2);
+        assert_eq!(
+            text, SAFARI_AKAMAI_TEXT,
+            "Safari 18.5 MacOS akamai_text mismatch"
+        );
+        assert_eq!(
+            super::super::compute_akamai_hash(&text),
+            SAFARI_AKAMAI_HASH,
+            "Safari 18.5 MacOS akamai_hash mismatch"
+        );
     }
 
-    const SAFARI26_3_IOS_USER_AGENT: &str = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1";
-    const SAFARI26_3_IOS_JA4: &str = "t13d2013h2_a09f3c656075_7f0f34a4126d";
-    const SAFARI26_3_IOS_AKAMAI_HASH: &str = "c52879e43202aeb92740be6e8c86ea96";
-    const SAFARI26_3_IOS_AKAMAI_TEXT: &str = "2:0;3:100;4:2097152;9:1|10420225|0|m,s,a,p";
+    #[test]
+    fn safari185_ios_offline() {
+        let (ja4, ja4_ro) =
+            super::super::extract_ja4_os(Impersonate::SafariV18_5, Some(ImpersonateOS::IOS));
+        assert_eq!(ja4, SAFARI185_IOS_JA4, "Safari 18.5 iOS JA4 mismatch");
+        assert_eq!(
+            ja4_ro, SAFARI185_IOS_JA4_RO,
+            "Safari 18.5 iOS JA4_ro mismatch"
+        );
+        let settings = get_browser_settings(Impersonate::SafariV18_5, Some(ImpersonateOS::IOS));
+        assert_eq!(
+            settings
+                .headers
+                .get("user-agent")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            SAFARI185_IOS_USER_AGENT
+        );
+        let text = super::super::compute_akamai_text(&settings.http2);
+        assert_eq!(
+            text, SAFARI_AKAMAI_TEXT,
+            "Safari 18.5 iOS akamai_text mismatch"
+        );
+        assert_eq!(
+            super::super::compute_akamai_hash(&text),
+            SAFARI_AKAMAI_HASH,
+            "Safari 18.5 iOS akamai_hash mismatch"
+        );
+    }
 
-    #[tokio::test]
-    #[cfg(feature = "impersonate")]
-    async fn test_safari26_3_ios() {
-        let client = Client::builder()
-            .impersonate_os(ImpersonateOS::IOS)
-            .impersonate(Impersonate::SafariV26_3)
-            .build()
-            .unwrap();
+    #[test]
+    fn safari26_macos_offline() {
+        let (ja4, ja4_ro) =
+            super::super::extract_ja4_os(Impersonate::SafariV26, Some(ImpersonateOS::MacOS));
+        assert_eq!(ja4, SAFARI26_MACOS_JA4, "Safari 26 MacOS JA4 mismatch");
+        assert_eq!(
+            ja4_ro, SAFARI26_MACOS_JA4_RO,
+            "Safari 26 MacOS JA4_ro mismatch"
+        );
+        let settings = get_browser_settings(Impersonate::SafariV26, Some(ImpersonateOS::MacOS));
+        assert_eq!(
+            settings
+                .headers
+                .get("user-agent")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            SAFARI26_USER_AGENT
+        );
+        let text = super::super::compute_akamai_text(&settings.http2);
+        assert_eq!(
+            text, SAFARI_AKAMAI_TEXT,
+            "Safari 26 MacOS akamai_text mismatch"
+        );
+        assert_eq!(
+            super::super::compute_akamai_hash(&text),
+            SAFARI_AKAMAI_HASH,
+            "Safari 26 MacOS akamai_hash mismatch"
+        );
+    }
 
-        let response = client
-            .get("https://tls.browserleaks.com/json")
-            .send()
-            .await
-            .unwrap();
+    #[test]
+    fn safari26_ios_offline() {
+        let (ja4, ja4_ro) =
+            super::super::extract_ja4_os(Impersonate::SafariV26, Some(ImpersonateOS::IOS));
+        assert_eq!(ja4, SAFARI26_IOS_JA4, "Safari 26 iOS JA4 mismatch");
+        assert_eq!(ja4_ro, SAFARI26_IOS_JA4_RO, "Safari 26 iOS JA4_ro mismatch");
+        let settings = get_browser_settings(Impersonate::SafariV26, Some(ImpersonateOS::IOS));
+        assert_eq!(
+            settings
+                .headers
+                .get("user-agent")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            SAFARI26_IOS_USER_AGENT
+        );
+        let text = super::super::compute_akamai_text(&settings.http2);
+        assert_eq!(
+            text, SAFARI_AKAMAI_TEXT,
+            "Safari 26 iOS akamai_text mismatch"
+        );
+        assert_eq!(
+            super::super::compute_akamai_hash(&text),
+            SAFARI_AKAMAI_HASH,
+            "Safari 26 iOS akamai_hash mismatch"
+        );
+    }
 
-        let json: BrowserLeaksResponse = response.json().await.unwrap();
+    #[test]
+    fn safari26_3_macos_offline() {
+        let (ja4, ja4_ro) =
+            super::super::extract_ja4_os(Impersonate::SafariV26_3, Some(ImpersonateOS::MacOS));
+        assert_eq!(ja4, SAFARI26_3_MACOS_JA4, "Safari 26.3 MacOS JA4 mismatch");
+        assert_eq!(
+            ja4_ro, SAFARI26_3_MACOS_JA4_RO,
+            "Safari 26.3 MacOS JA4_ro mismatch"
+        );
+        let settings = get_browser_settings(Impersonate::SafariV26_3, Some(ImpersonateOS::MacOS));
+        assert_eq!(
+            settings
+                .headers
+                .get("user-agent")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            SAFARI26_3_MACOS_USER_AGENT
+        );
+        let text = super::super::compute_akamai_text(&settings.http2);
+        assert_eq!(
+            text, SAFARI_AKAMAI_TEXT,
+            "Safari 26.3 MacOS akamai_text mismatch"
+        );
+        assert_eq!(
+            super::super::compute_akamai_hash(&text),
+            SAFARI_AKAMAI_HASH,
+            "Safari 26.3 MacOS akamai_hash mismatch"
+        );
+    }
 
-        assert_eq!(json.user_agent, SAFARI26_3_IOS_USER_AGENT);
-        assert_eq!(json.ja4, SAFARI26_3_IOS_JA4);
-        assert_eq!(json.akamai_hash, SAFARI26_3_IOS_AKAMAI_HASH);
-        assert_eq!(json.akamai_text, SAFARI26_3_IOS_AKAMAI_TEXT);
+    #[test]
+    fn safari26_3_ios_offline() {
+        let (ja4, ja4_ro) =
+            super::super::extract_ja4_os(Impersonate::SafariV26_3, Some(ImpersonateOS::IOS));
+        assert_eq!(ja4, SAFARI26_3_IOS_JA4, "Safari 26.3 iOS JA4 mismatch");
+        assert_eq!(
+            ja4_ro, SAFARI26_3_IOS_JA4_RO,
+            "Safari 26.3 iOS JA4_ro mismatch"
+        );
+        let settings = get_browser_settings(Impersonate::SafariV26_3, Some(ImpersonateOS::IOS));
+        assert_eq!(
+            settings
+                .headers
+                .get("user-agent")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            SAFARI26_3_IOS_USER_AGENT
+        );
+        let text = super::super::compute_akamai_text(&settings.http2);
+        assert_eq!(
+            text, SAFARI_AKAMAI_TEXT,
+            "Safari 26.3 iOS akamai_text mismatch"
+        );
+        assert_eq!(
+            super::super::compute_akamai_hash(&text),
+            SAFARI_AKAMAI_HASH,
+            "Safari 26.3 iOS akamai_hash mismatch"
+        );
+    }
+
+    const SAFARI26_4_MACOS_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.4 Safari/605.1.15";
+    const SAFARI26_4_IOS_USER_AGENT: &str = "Mozilla/5.0 (iPhone; CPU iPhone OS 26_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.4 Mobile/15E148 Safari/604.1";
+
+    const SAFARI26_4_MACOS_JA4: &str = "t13d2014h2_a09f3c656075_e42f34c56612";
+    const SAFARI26_4_MACOS_JA4_RO: &str = "t13d2014h2_1301,1302,1303,c02c,c02b,cca9,c030,c02f,cca8,c00a,c009,c014,c013,009d,009c,0035,002f,c008,c012,000a_0000,0012,0010,0005,000a,000b,000d,0015,0017,001b,002b,002d,0033,ff01_0403,0804,0401,0503,0805,0805,0501,0806,0601,0201";
+    const SAFARI26_4_IOS_JA4: &str = "t13d2013h2_a09f3c656075_7f0f34a4126d";
+    const SAFARI26_4_IOS_JA4_RO: &str = "t13d2013h2_1301,1302,1303,c02c,c02b,cca9,c030,c02f,cca8,c00a,c009,c014,c013,009d,009c,0035,002f,c008,c012,000a_0012,0000,0010,0005,000a,000b,000d,0017,001b,002b,002d,0033,ff01_0403,0804,0401,0503,0805,0805,0501,0806,0601,0201";
+
+    #[test]
+    fn safari26_4_macos_offline() {
+        let (ja4, ja4_ro) =
+            super::super::extract_ja4_os(Impersonate::SafariV26_4, Some(ImpersonateOS::MacOS));
+        assert_eq!(ja4, SAFARI26_4_MACOS_JA4, "Safari 26.4 MacOS JA4 mismatch");
+        assert_eq!(
+            ja4_ro, SAFARI26_4_MACOS_JA4_RO,
+            "Safari 26.4 MacOS JA4_ro mismatch"
+        );
+        let settings = get_browser_settings(Impersonate::SafariV26_4, Some(ImpersonateOS::MacOS));
+        assert_eq!(
+            settings
+                .headers
+                .get("user-agent")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            SAFARI26_4_MACOS_USER_AGENT
+        );
+        let text = super::super::compute_akamai_text(&settings.http2);
+        assert_eq!(
+            text, SAFARI_AKAMAI_TEXT,
+            "Safari 26.4 MacOS akamai_text mismatch"
+        );
+        assert_eq!(
+            super::super::compute_akamai_hash(&text),
+            SAFARI_AKAMAI_HASH,
+            "Safari 26.4 MacOS akamai_hash mismatch"
+        );
+    }
+
+    #[test]
+    fn safari26_4_ios_offline() {
+        let (ja4, ja4_ro) =
+            super::super::extract_ja4_os(Impersonate::SafariV26_4, Some(ImpersonateOS::IOS));
+        assert_eq!(ja4, SAFARI26_4_IOS_JA4, "Safari 26.4 iOS JA4 mismatch");
+        assert_eq!(
+            ja4_ro, SAFARI26_4_IOS_JA4_RO,
+            "Safari 26.4 iOS JA4_ro mismatch"
+        );
+        let settings = get_browser_settings(Impersonate::SafariV26_4, Some(ImpersonateOS::IOS));
+        assert_eq!(
+            settings
+                .headers
+                .get("user-agent")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            SAFARI26_4_IOS_USER_AGENT
+        );
+        let text = super::super::compute_akamai_text(&settings.http2);
+        assert_eq!(
+            text, SAFARI_AKAMAI_TEXT,
+            "Safari 26.4 iOS akamai_text mismatch"
+        );
+        assert_eq!(
+            super::super::compute_akamai_hash(&text),
+            SAFARI_AKAMAI_HASH,
+            "Safari 26.4 iOS akamai_hash mismatch"
+        );
     }
 }

@@ -1,7 +1,4 @@
-//! Holds structs and information to aid in impersonating browsers.
-//!
-//! This module provides configuration for impersonating various browser versions,
-//! including TLS settings, HTTP/2 parameters, and default headers.
+//! Configuration for impersonating browsers (TLS, HTTP/2, and default headers).
 //!
 //! # Example
 //!
@@ -29,17 +26,16 @@ use rand::prelude::*;
 use rustls::client::BrowserEmulator;
 use std::sync::{Arc, OnceLock};
 
-// Re-export h2 types for HTTP/2 fingerprinting when http2 feature is enabled
-#[cfg(feature = "http2")]
-pub use h2::frame::{
-    PseudoId, PseudoOrder, PseudoOrderBuilder, SettingId, SettingsOrder, SettingsOrderBuilder,
-};
-
 pub mod chrome;
 pub mod edge;
 pub mod firefox;
 pub mod opera;
 pub mod safari;
+
+// Re-export h2 frame types used for HTTP/2 fingerprinting.
+pub use h2::frame::{
+    PseudoId, PseudoOrder, PseudoOrderBuilder, SettingId, SettingsOrder, SettingsOrderBuilder,
+};
 
 // HTTP/2 magic numbers grouped by browser family.
 pub(crate) const CHROME_INITIAL_STREAM_WINDOW: u32 = 6291456;
@@ -55,11 +51,7 @@ pub(crate) const SAFARI_INITIAL_STREAM_WINDOW: u32 = 2097152;
 pub(crate) const SAFARI_INITIAL_CONNECTION_WINDOW: u32 = 10485760;
 pub(crate) const SAFARI_MAX_HEADER_LIST_SIZE: u32 = 262144;
 
-/// Browser TLS and HTTP/2 configuration settings.
-///
-/// This struct contains all the configuration needed to impersonate a specific
-/// browser version, including TLS connection settings, HTTP/2 parameters, and
-/// default request headers.
+/// TLS and HTTP/2 configuration for impersonating a browser version.
 #[derive(Clone)]
 pub struct BrowserSettings {
     /// Rustls browser emulator configuration
@@ -92,9 +84,7 @@ impl std::fmt::Debug for BrowserSettings {
     }
 }
 
-/// HTTP/2 configuration parameters.
-///
-/// Controls various HTTP/2 connection settings used during browser impersonation.
+/// HTTP/2 connection settings used during browser impersonation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Http2Data {
@@ -142,14 +132,10 @@ pub struct Http2Data {
     ///
     /// Controls the order of pseudo-headers in HEADERS frames for fingerprinting.
     pub headers_pseudo_order: Option<h2::frame::PseudoOrder>,
-    /// Whether to include PRIORITY flag in HEADERS frames
-    ///
-    /// When true, HEADERS frames include priority data (weight=0, stream_dependency=0,
-    /// exclusive=1) matching Chrome's HTTP/2 fingerprint behavior.
     /// Whether to include PRIORITY flag in HEADERS frames and its parameters (weight, dep, exclusive)
     ///
-    /// None = no PRIORITY flag, Some((w,d,e)) = PRIORITY with those values.
-    /// Chrome: Some((0, 0, true)), Firefox: Some((42, 0, false))
+    /// `None` = no PRIORITY flag, `Some((w, d, e))` = PRIORITY with those values.
+    /// Chrome/Edge/Opera: `Some((255, 0, true))`, Firefox: `Some((41, 0, false))`
     pub headers_priority: Option<(u8, u32, bool)>,
     /// Optional ordering for HTTP/2 regular headers
     ///
@@ -192,17 +178,8 @@ impl Default for Http2Data {
     }
 }
 
-/// Available browser versions for impersonation.
-///
-/// Each variant represents a specific browser version with its corresponding
-/// TLS fingerprint and default headers.
-///
-/// # Note
-///
-/// Not all browser versions are equally effective for bypassing detection.
-/// Newer versions generally provide better fingerprinting resistance.
+/// Browser version to impersonate (each variant maps to a TLS fingerprint and default headers).
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[cfg(feature = "impersonate")]
 #[allow(missing_docs)]
 pub enum Impersonate {
     // Chrome variants
@@ -211,6 +188,10 @@ pub enum Impersonate {
     ChromeV146,
     ChromeV147,
     ChromeV148,
+    ChromeV149,
+    ChromeV150,
+    ChromeV151,
+    ChromeV152,
     /// Random Chrome version
     Chrome,
     // Edge variants
@@ -219,6 +200,9 @@ pub enum Impersonate {
     EdgeV146,
     EdgeV147,
     EdgeV148,
+    EdgeV149,
+    EdgeV150,
+    EdgeV151,
     /// Random Edge version
     Edge,
     // Opera variants
@@ -228,12 +212,17 @@ pub enum Impersonate {
     OperaV129,
     OperaV130,
     OperaV131,
+    OperaV132,
+    OperaV133,
+    OperaV134,
+    OperaV135,
     /// Random Opera version
     Opera,
     // Safari variants
     SafariV18_5,
     SafariV26,
     SafariV26_3,
+    SafariV26_4,
     /// Random Safari version
     Safari,
     // Firefox variants
@@ -241,15 +230,16 @@ pub enum Impersonate {
     FirefoxV146,
     FirefoxV147,
     FirefoxV148,
+    FirefoxV149,
+    FirefoxV150,
+    FirefoxV151,
     /// Random Firefox version
     Firefox,
     /// Random browser and version
     Random,
 }
 
-/// Operating system platforms for browser impersonation.
-///
-/// Specifies the OS platform to mimic when generating browser fingerprints.
+/// OS platform to mimic when generating browser fingerprints.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum ImpersonateOS {
@@ -268,15 +258,7 @@ pub enum ImpersonateOS {
     Random,
 }
 
-/// Randomly selects a browser version for impersonation.
-///
-/// This function can be used when you want to randomize the browser fingerprint
-/// across requests to avoid detection based on repeated patterns.
-///
-/// # Returns
-///
-/// A randomly selected `Impersonate` variant from all available browser versions.
-#[cfg(feature = "impersonate")]
+/// Picks a random `Impersonate` variant across all available browser versions.
 pub fn random_impersonate() -> Impersonate {
     const IMPERSONATE_VARIANTS: &[Impersonate] = &[
         Impersonate::ChromeV144,
@@ -284,31 +266,45 @@ pub fn random_impersonate() -> Impersonate {
         Impersonate::ChromeV146,
         Impersonate::ChromeV147,
         Impersonate::ChromeV148,
+        Impersonate::ChromeV149,
+        Impersonate::ChromeV150,
+        Impersonate::ChromeV151,
+        Impersonate::ChromeV152,
         Impersonate::EdgeV144,
         Impersonate::EdgeV145,
         Impersonate::EdgeV146,
         Impersonate::EdgeV147,
         Impersonate::EdgeV148,
+        Impersonate::EdgeV149,
+        Impersonate::EdgeV150,
+        Impersonate::EdgeV151,
         Impersonate::OperaV126,
         Impersonate::OperaV127,
         Impersonate::OperaV128,
         Impersonate::OperaV129,
         Impersonate::OperaV130,
         Impersonate::OperaV131,
+        Impersonate::OperaV132,
+        Impersonate::OperaV133,
+        Impersonate::OperaV134,
+        Impersonate::OperaV135,
+        Impersonate::SafariV18_5,
         Impersonate::SafariV26,
         Impersonate::SafariV26_3,
-        Impersonate::SafariV18_5,
+        Impersonate::SafariV26_4,
         Impersonate::FirefoxV140,
         Impersonate::FirefoxV146,
         Impersonate::FirefoxV147,
         Impersonate::FirefoxV148,
+        Impersonate::FirefoxV149,
+        Impersonate::FirefoxV150,
+        Impersonate::FirefoxV151,
     ];
 
     *IMPERSONATE_VARIANTS.choose(&mut rand::rng()).unwrap()
 }
 
 /// Resolves an unnumbered `Impersonate` variant to a random specific version.
-#[cfg(feature = "impersonate")]
 pub fn resolve_impersonate(version: Impersonate) -> Impersonate {
     match version {
         Impersonate::Chrome => {
@@ -318,6 +314,10 @@ pub fn resolve_impersonate(version: Impersonate) -> Impersonate {
                 Impersonate::ChromeV146,
                 Impersonate::ChromeV147,
                 Impersonate::ChromeV148,
+                Impersonate::ChromeV149,
+                Impersonate::ChromeV150,
+                Impersonate::ChromeV151,
+                Impersonate::ChromeV152,
             ];
             *CHROME.choose(&mut rand::rng()).unwrap()
         }
@@ -328,6 +328,9 @@ pub fn resolve_impersonate(version: Impersonate) -> Impersonate {
                 Impersonate::EdgeV146,
                 Impersonate::EdgeV147,
                 Impersonate::EdgeV148,
+                Impersonate::EdgeV149,
+                Impersonate::EdgeV150,
+                Impersonate::EdgeV151,
             ];
             *EDGE.choose(&mut rand::rng()).unwrap()
         }
@@ -339,6 +342,10 @@ pub fn resolve_impersonate(version: Impersonate) -> Impersonate {
                 Impersonate::OperaV129,
                 Impersonate::OperaV130,
                 Impersonate::OperaV131,
+                Impersonate::OperaV132,
+                Impersonate::OperaV133,
+                Impersonate::OperaV134,
+                Impersonate::OperaV135,
             ];
             *OPERA.choose(&mut rand::rng()).unwrap()
         }
@@ -347,6 +354,7 @@ pub fn resolve_impersonate(version: Impersonate) -> Impersonate {
                 Impersonate::SafariV18_5,
                 Impersonate::SafariV26,
                 Impersonate::SafariV26_3,
+                Impersonate::SafariV26_4,
             ];
             *SAFARI.choose(&mut rand::rng()).unwrap()
         }
@@ -356,6 +364,9 @@ pub fn resolve_impersonate(version: Impersonate) -> Impersonate {
                 Impersonate::FirefoxV146,
                 Impersonate::FirefoxV147,
                 Impersonate::FirefoxV148,
+                Impersonate::FirefoxV149,
+                Impersonate::FirefoxV150,
+                Impersonate::FirefoxV151,
             ];
             *FIREFOX.choose(&mut rand::rng()).unwrap()
         }
@@ -364,11 +375,7 @@ pub fn resolve_impersonate(version: Impersonate) -> Impersonate {
     }
 }
 
-/// Randomly selects an operating system for impersonation.
-///
-/// # Returns
-///
-/// A randomly selected `ImpersonateOS` variant.
+/// Picks a random OS variant for impersonation.
 pub fn random_impersonate_os() -> ImpersonateOS {
     const OS_VARIANTS: &[ImpersonateOS] = &[
         ImpersonateOS::Windows,
@@ -420,7 +427,9 @@ pub(crate) fn header_order_sec_chua_first() -> &'static Vec<http::HeaderName> {
     })
 }
 
-/// Chrome 148+ / Edge 146+ header order with sec-ch-ua after sec-fetch-*.
+/// Chrome 148-149 / Edge 146-148 header order with sec-ch-ua after sec-fetch-*.
+/// (Chrome 150 reverts to sec-ch-ua first with `sec-purpose`;
+/// Edge 149+ reverts to sec-ch-ua first.)
 pub(crate) fn header_order_upgrade_first_sec_chua_last() -> &'static Vec<http::HeaderName> {
     static ORDER: OnceLock<Vec<http::HeaderName>> = OnceLock::new();
     ORDER.get_or_init(|| {
@@ -465,17 +474,7 @@ pub(crate) fn header_order_cache_control_first() -> &'static Vec<http::HeaderNam
     })
 }
 
-/// Gets browser settings for impersonation.
-///
-/// # Arguments
-///
-/// * `version` - The browser version to impersonate
-/// * `os_type` - Optional OS to impersonate
-///
-/// # Returns
-///
-/// BrowserSettings with TLS, HTTP/2, and header configuration
-#[cfg(feature = "impersonate")]
+/// Resolves browser settings (TLS, HTTP/2, headers) for the requested version and OS.
 pub fn get_browser_settings(
     version: Impersonate,
     os_type: Option<ImpersonateOS>,
@@ -488,25 +487,166 @@ pub fn get_browser_settings(
         | Impersonate::ChromeV145
         | Impersonate::ChromeV146
         | Impersonate::ChromeV147
-        | Impersonate::ChromeV148 => chrome::build_chrome_settings(version, os_type),
+        | Impersonate::ChromeV148
+        | Impersonate::ChromeV149
+        | Impersonate::ChromeV150
+        | Impersonate::ChromeV151
+        | Impersonate::ChromeV152 => chrome::build_chrome_settings(version, os_type),
         Impersonate::EdgeV144
         | Impersonate::EdgeV145
         | Impersonate::EdgeV146
         | Impersonate::EdgeV147
-        | Impersonate::EdgeV148 => edge::build_edge_settings(version, os_type),
+        | Impersonate::EdgeV148
+        | Impersonate::EdgeV149
+        | Impersonate::EdgeV150
+        | Impersonate::EdgeV151 => edge::build_edge_settings(version, os_type),
         Impersonate::OperaV126
         | Impersonate::OperaV127
         | Impersonate::OperaV128
         | Impersonate::OperaV129
         | Impersonate::OperaV130
-        | Impersonate::OperaV131 => opera::build_opera_settings(version, os_type),
-        Impersonate::SafariV26 | Impersonate::SafariV26_3 | Impersonate::SafariV18_5 => {
-            safari::build_safari_settings(version, os_type)
-        }
+        | Impersonate::OperaV131
+        | Impersonate::OperaV132
+        | Impersonate::OperaV133
+        | Impersonate::OperaV134
+        | Impersonate::OperaV135 => opera::build_opera_settings(version, os_type),
+        Impersonate::SafariV26
+        | Impersonate::SafariV26_3
+        | Impersonate::SafariV26_4
+        | Impersonate::SafariV18_5 => safari::build_safari_settings(version, os_type),
         Impersonate::FirefoxV140
         | Impersonate::FirefoxV146
         | Impersonate::FirefoxV147
-        | Impersonate::FirefoxV148 => firefox::build_firefox_settings(version, os_type),
+        | Impersonate::FirefoxV148
+        | Impersonate::FirefoxV149
+        | Impersonate::FirefoxV150
+        | Impersonate::FirefoxV151 => firefox::build_firefox_settings(version, os_type),
         _ => unreachable!(),
     }
+}
+
+// ---- Offline test helpers (akamai fingerprint) ----
+
+/// Compute the akamai_text fingerprint from HTTP/2 settings.
+#[cfg(test)]
+pub(crate) fn compute_akamai_text(http2: &Http2Data) -> String {
+    use h2::frame::PseudoId;
+    use h2::frame::SettingId::{self, *};
+
+    let settings_str = match http2.settings_order {
+        Some(ref order) => {
+            let mut parts: Vec<String> = Vec::new();
+            for id in order {
+                let (id_num, value) = match id {
+                    HeaderTableSize => (1u16, http2.header_table_size.map(|v| v as u32)),
+                    EnablePush => (2, http2.enable_push.map(|v| v as u32)),
+                    MaxConcurrentStreams => (3, http2.max_concurrent_streams),
+                    InitialWindowSize => (4, http2.initial_stream_window_size),
+                    MaxFrameSize => (5, http2.max_frame_size),
+                    MaxHeaderListSize => (6, http2.max_header_list_size),
+                    SettingId::EnableConnectProtocol => {
+                        (8, http2.enable_connect_protocol.map(|v| v as u32))
+                    }
+                    SettingId::NoRfc7540Priorities => {
+                        (9, http2.no_rfc7540_priorities.map(|v| v as u32))
+                    }
+                };
+                if let Some(v) = value {
+                    parts.push(format!("{id_num}:{v}"));
+                }
+            }
+            parts.join(";")
+        }
+        None => String::new(),
+    };
+
+    let window_update = http2
+        .initial_connection_window_size
+        .map(|w| w.saturating_sub(65535))
+        .unwrap_or(0);
+
+    let pseudo_str = match http2.headers_pseudo_order {
+        Some(ref order) => {
+            let mut chars = Vec::new();
+            for id in order {
+                let ch = match id {
+                    PseudoId::Method => Some('m'),
+                    PseudoId::Scheme => Some('s'),
+                    PseudoId::Authority => Some('a'),
+                    PseudoId::Path => Some('p'),
+                    // Protocol and Status are CONNECT/response-only; not in akamai
+                    _ => None,
+                };
+                if let Some(c) = ch {
+                    chars.push(c);
+                }
+            }
+            chars
+                .iter()
+                .map(|c| c.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        }
+        None => String::new(),
+    };
+
+    format!("{settings_str}|{window_update}|0|{pseudo_str}")
+}
+
+/// Compute the MD5 hex hash of an akamai_text string.
+#[cfg(test)]
+pub(crate) fn compute_akamai_hash(text: &str) -> String {
+    format!("{:x}", md5::compute(text.as_bytes()))
+}
+
+/// Build the impersonated `ClientConfig`, extract the raw TLS ClientHello
+/// bytes (without connecting to any network), parse them with
+/// `huginn-net-tls`, and return (ja4_canonical, ja4_ro_raw).
+#[cfg(test)]
+pub(crate) fn extract_ja4(imp: Impersonate) -> (String, String) {
+    extract_ja4_os(imp, None)
+}
+
+#[cfg(test)]
+pub(crate) fn extract_ja4_os(imp: Impersonate, os: Option<ImpersonateOS>) -> (String, String) {
+    use crate::impersonation::{build_impersonate_tls_config, ImpersonationTls};
+    use huginn_net_tls::parse_tls_client_hello;
+
+    let settings = get_browser_settings(imp, Some(os.unwrap_or(ImpersonateOS::Linux)));
+    let tls = ImpersonationTls {
+        certs_verification: true,
+        hostname_verification: true,
+        tls_certs_only: false,
+        identity: None,
+        tls_sni: true,
+        tls_sslkeylogfile: false,
+    };
+    let config =
+        build_impersonate_tls_config(&settings, &[], &tls).expect("build impersonate tls config");
+
+    let mut conn = rustls::ClientConnection::new(
+        std::sync::Arc::new(config),
+        rustls::pki_types::ServerName::try_from("localhost").expect("valid server name"),
+    )
+    .expect("ClientConnection init");
+
+    let mut buf = Vec::new();
+    conn.write_tls(&mut buf).expect("write_tls to vec");
+    assert!(!buf.is_empty(), "ClientHello must produce bytes");
+
+    let sig = parse_tls_client_hello(&buf).expect("parse ClientHello");
+
+    let canonical = sig.generate_ja4();
+    let original = sig.generate_ja4_original();
+
+    let ja4 = match canonical.full {
+        huginn_net_tls::fingerprint::ja4::Ja4Fingerprint::Sorted(v) => v,
+        _ => panic!("expected Sorted JA4"),
+    };
+    let ja4_ro = match original.raw {
+        huginn_net_tls::fingerprint::ja4::Ja4RawFingerprint::Unsorted(v) => v,
+        _ => panic!("expected Unsorted JA4 raw"),
+    };
+
+    (ja4, ja4_ro)
 }

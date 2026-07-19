@@ -63,7 +63,7 @@ const GREASE_EXT_FIRST_PLACEHOLDER: u16 = 0x6a6a;
 const GREASE_EXT_LAST_PLACEHOLDER: u16 = 0x0a0a;
 
 /// Exact ordered ClientHello extension list for a browser-emulation profile,
-/// taken verbatim from the `tls_real_profiles/` captures.
+/// taken verbatim from real captures.
 ///
 /// Branched by `version.major`: Chrome/Edge 148/149/150/151 each have their
 /// own list (147 falls back to 146); Opera 131/132/133/134 each have their
@@ -81,8 +81,37 @@ fn emulator_extension_order(be: &BrowserEmulator) -> Option<Vec<ExtensionType>> 
 
     match be.browser_type {
         BrowserType::Chrome => {
-            if be.version.major == 151 {
-                // Real Chrome 151 (tls_real_profiles/chrome_151.txt):
+            if be.version.major == 152 {
+                // Real Chrome 152:
+                // GREASE, renegotiation_info, server_name, ECH,
+                // compress_certificate, ec_point_formats, SCT,
+                // key_share, psk_key_exchange_modes, trust_anchors(0xCA34),
+                // supported_groups, ALPS(0x44cd), extended_master_secret,
+                // supported_versions, status_request, session_ticket,
+                // signature_algorithms, ALPN, GREASE
+                Some(vec![
+                    grease_first,
+                    RenegotiationInfo,
+                    ServerName,
+                    EncryptedClientHello,
+                    CompressCertificate,
+                    ECPointFormats,
+                    SCT,
+                    KeyShare,
+                    PSKKeyExchangeModes,
+                    Unknown(0xCA34),
+                    EllipticCurves,
+                    Unknown(0x44cd),
+                    ExtendedMasterSecret,
+                    SupportedVersions,
+                    StatusRequest,
+                    SessionTicket,
+                    SignatureAlgorithms,
+                    ALProtocolNegotiation,
+                    grease_last,
+                ])
+            } else if be.version.major == 151 {
+                // Real Chrome 151:
                 // GREASE, compress_certificate, server_name, ALPS(0x44cd),
                 // ec_point_formats, key_share, renegotiation_info,
                 // signature_algorithms, psk_key_exchange_modes, ALPN,
@@ -109,7 +138,7 @@ fn emulator_extension_order(be: &BrowserEmulator) -> Option<Vec<ExtensionType>> 
                     grease_last,
                 ])
             } else if be.version.major >= 150 {
-                // Real Chrome 150 (tls_real_profiles/chrome_150.txt):
+                // Real Chrome 150:
                 // GREASE, renegotiation_info, server_name, signature_algorithms,
                 // ALPN, ECH, session_ticket, supported_groups, ec_point_formats,
                 // extended_main_secret, SCT, key_share, supported_versions,
@@ -136,7 +165,7 @@ fn emulator_extension_order(be: &BrowserEmulator) -> Option<Vec<ExtensionType>> 
                     grease_last,
                 ])
             } else if be.version.major == 149 {
-                // Real Chrome 149 (tls_real_profiles/chrome_149.txt)
+                // Real Chrome 149
                 Some(vec![
                     grease_first,
                     SignatureAlgorithms,
@@ -158,7 +187,7 @@ fn emulator_extension_order(be: &BrowserEmulator) -> Option<Vec<ExtensionType>> 
                     grease_last,
                 ])
             } else if be.version.major == 148 {
-                // Real Chrome 148 (tls_real_profiles/chrome_148.txt)
+                // Real Chrome 148
                 Some(vec![
                     grease_first,
                     StatusRequest,
@@ -181,7 +210,6 @@ fn emulator_extension_order(be: &BrowserEmulator) -> Option<Vec<ExtensionType>> 
                 ])
             } else {
                 // Chrome 146 (and 147 / earlier) order
-                // (tls_real_profiles/chrome_146.txt)
                 Some(vec![
                     grease_first,
                     EncryptedClientHello,
@@ -206,7 +234,7 @@ fn emulator_extension_order(be: &BrowserEmulator) -> Option<Vec<ExtensionType>> 
         }
         BrowserType::Edge => {
             if be.version.major == 151 {
-                // Real Edge 151 (tls_real_profiles/edge_151.txt):
+                // Real Edge 151:
                 // GREASE, SCT, signature_algorithms, extended_master_secret,
                 // ALPS(0x44cd), psk_key_exchange_modes, ECH, renegotiation_info,
                 // supported_versions, session_ticket, ALPN, status_request,
@@ -233,7 +261,7 @@ fn emulator_extension_order(be: &BrowserEmulator) -> Option<Vec<ExtensionType>> 
                     grease_last,
                 ])
             } else if be.version.major >= 150 {
-                // Real Edge 150 (tls_real_profiles/edge_150.txt):
+                // Real Edge 150:
                 // GREASE, status_request, renegotiation_info, SCT, ALPN, ECH,
                 // extended_main_secret, session_ticket, ec_point_formats,
                 // supported_groups, compress_certificate, server_name,
@@ -260,7 +288,7 @@ fn emulator_extension_order(be: &BrowserEmulator) -> Option<Vec<ExtensionType>> 
                     grease_last,
                 ])
             } else if be.version.major == 149 {
-                // Real Edge 149 (tls_real_profiles/edge_149.txt)
+                // Real Edge 149
                 Some(vec![
                     grease_first,
                     EllipticCurves,
@@ -282,7 +310,7 @@ fn emulator_extension_order(be: &BrowserEmulator) -> Option<Vec<ExtensionType>> 
                     grease_last,
                 ])
             } else if be.version.major == 148 {
-                // Real Edge 148 (tls_real_profiles/edge_148.txt)
+                // Real Edge 148
                 Some(vec![
                     grease_first,
                     SCT,
@@ -304,7 +332,7 @@ fn emulator_extension_order(be: &BrowserEmulator) -> Option<Vec<ExtensionType>> 
                     grease_last,
                 ])
             } else {
-                // Edge 146 (and 147 / earlier) order (tls_real_profiles/edge_146.txt)
+                // Edge 146 (and 147 / earlier) order
                 Some(vec![
                     grease_first,
                     RenegotiationInfo,
@@ -385,7 +413,7 @@ fn emulator_extension_order(be: &BrowserEmulator) -> Option<Vec<ExtensionType>> 
                     grease_last,
                 ])
             } else if be.version.major == 133 {
-                // Real Opera 133 (tls_real_profiles/opera_133.txt)
+                // Real Opera 133
                 Some(vec![
                     grease_first,
                     SupportedVersions,
@@ -407,7 +435,7 @@ fn emulator_extension_order(be: &BrowserEmulator) -> Option<Vec<ExtensionType>> 
                     grease_last,
                 ])
             } else if be.version.major == 132 {
-                // Real Opera 132 (tls_real_profiles/opera_132.txt)
+                // Real Opera 132
                 Some(vec![
                     grease_first,
                     RenegotiationInfo,
@@ -429,7 +457,7 @@ fn emulator_extension_order(be: &BrowserEmulator) -> Option<Vec<ExtensionType>> 
                     grease_last,
                 ])
             } else if be.version.major == 131 {
-                // Real Opera 131 (tls_real_profiles/opera_131.txt)
+                // Real Opera 131
                 Some(vec![
                     grease_first,
                     SupportedVersions,
@@ -452,7 +480,6 @@ fn emulator_extension_order(be: &BrowserEmulator) -> Option<Vec<ExtensionType>> 
                 ])
             } else {
                 // Opera 129 (and 130 / earlier) order
-                // (tls_real_profiles/opera_129.txt)
                 Some(vec![
                     grease_first,
                     EncryptedClientHello,
@@ -513,11 +540,9 @@ struct ExpectServerHello {
     input: ClientHelloInput,
     transcript_buffer: HandshakeHashBuffer,
     // The key schedule for sending early data.
-    //
     // If the server accepts the PSK used for early data then
     // this is used to compute the rest of the key schedule.
     // Otherwise, it is thrown away.
-    //
     // If this is `None` then we do not support early data.
     early_data_key_schedule: Option<KeyScheduleEarly>,
     offered_key_share: Option<Box<dyn ActiveKeyExchange>>,
@@ -816,6 +841,12 @@ fn emit_client_hello_for_retry(
                 v.extend_from_slice(b"\xC9\xBB\x32"); // һ2
                 exts.unknown_extensions
                     .push((ExtensionType::Unknown(0x44cd), Payload::new(v)));
+                // Trust-anchors extension (0xCA34) — Chrome 152+
+                // Empty payload; appears between psk_key_exchange_modes and supported_groups.
+                if be.version.major >= 152 {
+                    exts.unknown_extensions
+                        .push((ExtensionType::Unknown(0xCA34), Payload::empty()));
+                }
                 // GREASE extensions for Chrome fingerprinting (RFC 8701)
                 // Chrome places GREASE at first and last positions in the extension list
                 exts.unknown_extensions.push((
@@ -1307,7 +1338,6 @@ fn emit_client_hello_for_retry(
             // "... other than an initial ClientHello (i.e., one not
             // generated after a HelloRetryRequest), where it MAY also be
             // 0x0301 for compatibility purposes"
-            //
             // (retryreq == None means we're in the "initial ClientHello" case)
             None => ProtocolVersion::TLSv1_0,
         },
@@ -1757,14 +1787,11 @@ impl ExpectServerHelloOrHelloRetryRequest {
         }
 
         // Or does not echo the session_id from our ClientHello:
-        //
         // > the HelloRetryRequest has the same format as a ServerHello message,
         // > and the legacy_version, legacy_session_id_echo, cipher_suite, and
         // > legacy_compression_method fields have the same meaning
         // <https://www.rfc-editor.org/rfc/rfc8446#section-4.1.4>
-        //
         // and
-        //
         // > A client which receives a legacy_session_id_echo field that does not
         // > match what it sent in the ClientHello MUST abort the handshake with an
         // > "illegal_parameter" alert.
@@ -2044,8 +2071,7 @@ mod tests {
     use pki_types::{CertificateDer, ServerName, UnixTime};
 
     /// Regression guard: asserts the per-browser/per-version ClientHello extension
-    /// order matches the ground-truth captures (chrome_146/148/149/150/151,
-    /// edge_146/148/149/150/151, opera_129/131/132/133/134) verbatim. Every
+    /// order matches the ground-truth captures verbatim. Every
     /// captured minor version is checked independently; Firefox/Safari return
     /// `None`.
     #[test]
@@ -2257,6 +2283,36 @@ mod tests {
                 SCT,
                 ExtendedMasterSecret,
                 StatusRequest,
+                gl,
+            ]
+        );
+
+        let chrome152 = emulator_extension_order(&BrowserEmulator::new(
+            BrowserType::Chrome,
+            BrowserVersion::new(152, 0, 0),
+        ))
+        .unwrap();
+        assert_eq!(
+            chrome152,
+            vec![
+                gf,
+                RenegotiationInfo,
+                ServerName,
+                EncryptedClientHello,
+                CompressCertificate,
+                ECPointFormats,
+                SCT,
+                KeyShare,
+                PSKKeyExchangeModes,
+                Unknown(0xCA34),
+                EllipticCurves,
+                Unknown(0x44cd),
+                ExtendedMasterSecret,
+                SupportedVersions,
+                StatusRequest,
+                SessionTicket,
+                SignatureAlgorithms,
+                ALProtocolNegotiation,
                 gl,
             ]
         );
