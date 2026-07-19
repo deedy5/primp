@@ -39,6 +39,21 @@ pub(crate) fn build_firefox_settings(
             EMU.get_or_init(|| Arc::new(new_firefox_emulator(148)))
                 .clone()
         }
+        Impersonate::FirefoxV149 => {
+            static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
+            EMU.get_or_init(|| Arc::new(new_firefox_emulator(149)))
+                .clone()
+        }
+        Impersonate::FirefoxV150 => {
+            static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
+            EMU.get_or_init(|| Arc::new(new_firefox_emulator(150)))
+                .clone()
+        }
+        Impersonate::FirefoxV151 => {
+            static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
+            EMU.get_or_init(|| Arc::new(new_firefox_emulator(151)))
+                .clone()
+        }
         _ => unreachable!(),
     };
 
@@ -97,6 +112,30 @@ fn build_user_agent(firefox: Impersonate, os: crate::imp::ImpersonateOS) -> &'st
             crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 17_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/148.0 Mobile/15E148 Safari/605.1",
             _ => unreachable!(),
         },
+        Impersonate::FirefoxV149 => match os {
+            crate::imp::ImpersonateOS::Windows => "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0",
+            crate::imp::ImpersonateOS::MacOS => "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.7; rv:149.0) Gecko/20100101 Firefox/149.0",
+            crate::imp::ImpersonateOS::Linux => "Mozilla/5.0 (X11; Linux x86_64; rv:149.0) Gecko/20100101 Firefox/149.0",
+            crate::imp::ImpersonateOS::Android => "Mozilla/5.0 (Android 14; Mobile; rv:149.0) Gecko/149.0 Firefox/149.0",
+            crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 18_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/149.0 Mobile/15E148 Safari/605.1.15",
+            _ => unreachable!(),
+        },
+        Impersonate::FirefoxV150 => match os {
+            crate::imp::ImpersonateOS::Windows => "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:150.0) Gecko/20100101 Firefox/150.0",
+            crate::imp::ImpersonateOS::MacOS => "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.7; rv:150.0) Gecko/20100101 Firefox/150.0",
+            crate::imp::ImpersonateOS::Linux => "Mozilla/5.0 (X11; Linux x86_64; rv:150.0) Gecko/20100101 Firefox/150.0",
+            crate::imp::ImpersonateOS::Android => "Mozilla/5.0 (Android 14; Mobile; rv:150.0) Gecko/150.0 Firefox/150.0",
+            crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 18_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/150.0 Mobile/15E148 Safari/605.1.15",
+            _ => unreachable!(),
+        },
+        Impersonate::FirefoxV151 => match os {
+            crate::imp::ImpersonateOS::Windows => "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:151.0) Gecko/20100101 Firefox/151.0",
+            crate::imp::ImpersonateOS::MacOS => "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.7; rv:151.0) Gecko/20100101 Firefox/151.0",
+            crate::imp::ImpersonateOS::Linux => "Mozilla/5.0 (X11; Linux x86_64; rv:151.0) Gecko/20100101 Firefox/151.0",
+            crate::imp::ImpersonateOS::Android => "Mozilla/5.0 (Android 14; Mobile; rv:151.0) Gecko/151.0 Firefox/151.0",
+            crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 18_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/151.0 Mobile/15E148 Safari/605.1.15",
+            _ => unreachable!(),
+        },
         _ => unreachable!(),
     }
 }
@@ -146,7 +185,6 @@ fn build_headers(user_agent: &'static str) -> http::HeaderMap {
 }
 
 /// Builds HTTP/2 settings for Firefox.
-#[cfg(feature = "http2")]
 fn build_http2_settings() -> crate::imp::Http2Data {
     crate::imp::Http2Data {
         initial_stream_window_size: Some(crate::imp::FIREFOX_INITIAL_STREAM_WINDOW),
@@ -164,33 +202,30 @@ fn build_http2_settings() -> crate::imp::Http2Data {
     }
 }
 
-#[cfg(feature = "http2")]
-fn firefox_settings_order() -> &'static crate::imp::SettingsOrder {
-    static ORDER: OnceLock<crate::imp::SettingsOrder> = OnceLock::new();
+fn firefox_settings_order() -> &'static super::SettingsOrder {
+    static ORDER: OnceLock<super::SettingsOrder> = OnceLock::new();
     ORDER.get_or_init(|| {
-        crate::imp::SettingsOrder::builder()
-            .push(crate::imp::SettingId::HeaderTableSize)
-            .push(crate::imp::SettingId::EnablePush)
-            .push(crate::imp::SettingId::InitialWindowSize)
-            .push(crate::imp::SettingId::MaxFrameSize)
+        super::SettingsOrder::builder()
+            .push(super::SettingId::HeaderTableSize)
+            .push(super::SettingId::EnablePush)
+            .push(super::SettingId::InitialWindowSize)
+            .push(super::SettingId::MaxFrameSize)
             .build_without_extend()
     })
 }
 
-#[cfg(feature = "http2")]
-fn firefox_pseudo_order() -> &'static crate::imp::PseudoOrder {
-    static ORDER: OnceLock<crate::imp::PseudoOrder> = OnceLock::new();
+fn firefox_pseudo_order() -> &'static super::PseudoOrder {
+    static ORDER: OnceLock<super::PseudoOrder> = OnceLock::new();
     ORDER.get_or_init(|| {
-        crate::imp::PseudoOrder::builder()
-            .push(crate::imp::PseudoId::Method)
-            .push(crate::imp::PseudoId::Path)
-            .push(crate::imp::PseudoId::Authority)
-            .push(crate::imp::PseudoId::Scheme)
+        super::PseudoOrder::builder()
+            .push(super::PseudoId::Method)
+            .push(super::PseudoId::Path)
+            .push(super::PseudoId::Authority)
+            .push(super::PseudoId::Scheme)
             .build()
     })
 }
 
-#[cfg(feature = "http2")]
 fn firefox_headers_order() -> &'static Vec<http::HeaderName> {
     static ORDER: OnceLock<Vec<http::HeaderName>> = OnceLock::new();
     ORDER.get_or_init(|| {
@@ -214,75 +249,72 @@ fn firefox_headers_order() -> &'static Vec<http::HeaderName> {
 
 #[cfg(test)]
 mod tests {
-    use crate::imp::Impersonate;
-    use crate::Client;
-    use serde::{Deserialize, Serialize};
+    use crate::imp::{get_browser_settings, Impersonate, ImpersonateOS};
 
-    /// BrowserLeaks.com API response structure
-    #[derive(Debug, Serialize, Deserialize)]
-    pub struct BrowserLeaksResponse {
-        pub user_agent: String,
-        pub ja4: String,
-        pub akamai_hash: String,
-        pub akamai_text: String,
-    }
+    const FIREFOX_AKAMAI_TEXT: &str = "1:65536;2:0;4:131072;5:16384|12517377|0|m,p,a,s";
+    const FIREFOX_AKAMAI_HASH: &str = "6ea73faa8fc5aac76bded7bd238f6433";
 
+    const FIREFOX140_JA4: &str = "t13d1717h2_5b57614c22b0_3cbfd9057e0d";
+    const FIREFOX140_JA4_RO: &str = "t13d1717h2_1301,1303,1302,c02b,c02f,cca9,cca8,c02c,c030,c00a,c009,c013,c014,009c,009d,002f,0035_0000,0017,ff01,000a,000b,0023,0010,0005,0022,0012,0033,002b,000d,002d,001c,001b,fe0d_0403,0503,0603,0804,0805,0806,0401,0501,0601,0203,0201";
     const FIREFOX140_USER_AGENT: &str =
         "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0";
-    const FIREFOX140_JA4: &str = "t13d1717h2_5b57614c22b0_3cbfd9057e0d";
-    // Firefox 140 sends: 1:65536, 2:0, 4:131072, 5:16384 (no MAX_HEADER_LIST_SIZE)
-    const FIREFOX140_AKAMAI_HASH: &str = "6ea73faa8fc5aac76bded7bd238f6433";
-    const FIREFOX140_AKAMAI_TEXT: &str = "1:65536;2:0;4:131072;5:16384|12517377|0|m,p,a,s";
 
-    #[tokio::test]
-    #[cfg(feature = "impersonate")]
-    async fn test_firefox140() {
-        let client = Client::builder()
-            .impersonate_os(crate::imp::ImpersonateOS::Linux)
-            .impersonate(Impersonate::FirefoxV140)
-            .build()
-            .unwrap();
-
-        let response = client
-            .get("https://tls.browserleaks.com/json")
-            .send()
-            .await
-            .unwrap();
-
-        let json: BrowserLeaksResponse = response.json().await.unwrap();
-
-        assert_eq!(json.user_agent, FIREFOX140_USER_AGENT);
-        assert_eq!(json.ja4, FIREFOX140_JA4);
-        assert_eq!(json.akamai_hash, FIREFOX140_AKAMAI_HASH);
-        assert_eq!(json.akamai_text, FIREFOX140_AKAMAI_TEXT);
+    #[test]
+    fn firefox140_offline() {
+        let (ja4, ja4_ro) = super::super::extract_ja4(Impersonate::FirefoxV140);
+        assert_eq!(ja4, FIREFOX140_JA4, "Firefox 140 JA4 mismatch");
+        assert_eq!(ja4_ro, FIREFOX140_JA4_RO, "Firefox 140 JA4_ro mismatch");
+        let settings = get_browser_settings(Impersonate::FirefoxV140, Some(ImpersonateOS::Linux));
+        assert_eq!(
+            settings
+                .headers
+                .get("user-agent")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            FIREFOX140_USER_AGENT
+        );
+        let text = super::super::compute_akamai_text(&settings.http2);
+        assert_eq!(
+            text, FIREFOX_AKAMAI_TEXT,
+            "Firefox 140 akamai_text mismatch"
+        );
+        assert_eq!(
+            super::super::compute_akamai_hash(&text),
+            FIREFOX_AKAMAI_HASH,
+            "Firefox 140 akamai_hash mismatch"
+        );
     }
 
+    const FIREFOX148_JA4: &str = "t13d1717h2_5b57614c22b0_3cbfd9057e0d";
+    const FIREFOX148_JA4_RO: &str = "t13d1717h2_1301,1303,1302,c02b,c02f,cca9,cca8,c02c,c030,c00a,c009,c013,c014,009c,009d,002f,0035_0000,0017,ff01,000a,000b,0023,0010,0005,0022,0012,0033,002b,000d,002d,001c,001b,fe0d_0403,0503,0603,0804,0805,0806,0401,0501,0601,0203,0201";
     const FIREFOX148_USER_AGENT: &str =
         "Mozilla/5.0 (X11; Linux x86_64; rv:148.0) Gecko/20100101 Firefox/148.0";
-    const FIREFOX148_JA4: &str = "t13d1717h2_5b57614c22b0_3cbfd9057e0d";
-    const FIREFOX148_AKAMAI_HASH: &str = "6ea73faa8fc5aac76bded7bd238f6433";
-    const FIREFOX148_AKAMAI_TEXT: &str = "1:65536;2:0;4:131072;5:16384|12517377|0|m,p,a,s";
 
-    #[tokio::test]
-    #[cfg(feature = "impersonate")]
-    async fn test_firefox148() {
-        let client = Client::builder()
-            .impersonate_os(crate::imp::ImpersonateOS::Linux)
-            .impersonate(Impersonate::FirefoxV148)
-            .build()
-            .unwrap();
-
-        let response = client
-            .get("https://tls.browserleaks.com/json")
-            .send()
-            .await
-            .unwrap();
-
-        let json: BrowserLeaksResponse = response.json().await.unwrap();
-
-        assert_eq!(json.user_agent, FIREFOX148_USER_AGENT);
-        assert_eq!(json.ja4, FIREFOX148_JA4);
-        assert_eq!(json.akamai_hash, FIREFOX148_AKAMAI_HASH);
-        assert_eq!(json.akamai_text, FIREFOX148_AKAMAI_TEXT);
+    #[test]
+    fn firefox148_offline() {
+        let (ja4, ja4_ro) = super::super::extract_ja4(Impersonate::FirefoxV148);
+        assert_eq!(ja4, FIREFOX148_JA4, "Firefox 148 JA4 mismatch");
+        assert_eq!(ja4_ro, FIREFOX148_JA4_RO, "Firefox 148 JA4_ro mismatch");
+        let settings = get_browser_settings(Impersonate::FirefoxV148, Some(ImpersonateOS::Linux));
+        assert_eq!(
+            settings
+                .headers
+                .get("user-agent")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            FIREFOX148_USER_AGENT
+        );
+        let text = super::super::compute_akamai_text(&settings.http2);
+        let hash = super::super::compute_akamai_hash(&text);
+        assert_eq!(
+            text, FIREFOX_AKAMAI_TEXT,
+            "Firefox 148 akamai_text mismatch"
+        );
+        assert_eq!(
+            hash, FIREFOX_AKAMAI_HASH,
+            "Firefox 148 akamai_hash mismatch"
+        );
     }
 }

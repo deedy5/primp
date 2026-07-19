@@ -1,9 +1,4 @@
-//! Edge browser impersonation settings.
-//!
-//! This module provides configuration for impersonating various Edge browser versions.
-//! Edge uses Chrome-based TLS/HTTP2 configs but with Edge-specific headers.
-//! Each version has its own TLS fingerprint, ALPN protocols, and default HTTP headers
-//! that mimic the real Edge browser behavior.
+//! Edge browser impersonation settings (Chrome-based TLS/HTTP2, Edge-specific headers).
 //!
 //! # Usage
 //!
@@ -21,9 +16,8 @@
 //! }
 //! ```
 
+use super::{PseudoId, PseudoOrder, SettingId, SettingsOrder};
 pub use crate::imp::Impersonate;
-#[cfg(feature = "http2")]
-use crate::imp::{PseudoId, PseudoOrder, SettingId, SettingsOrder};
 use http::header::*;
 use rustls::client::{BrowserEmulator, BrowserType, BrowserVersion};
 use rustls::crypto::emulation;
@@ -122,6 +116,30 @@ fn build_user_agent(edge: Impersonate, os: crate::imp::ImpersonateOS) -> &'stati
             crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 EdgiOS/148.0.0.0 Mobile/15E148 Safari/605.1.15",
             _ => unreachable!(),
         },
+        Impersonate::EdgeV149 => match os {
+            crate::imp::ImpersonateOS::Windows => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0",
+            crate::imp::ImpersonateOS::MacOS => "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0",
+            crate::imp::ImpersonateOS::Linux => "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0",
+            crate::imp::ImpersonateOS::Android => "Mozilla/5.0 (Linux; Android 10; Pixel 3 XL) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Mobile Safari/537.36 EdgA/149.0.0.0",
+            crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 EdgiOS/149.0.0.0 Mobile/15E148 Safari/605.1.15",
+            _ => unreachable!(),
+        },
+        Impersonate::EdgeV150 => match os {
+            crate::imp::ImpersonateOS::Windows => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36 Edg/150.0.0.0",
+            crate::imp::ImpersonateOS::MacOS => "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36 Edg/150.0.0.0",
+            crate::imp::ImpersonateOS::Linux => "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36 Edg/150.0.0.0",
+            crate::imp::ImpersonateOS::Android => "Mozilla/5.0 (Linux; Android 10; Pixel 3 XL) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36 EdgA/150.0.0.0",
+            crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 EdgiOS/150.0.0.0 Mobile/15E148 Safari/605.1.15",
+            _ => unreachable!(),
+        },
+        Impersonate::EdgeV151 => match os {
+            crate::imp::ImpersonateOS::Windows => "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36 Edg/151.0.0.0",
+            crate::imp::ImpersonateOS::MacOS => "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36 Edg/151.0.0.0",
+            crate::imp::ImpersonateOS::Linux => "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36 Edg/151.0.0.0",
+            crate::imp::ImpersonateOS::Android => "Mozilla/5.0 (Linux; Android 10; Pixel 3 XL) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Mobile Safari/537.36 EdgA/151.0.0.0",
+            crate::imp::ImpersonateOS::IOS => "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 EdgiOS/151.0.0.0 Mobile/15E148 Safari/605.1.15",
+            _ => unreachable!(),
+        },
         _ => unreachable!(),
     }
 }
@@ -144,33 +162,16 @@ fn build_sec_ch_ua(edge: Impersonate, _os: crate::imp::ImpersonateOS) -> &'stati
         Impersonate::EdgeV148 => {
             r#""Chromium";v="148", "Microsoft Edge";v="148", "Not/A)Brand";v="99""#
         }
+        Impersonate::EdgeV149 => {
+            r#""Microsoft Edge";v="149", "Chromium";v="149", "Not)A;Brand";v="24""#
+        }
+        Impersonate::EdgeV150 => {
+            r#""Not;A=Brand";v="8", "Chromium";v="150", "Microsoft Edge";v="150""#
+        }
+        Impersonate::EdgeV151 => {
+            r#""Not=A?Brand";v="99", "Microsoft Edge";v="151", "Chromium";v="151""#
+        }
         _ => unreachable!(),
-    }
-}
-
-/// Builds HTTP/2 settings for an Edge version.
-#[cfg(feature = "http2")]
-fn build_http2_settings(edge: Impersonate) -> crate::imp::Http2Data {
-    // Edge 146+ uses different header order (sec-ch-ua after sec-fetch-*)
-    let headers_order = if matches!(
-        edge,
-        Impersonate::EdgeV146 | Impersonate::EdgeV147 | Impersonate::EdgeV148
-    ) {
-        Some(crate::imp::header_order_upgrade_first_sec_chua_last().clone())
-    } else {
-        Some(crate::imp::header_order_sec_chua_first().clone())
-    };
-
-    crate::imp::Http2Data {
-        settings_order: Some(edge_settings_order().clone()),
-        headers_pseudo_order: Some(edge_pseudo_order().clone()),
-        headers_order,
-        headers_priority: Some((255, 0, true)),
-        initial_stream_window_size: Some(crate::imp::CHROME_INITIAL_STREAM_WINDOW),
-        initial_connection_window_size: Some(crate::imp::CHROME_INITIAL_CONNECTION_WINDOW),
-        max_header_list_size: Some(crate::imp::CHROME_MAX_HEADER_LIST_SIZE),
-        header_table_size: Some(crate::imp::CHROME_HEADER_TABLE_SIZE),
-        ..Default::default()
     }
 }
 
@@ -196,6 +197,18 @@ fn edge_emulator(edge: Impersonate) -> Arc<BrowserEmulator> {
             static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
             EMU.get_or_init(|| Arc::new(new_edge_emulator(148))).clone()
         }
+        Impersonate::EdgeV149 => {
+            static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
+            EMU.get_or_init(|| Arc::new(new_edge_emulator(149))).clone()
+        }
+        Impersonate::EdgeV150 => {
+            static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
+            EMU.get_or_init(|| Arc::new(new_edge_emulator(150))).clone()
+        }
+        Impersonate::EdgeV151 => {
+            static EMU: OnceLock<Arc<BrowserEmulator>> = OnceLock::new();
+            EMU.get_or_init(|| Arc::new(new_edge_emulator(151))).clone()
+        }
         _ => unreachable!(),
     }
 }
@@ -203,7 +216,12 @@ fn edge_emulator(edge: Impersonate) -> Arc<BrowserEmulator> {
 fn new_edge_emulator(major: u16) -> BrowserEmulator {
     let mut emulator = BrowserEmulator::new(BrowserType::Edge, BrowserVersion::new(major, 0, 0));
     emulator.cipher_suites = Some(emulation::cipher_suites::EDGE.to_vec());
-    emulator.signature_algorithms = Some(emulation::signature_algorithms::EDGE.to_vec());
+    // Edge 150+ advertises ML-DSA post-quantum signature schemes; earlier versions do not.
+    emulator.signature_algorithms = Some(if major >= 150 {
+        emulation::signature_algorithms::CHROME_V150.to_vec()
+    } else {
+        emulation::signature_algorithms::EDGE.to_vec()
+    });
     emulator.named_groups = Some(emulation::named_groups::EDGE.to_vec());
     emulator.extension_order_seed = Some(emulation::extension_order::EDGE);
     emulator
@@ -226,7 +244,32 @@ fn base_edge_headers() -> &'static http::HeaderMap {
     })
 }
 
-#[cfg(feature = "http2")]
+/// Builds HTTP/2 settings for an Edge version.
+fn build_http2_settings(edge: Impersonate) -> crate::imp::Http2Data {
+    // Edge 146-148 uses different header order (sec-ch-ua after sec-fetch-*)
+    // Edge 149 reverts to sec-ch-ua first.
+    let headers_order = if matches!(
+        edge,
+        Impersonate::EdgeV146 | Impersonate::EdgeV147 | Impersonate::EdgeV148
+    ) {
+        Some(crate::imp::header_order_upgrade_first_sec_chua_last().clone())
+    } else {
+        Some(crate::imp::header_order_sec_chua_first().clone())
+    };
+
+    crate::imp::Http2Data {
+        settings_order: Some(edge_settings_order().clone()),
+        headers_pseudo_order: Some(edge_pseudo_order().clone()),
+        headers_order,
+        headers_priority: Some((255, 0, true)),
+        initial_stream_window_size: Some(crate::imp::CHROME_INITIAL_STREAM_WINDOW),
+        initial_connection_window_size: Some(crate::imp::CHROME_INITIAL_CONNECTION_WINDOW),
+        max_header_list_size: Some(crate::imp::CHROME_MAX_HEADER_LIST_SIZE),
+        header_table_size: Some(crate::imp::CHROME_HEADER_TABLE_SIZE),
+        ..Default::default()
+    }
+}
+
 fn edge_settings_order() -> &'static SettingsOrder {
     static ORDER: OnceLock<SettingsOrder> = OnceLock::new();
     ORDER.get_or_init(|| {
@@ -239,7 +282,6 @@ fn edge_settings_order() -> &'static SettingsOrder {
     })
 }
 
-#[cfg(feature = "http2")]
 fn edge_pseudo_order() -> &'static PseudoOrder {
     static ORDER: OnceLock<PseudoOrder> = OnceLock::new();
     ORDER.get_or_init(|| {
@@ -254,44 +296,148 @@ fn edge_pseudo_order() -> &'static PseudoOrder {
 
 #[cfg(test)]
 mod tests {
-    use crate::imp::Impersonate;
-    use crate::Client;
-    use serde::{Deserialize, Serialize};
+    use crate::imp::{get_browser_settings, Impersonate, ImpersonateOS};
 
-    /// BrowserLeaks.com API response structure
-    #[derive(Debug, Serialize, Deserialize)]
-    pub struct BrowserLeaksResponse {
-        pub user_agent: String,
-        pub ja4: String,
-        pub akamai_hash: String,
-        pub akamai_text: String,
+    const EDGE_AKAMAI_TEXT: &str = "1:65536;2:0;4:6291456;6:262144|15663105|0|m,a,s,p";
+    const EDGE_AKAMAI_HASH: &str = "52d84b11737d980aef856699f885ca86";
+
+    const EDGE146_JA4: &str = "t13d1516h2_8daaf6152771_d8a2da3f94cd";
+    const EDGE146_JA4_RO: &str = "t13d1516h2_1301,1302,1303,c02b,c02f,c02c,c030,cca9,cca8,c013,c014,009c,009d,002f,0035_ff01,0017,0023,0012,0005,000d,001b,0000,0033,000b,000a,fe0d,0010,44cd,002d,002b_0403,0804,0401,0503,0805,0501,0806,0601";
+    const EDGE146_USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0";
+
+    #[test]
+    fn edge146_offline() {
+        let (ja4, ja4_ro) = super::super::extract_ja4(Impersonate::EdgeV146);
+        assert_eq!(ja4, EDGE146_JA4, "Edge 146 JA4 mismatch");
+        assert_eq!(ja4_ro, EDGE146_JA4_RO, "Edge 146 JA4_ro mismatch");
+        let settings = get_browser_settings(Impersonate::EdgeV146, Some(ImpersonateOS::Linux));
+        assert_eq!(
+            settings
+                .headers
+                .get("user-agent")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            EDGE146_USER_AGENT
+        );
+        let text = super::super::compute_akamai_text(&settings.http2);
+        assert_eq!(text, EDGE_AKAMAI_TEXT, "Edge 146 akamai_text mismatch");
+        assert_eq!(
+            super::super::compute_akamai_hash(&text),
+            EDGE_AKAMAI_HASH,
+            "Edge 146 akamai_hash mismatch"
+        );
     }
 
-    const EDGE146_USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0";
-    const EDGE146_JA4: &str = "t13d1516h2_8daaf6152771_d8a2da3f94cd";
-    const EDGE146_AKAMAI_HASH: &str = "52d84b11737d980aef856699f885ca86";
-    const EDGE146_AKAMAI_TEXT: &str = "1:65536;2:0;4:6291456;6:262144|15663105|0|m,a,s,p";
+    const EDGE148_JA4: &str = "t13d1516h2_8daaf6152771_d8a2da3f94cd";
+    const EDGE148_JA4_RO: &str = "t13d1516h2_1301,1302,1303,c02b,c02f,c02c,c030,cca9,cca8,c013,c014,009c,009d,002f,0035_0012,0005,0033,002d,0023,ff01,000d,0010,002b,fe0d,0000,0017,000a,44cd,001b,000b_0403,0804,0401,0503,0805,0501,0806,0601";
+    const EDGE148_USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0";
 
-    #[tokio::test]
-    #[cfg(feature = "impersonate")]
-    async fn test_edge146() {
-        let client = Client::builder()
-            .impersonate_os(crate::imp::ImpersonateOS::Linux)
-            .impersonate(Impersonate::EdgeV146)
-            .build()
-            .unwrap();
+    #[test]
+    fn edge148_offline() {
+        let (ja4, ja4_ro) = super::super::extract_ja4(Impersonate::EdgeV148);
+        assert_eq!(ja4, EDGE148_JA4, "Edge 148 JA4 mismatch");
+        assert_eq!(ja4_ro, EDGE148_JA4_RO, "Edge 148 JA4_ro mismatch");
+        let settings = get_browser_settings(Impersonate::EdgeV148, Some(ImpersonateOS::Linux));
+        assert_eq!(
+            settings
+                .headers
+                .get("user-agent")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            EDGE148_USER_AGENT
+        );
+        let text = super::super::compute_akamai_text(&settings.http2);
+        assert_eq!(text, EDGE_AKAMAI_TEXT, "Edge 148 akamai_text mismatch");
+        assert_eq!(
+            super::super::compute_akamai_hash(&text),
+            EDGE_AKAMAI_HASH,
+            "Edge 148 akamai_hash mismatch"
+        );
+    }
 
-        let response = client
-            .get("https://tls.browserleaks.com/json")
-            .send()
-            .await
-            .unwrap();
+    const EDGE149_JA4: &str = "t13d1516h2_8daaf6152771_d8a2da3f94cd";
+    const EDGE149_JA4_RO: &str = "t13d1516h2_1301,1302,1303,c02b,c02f,c02c,c030,cca9,cca8,c013,c014,009c,009d,002f,0035_000a,0033,0010,ff01,0000,0012,0005,0017,0023,44cd,001b,002d,002b,fe0d,000d,000b_0403,0804,0401,0503,0805,0501,0806,0601";
+    const EDGE149_USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0";
 
-        let json: BrowserLeaksResponse = response.json().await.unwrap();
+    #[test]
+    fn edge149_offline() {
+        let (ja4, ja4_ro) = super::super::extract_ja4(Impersonate::EdgeV149);
+        assert_eq!(ja4, EDGE149_JA4, "Edge 149 JA4 mismatch");
+        assert_eq!(ja4_ro, EDGE149_JA4_RO, "Edge 149 JA4_ro mismatch");
+        let settings = get_browser_settings(Impersonate::EdgeV149, Some(ImpersonateOS::Linux));
+        assert_eq!(
+            settings
+                .headers
+                .get("user-agent")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            EDGE149_USER_AGENT
+        );
+        let text = super::super::compute_akamai_text(&settings.http2);
+        assert_eq!(text, EDGE_AKAMAI_TEXT, "Edge 149 akamai_text mismatch");
+        assert_eq!(
+            super::super::compute_akamai_hash(&text),
+            EDGE_AKAMAI_HASH,
+            "Edge 149 akamai_hash mismatch"
+        );
+    }
 
-        assert_eq!(json.user_agent, EDGE146_USER_AGENT);
-        assert_eq!(json.ja4, EDGE146_JA4);
-        assert_eq!(json.akamai_hash, EDGE146_AKAMAI_HASH);
-        assert_eq!(json.akamai_text, EDGE146_AKAMAI_TEXT);
+    const EDGE150_JA4: &str = "t13d1516h2_8daaf6152771_806a8c22fdea";
+    const EDGE150_JA4_RO: &str = "t13d1516h2_1301,1302,1303,c02b,c02f,c02c,c030,cca9,cca8,c013,c014,009c,009d,002f,0035_0005,ff01,0012,0010,fe0d,0017,0023,000b,000a,001b,0000,002b,44cd,002d,0033,000d_0904,0905,0906,0403,0804,0401,0503,0805,0501,0806,0601";
+    const EDGE150_USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36 Edg/150.0.0.0";
+
+    #[test]
+    fn edge150_offline() {
+        let (ja4, ja4_ro) = super::super::extract_ja4(Impersonate::EdgeV150);
+        assert_eq!(ja4, EDGE150_JA4, "Edge 150 JA4 mismatch");
+        assert_eq!(ja4_ro, EDGE150_JA4_RO, "Edge 150 JA4_ro mismatch");
+        let settings = get_browser_settings(Impersonate::EdgeV150, Some(ImpersonateOS::Linux));
+        assert_eq!(
+            settings
+                .headers
+                .get("user-agent")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            EDGE150_USER_AGENT
+        );
+        let text = super::super::compute_akamai_text(&settings.http2);
+        assert_eq!(text, EDGE_AKAMAI_TEXT, "Edge 150 akamai_text mismatch");
+        assert_eq!(
+            super::super::compute_akamai_hash(&text),
+            EDGE_AKAMAI_HASH,
+            "Edge 150 akamai_hash mismatch"
+        );
+    }
+
+    const EDGE151_JA4: &str = "t13d1516h2_8daaf6152771_806a8c22fdea";
+    const EDGE151_JA4_RO: &str = "t13d1516h2_1301,1302,1303,c02b,c02f,c02c,c030,cca9,cca8,c013,c014,009c,009d,002f,0035_0012,000d,0017,44cd,002d,fe0d,ff01,002b,0023,0010,0005,0033,000a,000b,0000,001b_0904,0905,0906,0403,0804,0401,0503,0805,0501,0806,0601";
+    const EDGE151_USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36 Edg/151.0.0.0";
+
+    #[test]
+    fn edge151_offline() {
+        let (ja4, ja4_ro) = super::super::extract_ja4(Impersonate::EdgeV151);
+        assert_eq!(ja4, EDGE151_JA4, "Edge 151 JA4 mismatch");
+        assert_eq!(ja4_ro, EDGE151_JA4_RO, "Edge 151 JA4_ro mismatch");
+        let settings = get_browser_settings(Impersonate::EdgeV151, Some(ImpersonateOS::Linux));
+        assert_eq!(
+            settings
+                .headers
+                .get("user-agent")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            EDGE151_USER_AGENT
+        );
+        let text = super::super::compute_akamai_text(&settings.http2);
+        assert_eq!(text, EDGE_AKAMAI_TEXT, "Edge 151 akamai_text mismatch");
+        assert_eq!(
+            super::super::compute_akamai_hash(&text),
+            EDGE_AKAMAI_HASH,
+            "Edge 151 akamai_hash mismatch"
+        );
     }
 }

@@ -278,8 +278,7 @@ pub mod extension_order {
 
     /// Opera's extension order seed (VESTIGIAL — do not use).
     /// NOTE: `imp/opera/mod.rs::new_opera_emulator` intentionally reuses
-    /// `CHROME` (0x8daa) instead — every real Opera capture in
-    /// `tls_real_profiles/` (`opera_129/131/132/133.txt`) has the SAME JA4
+    /// `CHROME` (0x8daa) instead — every real Opera capture has the SAME JA4
     /// extension-order hash as Chrome, so switching Opera to this seed would
     /// produce a JA4 matching no real browser. Kept only because it is
     /// referenced by tests/comments; dead code.

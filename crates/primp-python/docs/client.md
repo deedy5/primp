@@ -34,11 +34,11 @@ primp.Client(
 
 | Browser | Versions |
 |---------|----------|
-| Chrome | `chrome_144`, `chrome_145`, `chrome_146`, `chrome` |
-| Safari | `safari_18.5`, `safari_26`, `safari_26.3`, `safari` |
-| Edge | `edge_144`, `edge_145`, `edge_146`, `edge` |
-| Firefox | `firefox_140`, `firefox_146`, `firefox_147`, `firefox_148`, `firefox` |
-| Opera | `opera_126`, `opera_127`, `opera_128`, `opera_129`, `opera` |
+| Chrome | `chrome_144`, `chrome_145`, `chrome_146`, `chrome_147`, `chrome_148`, `chrome_149`, `chrome_150`, `chrome_151`, `chrome_152`, `chrome` |
+| Safari | `safari_18.5`, `safari_26`, `safari_26.3`, `safari_26.4`, `safari` |
+| Edge | `edge_144`, `edge_145`, `edge_146`, `edge_147`, `edge_148`, `edge_149`, `edge_150`, `edge_151`, `edge` |
+| Firefox | `firefox_140`, `firefox_146`, `firefox_147`, `firefox_148`, `firefox_149`, `firefox_150`, `firefox_151`, `firefox` |
+| Opera | `opera_126`, `opera_127`, `opera_128`, `opera_129`, `opera_130`, `opera_131`, `opera_132`, `opera_133`, `opera_134`, `opera_135`, `opera` |
 | Random | `random` |
 
 ## OS Impersonation
@@ -50,11 +50,11 @@ primp.Client(
 ### HTTP Methods
 
 ```python
-client.get(url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, read_timeout=None)
+client.get(url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, read_timeout=None, follow_redirects=None, stream=False)
 client.head(url, ...)
 client.options(url, ...)
 client.delete(url, ...)
-client.post(url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, read_timeout=None)
+client.post(url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None, timeout=None, read_timeout=None, follow_redirects=None, stream=False)
 client.put(url, ...)
 client.patch(url, ...)
 ```
@@ -75,6 +75,8 @@ client.patch(url, ...)
 | `auth_bearer` | str | Bearer token |
 | `timeout` | float | Total timeout in seconds |
 | `read_timeout` | float | Read timeout in seconds (max gap between bytes) |
+| `follow_redirects` | bool | Per-request redirect policy override (`None` = client default) |
+| `stream` | bool | Return a streaming response (iterate `iter_bytes()`/`iter_text()`) |
 
 ### Cookie Management
 
@@ -96,6 +98,21 @@ client.headers_update({"X-Custom": "value"})  # Merge
 ```python
 proxy = client.proxy
 client.proxy = "http://127.0.0.1:8080"
+# Clear the proxy
+client.proxy = None
+```
+
+### Redirects
+
+The `follow_redirects` and `max_redirects` constructor parameters set the
+default redirect policy. A per-request `follow_redirects=True` on a
+`get`/`post`/etc. call overrides the redirect policy for that request
+while still honoring the client-level `max_redirects` setting.
+
+```python
+client = primp.Client(follow_redirects=True, max_redirects=5)
+# follow_redirects=True uses max_redirects=5 (not a hard-coded value)
+resp = client.get("https://httpbin.org/redirect/1", follow_redirects=True)
 ```
 
 ## Environment Variables
