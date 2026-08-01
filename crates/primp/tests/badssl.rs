@@ -1,0 +1,99 @@
+#[tokio::test]
+async fn test_badssl_modern() {
+    let text = primp::Client::builder()
+        .no_proxy()
+        .build()
+        .unwrap()
+        .get("https://mozilla-modern.badssl.com/")
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+
+    assert!(text.contains("<title>mozilla-modern.badssl.com</title>"));
+}
+
+#[tokio::test]
+async fn test_badssl_self_signed() {
+    let text = primp::Client::builder()
+        .tls_danger_accept_invalid_certs(true)
+        .no_proxy()
+        .build()
+        .unwrap()
+        .get("https://self-signed.badssl.com/")
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+
+    assert!(text.contains("<title>self-signed.badssl.com</title>"));
+}
+
+#[tokio::test]
+async fn test_badssl_wrong_host_hostname_skip_keeps_chain_verification() {
+    // Hostname-skip must keep chain verification (wrong.host.badssl.com is
+    // CA-signed); a regression built the verifier with an empty store.
+    let text = primp::Client::builder()
+        .tls_danger_accept_invalid_hostnames(true)
+        .no_proxy()
+        .build()
+        .unwrap()
+        .get("https://wrong.host.badssl.com/")
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+
+    assert!(text.contains("<title>wrong.host.badssl.com</title>"));
+}
+
+#[tokio::test]
+async fn test_badssl_no_built_in_roots() {
+    let result = primp::Client::builder()
+        .tls_certs_only([])
+        .no_proxy()
+        .build()
+        .unwrap()
+        .get("https://mozilla-modern.badssl.com/")
+        .send()
+        .await;
+
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn test_badssl_wrong_host() {
+    // With hostname verification enabled (default), wrong host should fail
+    let result = primp::Client::builder()
+        .no_proxy()
+        .build()
+        .unwrap()
+        .get("https://wrong.host.badssl.com/")
+        .send()
+        .await;
+
+    assert!(result.is_err());
+
+    // With hostname verification disabled, wrong host should succeed
+    let text = primp::Client::builder()
+        .tls_danger_accept_invalid_certs(true)
+        .tls_danger_accept_invalid_hostnames(true)
+        .no_proxy()
+        .build()
+        .unwrap()
+        .get("https://wrong.host.badssl.com/")
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+
+    assert!(text.contains("<title>wrong.host.badssl.com</title>"));
+}
