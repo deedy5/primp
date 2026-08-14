@@ -217,6 +217,8 @@ class HttpbinRequestHandler(BaseHTTPRequestHandler):
             self._handle_gzip()
         elif path == "/invalid-gzip":
             self._handle_invalid_gzip()
+        elif path == "/invalid-json":
+            self._handle_invalid_json()
         elif path == "/invalid-deflate":
             self._handle_invalid_deflate()
         elif path == "/broken-chunked":
@@ -225,8 +227,14 @@ class HttpbinRequestHandler(BaseHTTPRequestHandler):
             self._handle_broken_body()
         elif path == "/xml":
             self._handle_xml()
+        elif path == "/latin1":
+            self._handle_latin1()
         elif path == "/upgrade":
             self._handle_upgrade()
+        elif path == "/utf8-stream":
+            self._handle_utf8_stream(parsed_url)
+        elif path == "/stream-delay":
+            self._handle_stream_delay(parsed_url)
         else:
             self._send_json_response({"error": "Not Found"}, 404)
     
@@ -418,7 +426,79 @@ class HttpbinRequestHandler(BaseHTTPRequestHandler):
                 pass
         else:
             self._send_json_response({"error": "Invalid stream path"}, 400)
-    
+
+    def _handle_utf8_stream(self, parsed_url) -> None:
+        """Stream a UTF-8 string split into small chunks (default 2 bytes) to
+        force character boundaries across chunk reads. Override via
+        ``?text=...&bpc=N``.
+        """
+        from urllib.parse import parse_qs
+
+        query = parse_qs(parsed_url.query)
+        text = query.get("text", ["中文测试abc"])[0]
+        try:
+            bpc = int(query.get("bpc", ["2"])[0])
+        except (TypeError, ValueError):
+            bpc = 2
+        if bpc < 1:
+            bpc = 1
+
+        payload = text.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Transfer-Encoding", "chunked")
+        self.end_headers()
+
+        try:
+            for i in range(0, len(payload), bpc):
+                piece = payload[i : i + bpc]
+                self.wfile.write(f"{len(piece):x}\r\n".encode())
+                self.wfile.write(piece)
+                self.wfile.write(b"\r\n")
+            self.wfile.write(b"0\r\n\r\n")
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+
+    def _handle_stream_delay(self, parsed_url) -> None:
+        """Chunked stream that sleeps between fragments.
+
+        ``?text=...&bpc=N&delay=SECONDS`` drips a slow body one fragment at a
+        time. Used to force the TOCTOU race in iterator tests: a slow body
+        keeps a concurrent drain mid-flight while the iterator's poll runs.
+        """
+        query = parse_qs(parsed_url.query)
+        text = query.get("text", ["hello world"])[0]
+        try:
+            bpc = int(query.get("bpc", ["2"])[0])
+        except (TypeError, ValueError):
+            bpc = 2
+        if bpc < 1:
+            bpc = 1
+        try:
+            delay = float(query.get("delay", ["0.1"])[0])
+        except (TypeError, ValueError):
+            delay = 0.1
+
+        payload = text.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Transfer-Encoding", "chunked")
+        self.end_headers()
+
+        try:
+            for i in range(0, len(payload), bpc):
+                piece = payload[i : i + bpc]
+                self.wfile.write(f"{len(piece):x}\r\n".encode())
+                self.wfile.write(piece)
+                self.wfile.write(b"\r\n")
+                self.wfile.flush()
+                if i + bpc < len(payload):
+                    time.sleep(delay)
+            self.wfile.write(b"0\r\n\r\n")
+            self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+
     def _handle_status(self, path: str) -> None:
         """Handle /status/<code> endpoint."""
         match = re.match(r"/status/(\d+)", path)
@@ -524,6 +604,24 @@ class HttpbinRequestHandler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError, OSError):
             pass
 
+    def _handle_invalid_json(self) -> None:
+        """Handle /invalid-json endpoint - returns malformed JSON.
+
+        Used to verify that `response.json()` raises a `DecodeError` (which is
+        a `PrimpError` subclass) so callers catching `PrimpError` still catch
+        JSON parse failures.
+        """
+        invalid_json = b"{not valid json"
+
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(invalid_json)))
+        self.end_headers()
+        try:
+            self.wfile.write(invalid_json)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+
     def _handle_invalid_gzip(self) -> None:
         """Handle /invalid-gzip endpoint - returns invalid gzip data."""
         # Send invalid gzip data that will cause DecodeError when client tries to decompress
@@ -597,6 +695,18 @@ class HttpbinRequestHandler(BaseHTTPRequestHandler):
         response_body = xml_content.encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/xml")
+        self.send_header("Content-Length", str(len(response_body)))
+        self.end_headers()
+        try:
+            self.wfile.write(response_body)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+
+    def _handle_latin1(self) -> None:
+        """Handle /latin1 endpoint - latin-1 (iso-8859-1) encoded body."""
+        response_body = "café\nnaïve line\n".encode("latin-1")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=iso-8859-1")
         self.send_header("Content-Length", str(len(response_body)))
         self.end_headers()
         try:

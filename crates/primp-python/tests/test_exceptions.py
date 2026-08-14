@@ -4,6 +4,8 @@ Comprehensive tests for all exception types in primp.
 Tests each exception type with real scenarios that trigger them,
 using the local test server to raise real exceptions.
 """
+import json
+
 import pytest
 
 import primp
@@ -13,6 +15,8 @@ from primp import (
     RequestError,
     ConnectError,
     TimeoutError,
+    DNSError,
+    DNSTimeoutError,
     StatusError,
     RedirectError,
     BodyError,
@@ -35,9 +39,16 @@ class TestExceptionHierarchy:
         assert issubclass(UpgradeError, PrimpError)
 
     def test_request_error_children(self):
-        """RequestError should have ConnectError and TimeoutError as children."""
+        """RequestError should have ConnectError, TimeoutError and DNSError as children."""
         assert issubclass(ConnectError, RequestError)
         assert issubclass(TimeoutError, RequestError)
+        assert issubclass(DNSError, RequestError)
+
+    def test_dnstimeout_error_children(self):
+        """DNSTimeoutError should inherit from both DNSError and TimeoutError."""
+        assert issubclass(DNSTimeoutError, DNSError)
+        assert issubclass(DNSTimeoutError, TimeoutError)
+        assert issubclass(DNSTimeoutError, RequestError)
 
 
 class TestBuilderError:
@@ -137,6 +148,71 @@ class TestTimeoutError:
             client.get(f"{test_server}/delay/5", timeout=0.5)
 
 
+class TestDNSError:
+    """Test DNSError exception with real scenarios."""
+
+    def test_nxdomain(self):
+        """Non-resolvable hostname should raise DNSError."""
+        client = primp.Client()
+        with pytest.raises(DNSError):
+            # .invalid is a reserved TLD (RFC 6761) guaranteed not to resolve
+            client.get("https://no-such-host.invalid", timeout=5)
+
+    def test_can_catch_as_request_error(self):
+        """DNSError should be catchable as RequestError."""
+        client = primp.Client()
+        with pytest.raises(RequestError):
+            client.get("https://no-such-host.invalid", timeout=5)
+
+    def test_can_catch_as_primp_error(self):
+        """DNSError should be catchable as PrimpError."""
+        client = primp.Client()
+        with pytest.raises(PrimpError):
+            client.get("https://no-such-host.invalid", timeout=5)
+
+
+class TestDNSTimeoutError:
+    """Test DNSTimeoutError, the combined DNSError + TimeoutError exception.
+
+    No live trigger exists (only the 30s cache deadline classifies as both),
+    so catchability through both parents and non-shadowing are pinned.
+    """
+
+    def test_can_catch_as_dns_error(self):
+        """DNSTimeoutError should be catchable as DNSError."""
+        with pytest.raises(DNSError):
+            raise DNSTimeoutError("dns lookup timed out")
+
+    def test_can_catch_as_timeout_error(self):
+        """DNSTimeoutError should be catchable as TimeoutError."""
+        with pytest.raises(TimeoutError):
+            raise DNSTimeoutError("dns lookup timed out")
+
+    def test_can_catch_as_request_error(self):
+        """DNSTimeoutError should be catchable as RequestError."""
+        with pytest.raises(RequestError):
+            raise DNSTimeoutError("dns lookup timed out")
+
+    def test_can_catch_as_primp_error(self):
+        """DNSTimeoutError should be catchable as PrimpError."""
+        with pytest.raises(PrimpError):
+            raise DNSTimeoutError("dns lookup timed out")
+
+    def test_nxdomain_is_not_dnstimeout(self):
+        """Plain NXDOMAIN should raise DNSError, not DNSTimeoutError."""
+        client = primp.Client()
+        with pytest.raises(DNSError) as exc_info:
+            client.get("https://no-such-host.invalid", timeout=5)
+        assert not isinstance(exc_info.value, DNSTimeoutError)
+
+    def test_request_timeout_is_not_dnstimeout(self, test_server):
+        """A plain request timeout should raise TimeoutError, not DNSTimeoutError."""
+        client = primp.Client()
+        with pytest.raises(TimeoutError) as exc_info:
+            client.get(f"{test_server}/delay/5", timeout=0.5)
+        assert not isinstance(exc_info.value, DNSTimeoutError)
+
+
 class TestStatusError:
     """Test StatusError exception with real scenarios."""
 
@@ -209,6 +285,23 @@ class TestRedirectError:
         with pytest.raises(PrimpError):
             client.get(f"{test_server}/redirect/10")
 
+    def test_per_request_follow_redirects_respects_max_redirects(self, test_server):
+        """Per-request follow_redirects=True must honor client max_redirects.
+
+        Regression: previously per-request follow_redirects=True silently
+        overrode the client's max_redirects with a hard-coded value (20).
+        """
+        client = primp.Client(follow_redirects=False, max_redirects=2)
+        with pytest.raises(RedirectError):
+            client.get(f"{test_server}/redirect/10", follow_redirects=True)
+
+    @pytest.mark.asyncio
+    async def test_per_request_follow_redirects_respects_max_redirects_async(self, test_server):
+        """Per-request follow_redirects=True must honor client max_redirects (async)."""
+        client = primp.AsyncClient(follow_redirects=False, max_redirects=2)
+        with pytest.raises(RedirectError):
+            await client.get(f"{test_server}/redirect/10", follow_redirects=True)
+
 
 class TestDecodeError:
     """Test DecodeError exception with real scenarios.
@@ -243,6 +336,50 @@ class TestDecodeError:
         response = client.get(f"{test_server}/invalid-gzip")
         with pytest.raises(PrimpError):
             _ = response.content
+
+    def test_invalid_json_raises_decode_error(self, test_server):
+        """Malformed JSON must raise DecodeError (a PrimpError subclass).
+
+        This guards against regressions where the JSON parser surfaced a
+        stdlib `json.JSONDecodeError` (a `ValueError`), which escapes the
+        `PrimpError` hierarchy and silently breaks `except PrimpError`.
+        """
+        client = primp.Client()
+        response = client.get(f"{test_server}/invalid-json")
+        with pytest.raises(DecodeError):
+            _ = response.json()
+
+    def test_invalid_json_catchable_as_primp_error(self, test_server):
+        """A JSON parse failure must still be catchable via `except PrimpError`."""
+        client = primp.Client()
+        response = client.get(f"{test_server}/invalid-json")
+        with pytest.raises(PrimpError):
+            _ = response.json()
+
+    def test_invalid_json_catchable_as_json_decode_error(self, test_server):
+        """A JSON parse failure must also be catchable via `except json.JSONDecodeError`.
+
+        The combined JSONDecodeError inherits from both DecodeError and
+        json.JSONDecodeError, so stdlib-style catching still works.
+        """
+        client = primp.Client()
+        response = client.get(f"{test_server}/invalid-json")
+        with pytest.raises(json.JSONDecodeError):
+            _ = response.json()
+
+    def test_invalid_json_preserves_position_info(self, test_server):
+        """A JSON parse failure must preserve .doc, .pos, .lineno, .colno."""
+        client = primp.Client()
+        response = client.get(f"{test_server}/invalid-json")
+        with pytest.raises(DecodeError) as excinfo:
+            _ = response.json()
+        err = excinfo.value
+        assert hasattr(err, "doc"), "JSONDecodeError must have .doc"
+        assert hasattr(err, "pos"), "JSONDecodeError must have .pos"
+        assert hasattr(err, "lineno"), "JSONDecodeError must have .lineno"
+        assert hasattr(err, "colno"), "JSONDecodeError must have .colno"
+        # The doc should contain the raw response body
+        assert "{not valid json" in err.doc
 
 
 class TestBodyError:
@@ -329,6 +466,14 @@ class TestAsyncExceptions:
         client = primp.AsyncClient()
         with pytest.raises(TimeoutError):
             await client.get(f"{test_server}/delay/5", timeout=0.5)
+
+    @pytest.mark.asyncio
+    async def test_dns_error_async(self):
+        """Non-resolvable hostname should raise DNSError with async client."""
+        client = primp.AsyncClient()
+        with pytest.raises(DNSError):
+            # .invalid is a reserved TLD (RFC 6761) guaranteed not to resolve
+            await client.get("https://no-such-host.invalid", timeout=5)
 
     @pytest.mark.asyncio
     async def test_status_error_async(self, test_server):
