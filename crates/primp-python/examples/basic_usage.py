@@ -39,3 +39,11 @@ print(f"Status: {resp.status_code}")
 client = primp.Client(follow_redirects=True)
 resp = client.get("https://httpbin.org/redirect/1", follow_redirects=False)
 print(f"Status: {resp.status_code}")
+
+# Client-level max_redirects (limits total redirects across the client)
+client = primp.Client(follow_redirects=True, max_redirects=5)
+
+# Per-request follow_redirects=True respects the client's max_redirects
+# (i.e. it does NOT silently fall back to a hard-coded value)
+resp = client.get("https://httpbin.org/redirect/1", follow_redirects=True)
+print(f"Status: {resp.status_code}")

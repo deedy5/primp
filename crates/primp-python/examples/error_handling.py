@@ -37,12 +37,19 @@ try:
 except primp.ConnectError as e:
     print(f"Connection error: {e}")
 
-# JSON decode errors (standard Python exception, not primp)
+# JSON decode errors (catchable as both PrimpError and json.JSONDecodeError)
+try:
+    resp = client.get("https://httpbin.org/html")
+    data = resp.json()
+except primp.PrimpError as e:
+    print(f"JSON decode error: {e}")
+
+# You can also catch as stdlib json.JSONDecodeError (preserves .doc/.pos)
 try:
     resp = client.get("https://httpbin.org/html")
     data = resp.json()
 except json.JSONDecodeError as e:
-    print(f"JSON decode error: {e}")
+    print(f"JSON decode error at line {e.lineno}: {e}")
 
 # Catch-all
 try:

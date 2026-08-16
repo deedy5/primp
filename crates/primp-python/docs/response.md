@@ -21,7 +21,7 @@ All properties are synchronous and work identically for both sync and async clie
 
 | Method | Description |
 |:-------|:------------|
-| `.json()` | Parse as JSON (raises `json.JSONDecodeError` on failure) |
+| `.json()` | Parse as JSON (raises `JSONDecodeError` on failure, also catchable as `json.JSONDecodeError`) |
 | `.raise_for_status()` | Raise `StatusError` for 4xx/5xx |
 
 ## Streaming
