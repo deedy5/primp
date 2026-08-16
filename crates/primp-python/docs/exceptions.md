@@ -8,29 +8,40 @@ Exception hierarchy for error handling in primp.
 PrimpError (base exception)
 ├── BuilderError          # Client/request builder errors
 ├── RequestError          # Generic request errors
-│   ├── ConnectError     # Connection errors (DNS, proxy, SSL)
-│   └── TimeoutError     # Request timeout
-├── StatusError           # HTTP 4xx/5xx (has status_code attribute)
+│   ├── ConnectError     # Connection errors (proxy, SSL, network — NOT DNS)
+│   ├── TimeoutError     # Request timeout
+│   └── DNSError         # DNS resolution failure (not a timeout)
+│       └── DNSTimeoutError  # DNS resolution timeout (also a TimeoutError)
+├── StatusError           # HTTP 4xx/5xx (status_code in args[0])
 ├── RedirectError         # Too many redirects
 ├── BodyError             # Body/stream errors
 ├── DecodeError           # Content decoding errors
 └── UpgradeError          # Protocol upgrade errors
 ```
 
-## Attributes
+`DNSTimeoutError` subclasses **both** `DNSError` and `TimeoutError` (like
+`JSONDecodeError`), so a DNS lookup timeout is catchable via either parent.
 
-| Exception | Attributes | Description |
-|-----------|------------|-------------|
-| `PrimpError` | `url: str \| None` | Base exception |
-| `BuilderError` | `url` | Invalid URL, headers |
-| `RequestError` | `url` | Generic request errors |
-| `ConnectError` | `url` | DNS, proxy, SSL, network |
-| `TimeoutError` | `url` | Request/connection timeout |
-| `StatusError` | `status_code: int`, `url` | HTTP 4xx/5xx |
-| `RedirectError` | `url` | Redirect limit exceeded |
-| `BodyError` | `url` | Body/stream I/O errors |
-| `DecodeError` | `url` | gzip/deflate/zstd decoding |
-| `UpgradeError` | `url` | Protocol upgrade errors |
+## Arguments
+
+All exceptions store their context in `args` (the standard Python exception tuple).
+
+| Exception | `args` | Description |
+|-----------|--------|-------------|
+| `PrimpError` | `(message,)` or `(message, url)` | Base exception (fallback) |
+| `BuilderError` | `(message,)` or `(message, url: str \| None)` | Invalid URL, headers |
+| `RequestError` | `(message,)` | Generic request errors |
+| `ConnectError` | `(message,)` | Proxy, SSL, network (DNS errors classify as `DNSError`, see below) |
+| `TimeoutError` | `(message,)` | Request/connection timeout |
+| `DNSError` | `(message,)` | DNS resolution failure (NXDOMAIN, resolver error) — not a timeout |
+| `DNSTimeoutError` | `(message,)` | DNS resolution timeout (subclass of both `DNSError` and `TimeoutError`) |
+| `StatusError` | `(status_code: int, message: str, url: str \| None)` | HTTP 4xx/5xx |
+| `RedirectError` | `(message, url: str \| None)` | Redirect limit exceeded |
+| `BodyError` | `(message,)` or `(message, url: str \| None)` | Body/stream I/O errors; `(message,)` for body-collection errors, `(message, url)` otherwise |
+| `DecodeError` | `(message,)` or `(message, url: str \| None)` | gzip/deflate/zstd decoding; `(message,)` for body-collection errors, `(message, url)` otherwise |
+| `UpgradeError` | `(message, url: str \| None)` | Protocol upgrade errors |
+
+Access values via `e.args[0]`, `e.args[1]`, etc. The status code for `StatusError` is `e.args[0]`.
 
 ## Examples
 
@@ -47,7 +58,7 @@ except primp.BuilderError as e:
 
 ```python
 try:
-    client.get("https://nonexistent-domain-12345.com")
+    client.get("http://127.0.0.1:1/")  # Nothing listening -> connect refused
 except primp.ConnectError as e:
     print(f"Connection error: {e}")
 ```
@@ -61,6 +72,34 @@ except primp.TimeoutError as e:
     print(f"Timeout: {e}")
 ```
 
+### DNSError
+
+```python
+try:
+    client.get("https://no-such-hostname.invalid")  # NXDOMAIN
+except primp.DNSError as e:
+    print(f"DNS resolution failed: {e}")
+```
+
+### DNSTimeoutError
+
+A DNS lookup that times out is raised as `DNSTimeoutError` — a subclass of
+**both** `DNSError` and `TimeoutError` — so it is caught by either:
+
+```python
+# Catch all DNS problems (failures AND timeouts)
+try:
+    client.get("https://slow-dns.invalid")
+except primp.DNSError as e:
+    print(f"DNS problem (failure or timeout): {e}")
+
+# Or treat it as a timeout specifically
+try:
+    client.get("https://slow-dns.invalid")
+except primp.TimeoutError as e:
+    print(f"Timed out (request or DNS): {e}")
+```
+
 ### StatusError
 
 ```python
@@ -68,7 +107,8 @@ resp = client.get("https://httpbin.org/status/404")
 try:
     resp.raise_for_status()
 except primp.StatusError as e:
-    print(f"HTTP {e.status_code} error: {e}")
+    # e.args = (status_code, message, url)
+    print(f"HTTP {e.args[0]} error: {e}")
 ```
 
 ### RedirectError
@@ -93,15 +133,26 @@ except primp.DecodeError as e:
 
 ### JSON Decode Errors
 
-`response.json()` raises standard `json.JSONDecodeError`, not a primp exception:
+`response.json()` raises a combined `JSONDecodeError` inheriting from **both**
+`DecodeError` (a `PrimpError` subclass) and `json.JSONDecodeError` (a `ValueError`
+subclass). This mirrors the `requests` library pattern — the error is catchable
+via `except PrimpError`, `except DecodeError`, or `except json.JSONDecodeError`:
 
 ```python
 import json
+import primp
 
+# Catch as PrimpError (works for all primp errors)
+try:
+    data = resp.json()
+except primp.PrimpError as e:
+    print(f"Request/parse error: {e}")
+
+# Catch as json.JSONDecodeError (stdlib-style, preserves .doc/.pos/.lineno/.colno)
 try:
     data = resp.json()
 except json.JSONDecodeError as e:
-    print(f"JSON decode error: {e}")
+    print(f"JSON decode error at line {e.lineno}: {e}")
 ```
 
 ## Best Practices
@@ -118,7 +169,8 @@ except primp.TimeoutError:
 except primp.ConnectError:
     print("Connection failed")
 except primp.StatusError as e:
-    print(f"HTTP {e.status_code} error")
+    # e.args = (status_code, message, url)
+    print(f"HTTP {e.args[0]} error")
 except primp.PrimpError as e:
     print(f"Other error: {e}")
 ```

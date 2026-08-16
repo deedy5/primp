@@ -5,6 +5,8 @@ This module provides both synchronous and asynchronous HTTP clients with
 browser impersonation capabilities.
 """
 
+import json
+
 from collections.abc import Mapping
 from typing import (
     Any,
@@ -49,6 +51,16 @@ class TimeoutError(RequestError):
 
     ...
 
+class DNSError(RequestError):
+    """DNS resolution error (NXDOMAIN, resolver failure); timeouts raise DNSTimeoutError."""
+
+    ...
+
+class DNSTimeoutError(DNSError, TimeoutError):
+    """DNS lookup timeout; catchable via DNSError, TimeoutError, or RequestError."""
+
+    ...
+
 class StatusError(PrimpError):
     """HTTP status error (4xx/5xx)."""
 
@@ -71,6 +83,17 @@ class DecodeError(PrimpError):
 
 class UpgradeError(PrimpError):
     """Error during protocol upgrade."""
+
+    ...
+
+class JSONDecodeError(DecodeError, json.JSONDecodeError):
+    """JSON decode error, catchable as both PrimpError and json.JSONDecodeError.
+
+    This is a combined exception that inherits from both DecodeError (a
+    PrimpError subclass) and json.JSONDecodeError (a ValueError subclass),
+    matching the `requests` library pattern. Position info (.doc, .pos,
+    .lineno, .colno) is preserved through the json.JSONDecodeError init.
+    """
 
     ...
 
@@ -244,9 +267,12 @@ class Client:
     params: Mapping[str, str] | None
     proxy: str | None
     timeout: float | None
-    connect_timeout: float | None
+    connect_timeout: float | None  # read-only: construction-only
     read_timeout: float | None
+    dns_timeout: float | None  # read-only: construction-only
     base_url: str | None
+    max_redirects: int | None
+    follow_redirects: bool | None
 
     @property
     def headers(self) -> dict[str, str]: ...
@@ -268,6 +294,7 @@ class Client:
         timeout: float | None = None,
         connect_timeout: float | None = None,
         read_timeout: float | None = None,
+        dns_timeout: float | None = None,
         impersonate: str | None = None,
         impersonate_os: str | None = None,
         follow_redirects: bool = True,
@@ -449,9 +476,12 @@ class AsyncClient:
     params: Mapping[str, str] | None
     proxy: str | None
     timeout: float | None
-    connect_timeout: float | None
+    connect_timeout: float | None  # read-only: construction-only
     read_timeout: float | None
+    dns_timeout: float | None  # read-only: construction-only
     base_url: str | None
+    max_redirects: int | None
+    follow_redirects: bool | None
 
     @property
     def headers(self) -> dict[str, str]: ...
@@ -473,6 +503,7 @@ class AsyncClient:
         timeout: float | None = None,
         connect_timeout: float | None = None,
         read_timeout: float | None = None,
+        dns_timeout: float | None = None,
         impersonate: str | None = None,
         impersonate_os: str | None = None,
         follow_redirects: bool = True,
@@ -653,6 +684,7 @@ def get(
     timeout: float | None = None,
     connect_timeout: float | None = None,
     read_timeout: float | None = None,
+    dns_timeout: float | None = None,
     impersonate: str | None = None,
     impersonate_os: str | None = None,
     verify: bool = True,
@@ -677,6 +709,7 @@ def head(
     timeout: float | None = None,
     connect_timeout: float | None = None,
     read_timeout: float | None = None,
+    dns_timeout: float | None = None,
     impersonate: str | None = None,
     impersonate_os: str | None = None,
     verify: bool = True,
@@ -701,6 +734,7 @@ def options(
     timeout: float | None = None,
     connect_timeout: float | None = None,
     read_timeout: float | None = None,
+    dns_timeout: float | None = None,
     impersonate: str | None = None,
     impersonate_os: str | None = None,
     verify: bool = True,
@@ -725,6 +759,7 @@ def delete(
     timeout: float | None = None,
     connect_timeout: float | None = None,
     read_timeout: float | None = None,
+    dns_timeout: float | None = None,
     impersonate: str | None = None,
     impersonate_os: str | None = None,
     verify: bool = True,
@@ -749,6 +784,7 @@ def post(
     timeout: float | None = None,
     connect_timeout: float | None = None,
     read_timeout: float | None = None,
+    dns_timeout: float | None = None,
     impersonate: str | None = None,
     impersonate_os: str | None = None,
     verify: bool = True,
@@ -773,6 +809,7 @@ def put(
     timeout: float | None = None,
     connect_timeout: float | None = None,
     read_timeout: float | None = None,
+    dns_timeout: float | None = None,
     impersonate: str | None = None,
     impersonate_os: str | None = None,
     verify: bool = True,
@@ -797,6 +834,7 @@ def patch(
     timeout: float | None = None,
     connect_timeout: float | None = None,
     read_timeout: float | None = None,
+    dns_timeout: float | None = None,
     impersonate: str | None = None,
     impersonate_os: str | None = None,
     verify: bool = True,
@@ -822,6 +860,7 @@ def request(
     timeout: float | None = None,
     connect_timeout: float | None = None,
     read_timeout: float | None = None,
+    dns_timeout: float | None = None,
     impersonate: str | None = None,
     impersonate_os: str | None = None,
     verify: bool = True,

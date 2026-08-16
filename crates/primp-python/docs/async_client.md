@@ -60,7 +60,7 @@ await client.put(url, ...)
 await client.patch(url, ...)
 ```
 
-### Cookie / Header / Proxy Management
+### Cookie / Header / Proxy Management / Redirects
 
 Same as synchronous [Client](client.md).
 
