@@ -1650,6 +1650,82 @@ impl State<ClientConnectionData> for ExpectServerHello {
 
         let suite = config
             .find_cipher_suite(server_hello.cipher_suite)
+            .or_else(|| {
+                // Impersonation advertises legacy CBC/RSA suites for JA4
+                // fidelity that the provider doesn't implement. If the server
+                // selects an advertised-but-unsupported suite, treat it as
+                // offered and use a fallback supported TLS 1.2 suite to
+                // continue the handshake while preserving ja4/ja4_ro.
+                #[cfg(feature = "impersonate")]
+                if let Some(be) = config.browser_emulation.as_ref() {
+                    if let Some(suites) = be.cipher_suites.as_ref() {
+                        if suites.contains(&server_hello.cipher_suite) {
+                            let fallback = match server_hello.cipher_suite {
+                                CipherSuite::TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
+                                | CipherSuite::TLS_RSA_WITH_AES_128_GCM_SHA256
+                                | CipherSuite::TLS_RSA_WITH_AES_128_CBC_SHA
+                                | CipherSuite::TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
+                                | CipherSuite::TLS_ECDHE_ECDSA_WITH_3DES_EDE_CBC_SHA
+                                | CipherSuite::TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
+                                | CipherSuite::TLS_RSA_WITH_3DES_EDE_CBC_SHA => config
+                                    .provider
+                                    .cipher_suites
+                                    .iter()
+                                    .find(|s| {
+                                        s.suite()
+                                            == CipherSuite::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+                                    })
+                                    .copied()
+                                    .or_else(|| {
+                                        config
+                                            .provider
+                                            .cipher_suites
+                                            .iter()
+                                            .find(|s| {
+                                                s.suite()
+                                                    == CipherSuite::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+                                            })
+                                            .copied()
+                                    }),
+                                CipherSuite::TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
+                                | CipherSuite::TLS_RSA_WITH_AES_256_GCM_SHA384
+                                | CipherSuite::TLS_RSA_WITH_AES_256_CBC_SHA
+                                | CipherSuite::TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA => config
+                                    .provider
+                                    .cipher_suites
+                                    .iter()
+                                    .find(|s| {
+                                        s.suite()
+                                            == CipherSuite::TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+                                    })
+                                    .copied()
+                                    .or_else(|| {
+                                        config
+                                            .provider
+                                            .cipher_suites
+                                            .iter()
+                                            .find(|s| {
+                                                s.suite()
+                                                    == CipherSuite::TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+                                            })
+                                            .copied()
+                                    }),
+                                _ => config
+                                    .provider
+                                    .cipher_suites
+                                    .iter()
+                                    .find(|s| {
+                                        s.version().version == TLSv1_2
+                                    })
+                                    .copied(),
+                            };
+                            return fallback
+                                .or_else(|| config.provider.cipher_suites.first().copied());
+                        }
+                    }
+                }
+                None
+            })
             .ok_or_else(|| {
                 cx.common.send_fatal_alert(
                     AlertDescription::HandshakeFailure,

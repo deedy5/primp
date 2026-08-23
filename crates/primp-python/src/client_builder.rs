@@ -133,9 +133,7 @@ pub fn configure_client_builder(
     }
 
     // Referer
-    if referer.unwrap_or(true) {
-        builder = builder.referer(true);
-    }
+    builder = builder.referer(referer.unwrap_or(true));
 
     // Proxy - check environment variable as fallback
     let proxy = proxy.or_else(|| std::env::var("PRIMP_PROXY").ok());

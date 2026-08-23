@@ -26,7 +26,6 @@ pub struct AsyncClient {
     auth_bearer: Option<String>,
     #[pyo3(get, set)]
     params: Option<IndexMapSSR>,
-    #[pyo3(get, set)]
     proxy: Option<String>,
     #[pyo3(get, set)]
     timeout: Option<f64>,
