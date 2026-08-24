@@ -1348,6 +1348,22 @@ fn primp(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Other errors
     m.add("StatusError", _py.get_type::<StatusError>())?;
+    // Expose status_code/url as properties for docs example `e.status_code`.
+    {
+        let ty = _py.get_type::<StatusError>();
+        let locals = PyDict::new(_py);
+        locals.set_item("ty", ty.clone())?;
+        _py.run(
+            c"ty.status_code = property(lambda self: self.args[0] if self.args else None)",
+            None,
+            Some(&locals),
+        )?;
+        _py.run(
+            c"ty.url = property(lambda self: self.args[2] if len(self.args) > 2 else None)",
+            None,
+            Some(&locals),
+        )?;
+    }
     m.add("RedirectError", _py.get_type::<RedirectError>())?;
     m.add("BodyError", _py.get_type::<BodyError>())?;
     m.add("DecodeError", _py.get_type::<DecodeError>())?;

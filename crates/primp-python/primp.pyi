@@ -64,7 +64,8 @@ class DNSTimeoutError(DNSError, TimeoutError):
 class StatusError(PrimpError):
     """HTTP status error (4xx/5xx)."""
 
-    ...
+    status_code: int
+    url: str | None
 
 class RedirectError(PrimpError):
     """Error during redirect handling."""
