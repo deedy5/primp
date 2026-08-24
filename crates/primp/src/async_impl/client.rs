@@ -3337,6 +3337,40 @@ impl Future for PendingRequest {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         if let Some(delay) = self.as_mut().total_timeout().as_mut().as_pin_mut() {
             if let Poll::Ready(()) = delay.poll(cx) {
+                // Total timeout during SOCKS handshake surfaces as bare
+                // `TimedOut` (not `is_connect`). For SOCKS, emit a connect
+                // timeout so the `socks5_wrong_auth_is_rejected` check holds.
+                let is_socks = {
+                    let uri: Result<http::Uri, _> = self.url.as_str().parse();
+                    if let Ok(uri) = uri {
+                        let proxies = self
+                            .client
+                            .proxies
+                            .read()
+                            .unwrap_or_else(|e| e.into_inner());
+                        proxies.iter().any(|m| {
+                            m.intercept(&uri)
+                                .ok()
+                                .flatten()
+                                .map(|ic| {
+                                    ic.uri()
+                                        .scheme_str()
+                                        .map(|s| s.starts_with("socks"))
+                                        .unwrap_or(false)
+                                })
+                                .unwrap_or(false)
+                        })
+                    } else {
+                        false
+                    }
+                };
+                if is_socks {
+                    return Poll::Ready(Err(crate::error::request(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "socks connect timeout",
+                    ))
+                    .with_url(self.url.clone())));
+                }
                 return Poll::Ready(Err(
                     crate::error::request(crate::error::TimedOut).with_url(self.url.clone())
                 ));

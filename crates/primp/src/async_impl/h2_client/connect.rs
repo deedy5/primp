@@ -407,6 +407,7 @@ impl H2Connector {
 
         let mut http_connector =
             crate::connect::HttpConnector::new_with_resolver(self.resolver.clone());
+        http_connector.enforce_http(false);
         http_connector.set_nodelay(self.nodelay);
 
         // SOCKS handshake: TCP to the proxy + protocol negotiation. Wrap in

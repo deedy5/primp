@@ -257,6 +257,13 @@ impl<'a, IO: AsyncRead + AsyncWrite + Unpin> AsyncRead for Stream<'a, IO> {
                             io_pending = true;
                             break;
                         }
+                        Poll::Ready(Err(err))
+                            if err.kind() == io::ErrorKind::Other
+                                && err.to_string() == "received plaintext buffer full" =>
+                        {
+                            // Plaintext buffer full (16 KiB): stop and drain.
+                            break;
+                        }
                         Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
                     }
                 }
@@ -268,6 +275,12 @@ impl<'a, IO: AsyncRead + AsyncWrite + Unpin> AsyncRead for Stream<'a, IO> {
                     Poll::Ready(Ok(_)) => {}
                     Poll::Pending => {
                         io_pending = true;
+                    }
+                    Poll::Ready(Err(err))
+                        if err.kind() == io::ErrorKind::Other
+                            && err.to_string() == "received plaintext buffer full" =>
+                    {
+                        // Buffer full: drain first.
                     }
                     Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
                 }
@@ -326,6 +339,23 @@ impl<'a, IO: AsyncRead + AsyncWrite + Unpin> AsyncRead for Stream<'a, IO> {
                                 }
                             }
                             Poll::Pending => return Poll::Pending,
+                            Poll::Ready(Err(err))
+                                if err.kind() == io::ErrorKind::Other
+                                    && err.to_string() == "received plaintext buffer full" =>
+                            {
+                                // Plaintext buffer full - drain it first.
+                                match self.session.reader().read(buf.initialize_unfilled()) {
+                                    Ok(n) => {
+                                        buf.advance(n);
+                                        return Poll::Ready(Ok(()));
+                                    }
+                                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                                        cx.waker().wake_by_ref();
+                                        return Poll::Pending;
+                                    }
+                                    Err(e) => return Poll::Ready(Err(e)),
+                                }
+                            }
                             Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
                         }
                     }
