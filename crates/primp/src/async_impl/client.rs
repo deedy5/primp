@@ -4,8 +4,10 @@ use std::pin::Pin;
 use std::sync::{Arc, RwLock};
 use std::task::{ready, Context, Poll};
 use std::time::Duration;
-use std::{collections::HashMap, convert::TryInto, net::SocketAddr};
+use std::{convert::TryInto, net::SocketAddr};
 use std::{fmt, str};
+
+use foldhash::{HashMap, HashMapExt};
 
 use super::request::{Request, RequestBuilder};
 use super::response::Response;

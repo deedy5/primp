@@ -1,9 +1,10 @@
 use hyper_util::client::legacy::connect::dns::Name as HyperName;
 use tower_service::Service;
 
-use std::collections::HashMap;
 use std::future::Future;
 use std::net::SocketAddr;
+
+use foldhash::HashMap;
 use std::pin::Pin;
 use std::str::FromStr;
 use std::sync::Arc;

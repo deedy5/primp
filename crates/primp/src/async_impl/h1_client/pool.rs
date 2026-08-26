@@ -8,9 +8,10 @@
 //! HTTP/1.1 is serial: a connection is loaned to one request at a time and
 //! returned (for reuse) once its response body is dropped.
 
-use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
+
+use foldhash::{HashMap, HashMapExt};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 

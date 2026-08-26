@@ -1,5 +1,6 @@
-use std::collections::HashMap;
 use std::future::Future;
+
+use foldhash::{HashMap, HashMapExt};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};

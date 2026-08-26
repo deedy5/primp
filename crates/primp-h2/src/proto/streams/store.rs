@@ -1,5 +1,6 @@
 use super::*;
 
+use foldhash::fast::RandomState;
 use indexmap::{self, IndexMap};
 
 use std::convert::Infallible;
@@ -11,7 +12,7 @@ use std::ops;
 #[derive(Debug)]
 pub(super) struct Store {
     slab: slab::Slab<Stream>,
-    ids: IndexMap<StreamId, SlabIndex>,
+    ids: IndexMap<StreamId, SlabIndex, RandomState>,
 }
 
 /// "Pointer" to an entry in the store
@@ -82,7 +83,7 @@ impl Store {
     pub fn new() -> Self {
         Store {
             slab: slab::Slab::new(),
-            ids: IndexMap::new(),
+            ids: IndexMap::default(),
         }
     }
 
