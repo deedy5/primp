@@ -409,7 +409,7 @@ class TestRequestFollowRedirects:
         """An erroring request with a follow_redirects override must not leak
         the override into the shared client (finding #24, error path)."""
         client = primp.Client(follow_redirects=False)
-        with pytest.raises(primp.ConnectError):
+        with pytest.raises((primp.ConnectError, primp.TimeoutError)):
             client.get("http://127.0.0.1:1/", follow_redirects=True, timeout=2)
         # The default policy must be restored: redirects are NOT followed.
         response = client.get(f"{test_server}/redirect/2")
@@ -421,7 +421,7 @@ class TestRequestFollowRedirects:
         """Same leak check with the opposite default: after an erroring
         follow_redirects=False override, redirects must be followed again."""
         client = primp.Client(follow_redirects=True)
-        with pytest.raises(primp.ConnectError):
+        with pytest.raises((primp.ConnectError, primp.TimeoutError)):
             client.get("http://127.0.0.1:1/", follow_redirects=False, timeout=2)
         response = client.get(f"{test_server}/redirect/2")
         assert response.status_code == 200
@@ -434,7 +434,7 @@ class TestRequestFollowRedirects:
         not leak the override into the shared client (finding #24, error
         path)."""
         client = primp.AsyncClient(follow_redirects=False)
-        with pytest.raises(primp.ConnectError):
+        with pytest.raises((primp.ConnectError, primp.TimeoutError)):
             await client.get("http://127.0.0.1:1/", follow_redirects=True, timeout=2)
         response = await client.get(f"{test_server}/redirect/2")
         assert response.status_code == 302
