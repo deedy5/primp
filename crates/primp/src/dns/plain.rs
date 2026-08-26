@@ -1,7 +1,7 @@
 //! Plain DNS (UDP/TCP) resolution via hickory-resolver
 
 use hickory_resolver::{
-    config::{LookupIpStrategy, NameServerConfig, ResolverConfig},
+    config::{LookupIpStrategy, NameServerConfig, ResolveHosts, ResolverConfig},
     net::runtime::TokioRuntimeProvider,
     TokioResolver,
 };
@@ -99,6 +99,7 @@ impl PlainDnsResolver {
                 let opts = builder.options_mut();
                 opts.timeout = Duration::from_secs(5);
                 opts.ip_strategy = LookupIpStrategy::Ipv4AndIpv6;
+                opts.use_hosts_file = ResolveHosts::Never;
                 let resolver = Arc::new(builder.build()?);
                 Ok::<_, BoxError>(resolver)
             })
