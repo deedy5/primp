@@ -368,10 +368,38 @@ pub fn is_decode_error_message(error_msg: &str) -> bool {
 
 /// Map a body-collection error message to `DecodeError` (decompression) or
 /// `BodyError`.
+#[allow(dead_code)]
 pub fn body_collection_error(error_msg: &str) -> PyErr {
     if is_decode_error_message(error_msg) {
         DecodeError::new_err(format!("Body collection error: {}", error_msg))
     } else {
         BodyError::new_err(format!("Body collection error: {}", error_msg))
+    }
+}
+
+/// Body error → Python exception via `is_*()`, preserving chain.
+/// Checks `is_timeout` before `is_decode` so mid-body timeouts become
+/// `TimeoutError`, not `DecodeError`.
+pub fn primp_body_error_to_pyerr(err: ::primp::Error) -> PyErr {
+    // Keep the full chain for diagnostics, not just `err.to_string()` ("error
+    // decoding response body").
+    let msg = format_with_source(&err);
+    let url = err.url().map(|u| u.to_string());
+    // Timeout is wrapped as `Kind::Decode` — check first.
+    if err.is_timeout() {
+        // No GIL for `DNSTimeoutError`; fallback to `TimeoutError`.
+        return TimeoutError::new_err(msg);
+    }
+    if err.is_decode() {
+        return DecodeError::new_err((msg, url));
+    }
+    if err.is_body() {
+        return BodyError::new_err((msg, url));
+    }
+    // Fallback: keyword heuristic.
+    if is_decode_error_message(&msg) {
+        DecodeError::new_err((msg, url))
+    } else {
+        BodyError::new_err((msg, url))
     }
 }

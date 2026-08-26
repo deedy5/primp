@@ -32,14 +32,22 @@ pub struct Pool {
 
 impl Drop for Pool {
     fn drop(&mut self) {
-        // Only the owner Pool tears down connection drivers. Aborting a
-        // driver drops its `h3::client::Connection`, closing the quinn
-        // connection (the server observes CONNECTION_CLOSE).
+        // Owner tears down drivers; if body still streams, detach until idle.
         if self.is_owner {
             let mut inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
             for conn in inner.idle_conns.values_mut() {
-                if let Some(handle) = &conn.connection_task {
-                    handle.abort();
+                if conn.active_streams.load(Ordering::Acquire) == 0 {
+                    if let Some(handle) = &conn.connection_task {
+                        handle.abort();
+                    }
+                } else if tokio::runtime::Handle::try_current().is_ok() {
+                    conn.detach_driver_until_idle();
+                } else {
+                    // No runtime — `spawn` would panic; leak so body can finish.
+                    let handle = conn.connection_task.take();
+                    let pool_clone = Arc::clone(&self.inner);
+                    std::mem::forget(handle);
+                    std::mem::forget(pool_clone);
                 }
             }
         }
