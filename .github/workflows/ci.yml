@@ -38,16 +38,22 @@ jobs:
         platform:
           - runner: ubuntu-22.04
             target: x86_64
+            manylinux: auto
           - runner: ubuntu-22.04
             target: x86
+            manylinux: auto
           - runner: ubuntu-22.04-arm
             target: aarch64
+            manylinux: auto
           - runner: ubuntu-22.04
             target: armv7
+            manylinux: auto
           - runner: ubuntu-22.04
             target: s390x
+            manylinux: auto
           - runner: ubuntu-22.04
             target: ppc64le
+            manylinux: 2_28
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -62,13 +68,13 @@ jobs:
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist --manifest-path crates/primp-python/Cargo.toml
-          manylinux: auto
+          manylinux: ${{ matrix.platform.manylinux }}
       - name: Build free-threaded wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist -i python3.14t --manifest-path crates/primp-python/Cargo.toml
-          manylinux: auto
+          manylinux: ${{ matrix.platform.manylinux }}
       - name: Upload wheels
         uses: actions/upload-artifact@v6
         with:
