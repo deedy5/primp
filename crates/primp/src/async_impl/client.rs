@@ -1031,7 +1031,7 @@ impl ClientBuilder {
         let redirect_policy_desc = if config.redirect_policy.is_default() {
             None
         } else {
-            Some(format!("{:?}", &config.redirect_policy))
+            Some(format!("{:?}", config.redirect_policy))
         };
 
         let connector = connector_builder.build(config.connector_layers.clone());
@@ -2714,7 +2714,7 @@ impl Client {
         let desc = if policy.is_default() {
             None
         } else {
-            Some(format!("{:?}", &policy))
+            Some(format!("{:?}", policy))
         };
         let inner = Arc::make_mut(&mut self.inner);
         inner.redirect_policy.set_policy(policy);
