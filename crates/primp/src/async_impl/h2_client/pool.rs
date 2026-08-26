@@ -569,17 +569,22 @@ impl Drop for Pool {
             handle.abort();
         }
         if self.is_owner {
-            // Abort every live connection driver task. Each driver holds a
-            // `Pool` clone, which would otherwise keep `PoolInner` (and the
-            // socket file descriptors / tokio tasks) alive until the server or
-            // OS closes the connection — leaking them after the client is
-            // dropped. Aborting the driver drops its `conn` future, closing the
-            // connection; the driver's final `remove_dead_connection` is
-            // unnecessary since the whole pool is being torn down.
+            // Abort drivers; if body still streams (`active_streams>0`), detach
+            // and let watcher abort when idle — else `broken pipe` DecodeError.
             let mut inner = crate::util::recover_lock(&self.inner);
             for entry in inner.connections.values_mut() {
-                if let Some(handle) = &entry.connection_task {
-                    handle.abort();
+                if entry.active_streams.load(Ordering::Acquire) == 0 {
+                    if let Some(handle) = &entry.connection_task {
+                        handle.abort();
+                    }
+                } else if tokio::runtime::Handle::try_current().is_ok() {
+                    entry.detach_driver_until_idle();
+                } else {
+                    // No runtime — `spawn` would panic; leak so body can finish.
+                    let handle = entry.connection_task.take();
+                    let pool_clone = Arc::clone(&self.inner);
+                    std::mem::forget(handle);
+                    std::mem::forget(pool_clone);
                 }
             }
         }

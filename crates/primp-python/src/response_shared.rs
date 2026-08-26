@@ -10,7 +10,7 @@ use pyo3::{
 use tokio::sync::Mutex as TMutex;
 
 use crate::client_builder::IndexMapSSR;
-use crate::error::{body_collection_error, BodyError, DecodeError, PrimpErrorEnum};
+use crate::error::{primp_body_error_to_pyerr, BodyError, DecodeError, PrimpErrorEnum};
 use crate::traits::HeadersTraits;
 use crate::utils::extract_encoding;
 
@@ -21,7 +21,7 @@ pub async fn collect_body_bytes(resp: &mut ::primp::Response) -> Result<Bytes, P
         match resp.chunk().await {
             Ok(Some(chunk)) => buf.extend_from_slice(&chunk),
             Ok(None) => break Ok(Bytes::from(buf)),
-            Err(e) => return Err(body_collection_error(&e.to_string())),
+            Err(e) => return Err(primp_body_error_to_pyerr(e)),
         }
     }
 }
