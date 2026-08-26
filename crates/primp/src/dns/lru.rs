@@ -3,9 +3,10 @@
 //! parallel `Vec`s plus a `HashMap`, no `unsafe`, no extra deps.
 
 use std::borrow::Borrow;
-use std::collections::HashMap;
 use std::hash::Hash;
 use std::num::NonZeroUsize;
+
+use foldhash::{HashMap, HashMapExt};
 
 pub(crate) struct LruCache<K, V> {
     keys: Vec<Option<K>>,

@@ -1,6 +1,7 @@
 use std::cmp::min;
-use std::collections::HashMap;
 use std::net::SocketAddr;
+
+use foldhash::{HashMap, HashMapExt};
 use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -411,7 +412,7 @@ async fn await_inflight(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
+    use foldhash::{HashMap, HashMapExt};
     use std::str::FromStr;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc as StdArc;

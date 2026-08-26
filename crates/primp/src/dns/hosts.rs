@@ -2,8 +2,9 @@
 //!
 //! Parses `/etc/hosts` once, shared by all clients.
 
-use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
+
+use foldhash::{HashMap, HashMapExt};
 use std::str::FromStr;
 use std::sync::{Arc, OnceLock};
 

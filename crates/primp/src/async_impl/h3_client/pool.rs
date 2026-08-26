@@ -1,6 +1,7 @@
 use bytes::Bytes;
-use std::collections::HashMap;
 use std::future;
+
+use foldhash::{HashMap, HashMapExt};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, TryRecvError};
