@@ -112,10 +112,7 @@ impl Error {
             if let Some(io_err) = err.downcast_ref::<Box<io::Error>>() {
                 return Some(io_err);
             }
-            match err.source() {
-                Some(next) => err = next,
-                None => return None,
-            }
+            err = err.source()?;
         }
         None
     }
