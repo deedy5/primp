@@ -465,14 +465,15 @@ impl ClientBuilder {
         let mut h2_connector = None;
 
         let resolver = {
-            let base: Arc<dyn Resolve> = match config.hickory_dns {
+            let mut base: Arc<dyn Resolve> = match config.hickory_dns {
                 false => Arc::new(GaiResolver::new()),
                 #[cfg(feature = "hickory-dns")]
                 true => Arc::new(HickoryDnsResolver::default()),
                 #[cfg(not(feature = "hickory-dns"))]
                 true => unreachable!("hickory-dns shouldn't be enabled unless the feature is"),
             };
-            let base = config.dns_resolver.unwrap_or(base);
+            base = config.dns_resolver.unwrap_or(base);
+            base = Arc::new(crate::dns::hosts::HostsFileResolver::new(base));
             // DNS deadline capped just below the connect deadline so a hanging
             // lookup surfaces as a tagged DNS error, never a connect timeout.
             // Cache sits *below* `DnsResolverWithOverrides`: per-client

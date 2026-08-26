@@ -1,6 +1,6 @@
 //! DNS-over-HTTPS (DoH) resolution via hickory-resolver
 
-use hickory_resolver::config::{LookupIpStrategy, NameServerConfig, ResolverConfig};
+use hickory_resolver::config::{LookupIpStrategy, NameServerConfig, ResolveHosts, ResolverConfig};
 use hickory_resolver::net::runtime::TokioRuntimeProvider;
 use hickory_resolver::TokioResolver;
 
@@ -111,6 +111,7 @@ impl DohResolver {
                 let opts = builder.options_mut();
                 opts.timeout = Duration::from_secs(5);
                 opts.ip_strategy = LookupIpStrategy::Ipv4AndIpv6;
+                opts.use_hosts_file = ResolveHosts::Never;
                 let resolver = Arc::new(builder.build()?);
                 Ok::<_, BoxError>(resolver)
             })

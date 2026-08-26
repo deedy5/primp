@@ -4,6 +4,7 @@ pub use resolve::{Addrs, IntoResolve, Name, Resolve, Resolving};
 pub(crate) use resolve::{DnsResolverWithOverrides, DynResolver};
 
 pub(crate) mod cache;
+pub(crate) mod hosts;
 pub(crate) mod lru;
 
 /// System DNS resolver backed by the OS's getaddrinfo.

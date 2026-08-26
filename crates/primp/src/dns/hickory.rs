@@ -1,7 +1,7 @@
 //! DNS resolution via the [hickory-resolver](https://github.com/hickory-dns/hickory-dns) crate
 
 use hickory_resolver::{
-    config::{LookupIpStrategy, ResolverConfig, GOOGLE},
+    config::{LookupIpStrategy, ResolveHosts, ResolverConfig, GOOGLE},
     net::{runtime::TokioRuntimeProvider, NetError},
     TokioResolver,
 };
@@ -66,5 +66,7 @@ fn new_resolver() -> Result<TokioResolver, NetError> {
     // makes happy eyeballs wait out its connection-attempt delay (~250ms)
     // before falling back to IPv4 on the first request.
     builder.options_mut().ip_strategy = LookupIpStrategy::Ipv4AndIpv6;
+    // Hosts file can be 400k+ entries; disable to avoid 400 MB rehash.
+    builder.options_mut().use_hosts_file = ResolveHosts::Never;
     builder.build()
 }
