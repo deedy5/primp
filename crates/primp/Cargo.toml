@@ -53,7 +53,6 @@ stream = ["tokio/fs", "dep:futures-util", "dep:tokio-util", "dep:futures-core"]
 system-proxy = ["hyper-util/client-proxy-system"]
 hickory-dns = [
     "dep:hickory-resolver",
-    "dep:once_cell",
     "hickory-resolver/https-aws-lc-rs",
     "hickory-resolver/tls-aws-lc-rs",
     "hickory-resolver/webpki-roots",
@@ -62,7 +61,7 @@ http3 = ["dep:h3", "dep:h3-quinn", "dep:quinn", "dep:futures-core", "tokio/macro
 
 [dependencies]
 base64 = "0.23"
-http = "1.1"
+http = "1.4"
 url = "2.4"
 bytes = "1.2"
 futures-core = { version = "0.3.28", default-features = false, optional = true }
@@ -82,7 +81,7 @@ hyper-util = { version = "0.1", features = ["http1", "http2", "client", "client-
 h2 = { version = "0.4", path = "../primp-h2", package = "primp-h2", features = ["unstable"] }
 log = "0.4.17"
 percent-encoding = "2.3"
-tokio = { version = "1.0", default-features = false, features = ["net", "time", "io-util", "macros"] }
+tokio = { version = "1.0", default-features = false, features = ["net", "time", "io-util", "macros", "sync"] }
 tower = { version = "0.5.2", default-features = false, features = ["retry", "timeout", "util"] }
 tower-service = "0.3"
 tower-http = { version = "0.7.0", default-features = false, features = ["follow-redirect"] }
@@ -97,14 +96,13 @@ cookie_store = { version = "0.22.0", optional = true }
 psl = { version = "2.1", optional = true }
 tokio-util = { version = "0.7.9", default-features = false, features = ["io"], optional = true }
 hickory-resolver = { version = "0.26", optional = true, features = ["tokio", "system-config"] }
-once_cell = { version = "1.18", optional = true }
 h3 = { version = "0.0.8", optional = true }
 h3-quinn = { version = "0.0.10", optional = true }
 quinn = { version = "0.11.1", default-features = false, features = ["runtime-tokio", "rustls-aws-lc-rs"], optional = true }
 
 [dev-dependencies]
 rcgen = "0.14"
-tokio = { version = "1.0", default-features = false, features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.0", default-features = false, features = ["macros", "rt-multi-thread", "time", "test-util"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 criterion = "0.8"

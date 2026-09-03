@@ -11,7 +11,9 @@ members = [
 codegen-units = 1
 lto = "fat"
 opt-level = 3
-panic = "abort"
+# Required for the `primp-python` cdylib so panics become Python exceptions.
+# Workspace-wide (cdylib deps must share the strategy); OOM/stack still abort.
+panic = "unwind"
 strip = "symbols"
 
 [profile.bench]
