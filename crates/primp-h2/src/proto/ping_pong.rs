@@ -14,7 +14,7 @@ use tokio::io::AsyncWrite;
 #[derive(Debug)]
 pub(crate) struct PingPong {
     pending_ping: Option<PendingPing>,
-    pending_pong: Option<PingPayload>,
+    pending_pong: std::collections::VecDeque<PingPayload>,
     user_pings: Option<UserPingsRx>,
 }
 
@@ -64,7 +64,7 @@ impl PingPong {
     pub(crate) fn new() -> Self {
         PingPong {
             pending_ping: None,
-            pending_pong: None,
+            pending_pong: std::collections::VecDeque::new(),
             user_pings: None,
         }
     }
@@ -93,11 +93,18 @@ impl PingPong {
         });
     }
 
-    /// Process a ping
-    pub(crate) fn recv_ping(&mut self, ping: Ping) -> ReceivedPing {
-        // The caller should always check that `send_pongs` returns ready before
-        // calling `recv_ping`.
-        assert!(self.pending_pong.is_none());
+    /// Queue ping ack.
+    /// Too many acks fail with `ENHANCE_YOUR_CALM`.
+    pub(crate) fn recv_ping(&mut self, ping: Ping) -> Result<ReceivedPing, proto::Error> {
+        use crate::frame::Reason;
+
+        const MAX_PENDING_PONGS: usize = 8;
+        if self.pending_pong.len() >= MAX_PENDING_PONGS && !ping.is_ack() {
+            return Err(proto::Error::library_go_away_data(
+                Reason::ENHANCE_YOUR_CALM,
+                "too_many_pings",
+            ));
+        }
 
         if ping.is_ack() {
             if let Some(pending) = self.pending_ping.take() {
@@ -108,7 +115,7 @@ impl PingPong {
                         "pending_ping should be for shutdown",
                     );
                     tracing::trace!("recv PING SHUTDOWN ack");
-                    return ReceivedPing::Shutdown;
+                    return Ok(ReceivedPing::Shutdown);
                 }
 
                 // if not the payload we expected, put it back.
@@ -118,7 +125,7 @@ impl PingPong {
             if let Some(ref users) = self.user_pings {
                 if ping.payload() == &Ping::USER && users.receive_pong() {
                     tracing::trace!("recv PING USER ack");
-                    return ReceivedPing::Unknown;
+                    return Ok(ReceivedPing::Unknown);
                 }
             }
 
@@ -126,11 +133,11 @@ impl PingPong {
             // The spec doesn't require us to do anything about this,
             // so for resiliency, just ignore it for now.
             tracing::warn!("recv PING ack that we never sent: {:?}", ping);
-            ReceivedPing::Unknown
+            Ok(ReceivedPing::Unknown)
         } else {
             // Save the ping's payload to be sent as an acknowledgement.
-            self.pending_pong = Some(ping.into_payload());
-            ReceivedPing::MustAck
+            self.pending_pong.push_back(ping.into_payload());
+            Ok(ReceivedPing::MustAck)
         }
     }
 
@@ -144,14 +151,22 @@ impl PingPong {
         T: AsyncWrite + Unpin,
         B: Buf,
     {
-        if let Some(pong) = self.pending_pong.take() {
+        while let Some(pong) = self.pending_pong.pop_front() {
             if !dst.poll_ready(cx)?.is_ready() {
-                self.pending_pong = Some(pong);
+                self.pending_pong.push_front(pong);
                 return Poll::Pending;
             }
 
-            dst.buffer(Ping::pong(pong).into())
-                .expect("invalid pong frame");
+            if let Err(e) = dst.buffer(Ping::pong(pong).into()) {
+                // Re-queue so the ack isn't silently lost; the connection is
+                // likely broken, but dropping a queued ack hides the cause.
+                // Dead branch in practice: a fixed 8-byte PONG buffered
+                // after `poll_ready` cannot fail with `UserError`
+                // (no stream, no size limit); mapped to `io::Error` because
+                // this layer only propagates I/O errors.
+                self.pending_pong.push_front(pong);
+                return Poll::Ready(Err(io::Error::other(e)));
+            }
         }
 
         Poll::Ready(Ok(()))
@@ -288,4 +303,43 @@ impl Drop for UserPingsRx {
 
 fn broken_pipe() -> io::Error {
     io::ErrorKind::BrokenPipe.into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ping_flood_triggers_enhance_your_calm() {
+        // 8 queued pongs are tolerated; the 9th rapid PING (no flush in
+        // between, so nothing was acked) must fail closed with
+        // ENHANCE_YOUR_CALM instead of silently dropping an ack the peer
+        // is waiting for (RFC 7540 §6.7) or panicking.
+        let mut pp = PingPong::new();
+        for i in 0..8u8 {
+            let ping = Ping::new([i; 8]);
+            assert!(pp.recv_ping(ping).is_ok(), "pong {i} should queue");
+        }
+        let err = pp
+            .recv_ping(Ping::new([9; 8]))
+            .expect_err("9th rapid PING must GOAWAY");
+        assert!(
+            matches!(
+                err,
+                crate::proto::Error::GoAway(_, crate::frame::Reason::ENHANCE_YOUR_CALM, _)
+            ),
+            "expected ENHANCE_YOUR_CALM GOAWAY, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn ping_ack_does_not_consume_flood_budget() {
+        // ACKs are never queued, so a stream of acks must never trip the
+        // flood guard.
+        let mut pp = PingPong::new();
+        for i in 0..16u8 {
+            let ack = Ping::pong([i; 8]);
+            assert!(pp.recv_ping(ack).is_ok(), "ack {i} must not trip guard");
+        }
+    }
 }

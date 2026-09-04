@@ -559,7 +559,7 @@ where
             }
             Some(Ping(frame)) => {
                 tracing::trace!(?frame, "recv PING");
-                let status = self.ping_pong.recv_ping(frame);
+                let status = self.ping_pong.recv_ping(frame)?;
                 if status.is_shutdown() {
                     assert!(
                         self.go_away.is_going_away(),

@@ -798,35 +798,76 @@ impl Prioritize {
 
                     tracing::trace!(len, "sending data frame");
 
-                    // Update the flow control
-                    tracing::trace_span!("updating stream flow").in_scope(|| {
-                        stream.send_data(len, self.max_buffer_size);
+                    // Connection-level window guard (RFC 9113 §6.9): never
+                    // emit DATA beyond the peer's connection window.
+                    // Unreachable single-threaded: capacity assignment
+                    // claims connection availability upfront, so a queued
+                    // frame's `len` (capped by stream availability) can
+                    // never exceed the peer window (see
+                    // `conn_window_exhaustion_resumes_after_window_update`).
+                    // If ever reached (future refactor), keep the stream
+                    // scheduled and end this round: `continue` without
+                    // re-queuing would drop it from the scheduler forever,
+                    // while push+`continue` could spin on a single stalled
+                    // stream. The next WINDOW_UPDATE wake retries it.
+                    if len > 0 && len > self.flow.window_size() {
+                        stream.pending_send.push_front(buffer, frame.into());
+                        self.pending_send.push(&mut stream);
+                        return None;
+                    }
 
-                        // Assign the capacity back to the connection that
-                        // was just consumed from the stream in the previous
-                        // line.
-                        // TODO: proper error handling
-                        let _res = self.flow.assign_capacity(len);
-                        debug_assert!(_res.is_ok());
-                    });
+                    // Update the flow control. On overrun (defensive: the
+                    // guards above make this unreachable), re-queue instead
+                    // of emitting illegal wire data. `Stream::send_data`
+                    // leaves accounting untouched on Err, so re-queue is safe.
+                    if stream.send_data(len, self.max_buffer_size).is_err() {
+                        stream.pending_send.push_front(buffer, frame.into());
+                        continue;
+                    }
 
-                    let (eos, len) =
-                        tracing::trace_span!("updating connection flow").in_scope(|| {
-                            // TODO: proper error handling
-                            let _res = self.flow.send_data(len);
-                            debug_assert!(_res.is_ok());
+                    // Assign the capacity back to the connection that
+                    // was just consumed from the stream in the previous
+                    // line.
+                    if self.flow.assign_capacity(len).is_err() {
+                        // Defensive (unreachable: `len` passed the window
+                        // guards). Restore stream accounting so a retry
+                        // cannot double-decrement; see below.
+                        tracing::warn!("assign_capacity failed for len {len}");
+                        let _ = stream.send_flow.inc_window(len);
+                        let _ = stream.send_flow.assign_capacity(len);
+                        stream.requested_send_capacity += len;
+                        stream.buffered_send_data += len as usize;
+                        stream.pending_send.push_front(buffer, frame.into());
+                        self.pending_send.push(&mut stream);
+                        return None;
+                    }
 
-                            // Wrap the frame's data payload to ensure that the
-                            // correct amount of data gets written.
+                    if self.flow.send_data(len).is_err() {
+                        // Unreachable single-threaded; restore both windows
+                        // before re-queueing, never emit a violation.
+                        tracing::warn!("connection send_data beyond window for len {len}");
+                        let _ = self.flow.claim_capacity(len);
+                        let _ = stream.send_flow.inc_window(len);
+                        let _ = stream.send_flow.assign_capacity(len);
+                        stream.requested_send_capacity += len;
+                        stream.buffered_send_data += len as usize;
+                        stream.pending_send.push_front(buffer, frame.into());
+                        self.pending_send.push(&mut stream);
+                        return None;
+                    }
 
-                            let eos = frame.is_end_stream();
-                            let len = len as usize;
+                    let (eos, len) = {
+                        // Wrap the frame's data payload to ensure that the
+                        // correct amount of data gets written.
 
-                            if frame.payload().remaining() > len {
-                                frame.set_end_stream(false);
-                            }
-                            (eos, len)
-                        });
+                        let eos = frame.is_end_stream();
+                        let len = len as usize;
+
+                        if frame.payload().remaining() > len {
+                            frame.set_end_stream(false);
+                        }
+                        (eos, len)
+                    };
 
                     Frame::Data(frame.map(|buf| Prioritized {
                         inner: buf.take(len),

@@ -300,12 +300,16 @@ impl Stream {
         }
     }
 
-    pub fn send_data(&mut self, len: WindowSize, max_buffer_size: usize) {
+    pub fn send_data(&mut self, len: WindowSize, max_buffer_size: usize) -> Result<(), Reason> {
         let prev_capacity = self.capacity(max_buffer_size);
 
-        // TODO: proper error handling
-        let _res = self.send_flow.send_data(len);
-        debug_assert!(_res.is_ok());
+        if let Err(e) = self.send_flow.send_data(len) {
+            // Window overrun: never corrupt local accounting (avoid
+            // underflow). Caller must not emit the frame; it re-queues and
+            // waits for WINDOW_UPDATE (RFC 9113 §6.9).
+            tracing::warn!("send_data beyond flow window: {e:?}");
+            return Err(e);
+        }
 
         // Decrement the stream's buffered data counter
         debug_assert!(self.buffered_send_data >= len as usize);
@@ -324,6 +328,7 @@ impl Stream {
         if prev_capacity < self.capacity(max_buffer_size) {
             self.notify_capacity();
         }
+        Ok(())
     }
 
     /// If the capacity was limited because of the max_send_buffer_size,

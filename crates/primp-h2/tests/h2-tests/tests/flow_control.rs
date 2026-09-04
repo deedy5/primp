@@ -3072,3 +3072,66 @@ async fn poll_capacity_window_update_settings_race() {
 
     join(srv, h2).await;
 }
+
+#[tokio::test]
+async fn conn_window_exhaustion_resumes_after_window_update() {
+    // Characterization test for connection-window exhaustion across two
+    // streams: stream 1 consumes ~all of the 65535 connection window while
+    // stream 3 has queued data. The capacity-assignment architecture caps
+    // stream 3's first flush to its assigned share, and the remainder must
+    // resume once a connection WINDOW_UPDATE arrives — never stall.
+    h2_support::trace_init!();
+    let (io, mut srv) = mock::new();
+
+    let srv = async move {
+        let settings = srv.assert_client_handshake().await;
+        assert_default_settings!(settings);
+        srv.recv_frame(frames::headers(1).request("POST", "https://http2.akamai.com/"))
+            .await;
+        srv.recv_frame(frames::headers(3).request("POST", "https://http2.akamai.com/"))
+            .await;
+        // Stream 1 bulk: 65000 bytes (split by the 16384 max frame size),
+        // interleaved with stream 3's pre-assigned 535-byte share: the
+        // scheduler drains the streams in turn.
+        srv.recv_frame(frames::data(1, vec![0u8; 16_384])).await;
+        srv.recv_frame(frames::data(3, vec![0u8; 535])).await;
+        srv.recv_frame(frames::data(1, vec![0u8; 16_384])).await;
+        srv.recv_frame(frames::data(1, vec![0u8; 16_384])).await;
+        srv.recv_frame(frames::data(1, vec![0u8; 15_848])).await;
+        // Connection window is now exhausted; stream 3 still has 4465
+        // buffered bytes. Replenish and require it to resume.
+        srv.send_frame(frames::window_update(0, 5_000)).await;
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            srv.recv_frame(frames::data(3, vec![0u8; 4_465]).eos()),
+        )
+        .await
+        .expect("conn-exhausted stream never resumed after WINDOW_UPDATE");
+        srv.send_frame(frames::headers(1).response(200).eos()).await;
+        srv.send_frame(frames::headers(3).response(200).eos()).await;
+    };
+
+    let h2 = async move {
+        let (mut client, mut h2) = client::handshake(io).await.unwrap();
+        let req = || {
+            Request::builder()
+                .method(Method::POST)
+                .uri("https://http2.akamai.com/")
+                .body(())
+                .unwrap()
+        };
+        let (r1, mut s1) = client.send_request(req(), false).unwrap();
+        let (r3, mut s3) = client.send_request(req(), false).unwrap();
+        s1.send_data(vec![0u8; 65_000].into(), false).unwrap();
+        s3.send_data(vec![0u8; 5_000].into(), true).unwrap();
+        let conn = async move {
+            let _ = h2.drive(r1).await;
+            let _ = h2.drive(r3).await;
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(10), conn)
+            .await
+            .expect("h2 connection stalled");
+    };
+
+    join(srv, h2).await;
+}
