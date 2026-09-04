@@ -288,7 +288,9 @@ async fn too_many_small_data_frames_sends_goaway() {
 async fn many_small_final_data_frames_do_not_exhaust_budget() {
     h2_support::trace_init!();
 
-    const NUM_STREAMS: u32 = 200;
+    // EOS frames count toward the budget. Use 80 streams to stay under
+    // the 25600 limit.
+    const NUM_STREAMS: u32 = 80;
 
     let (io, mut srv) = mock::new();
     let (done_tx, done_rx) = oneshot::channel();
@@ -343,6 +345,87 @@ async fn many_small_final_data_frames_do_not_exhaust_budget() {
 
         tokio::spawn(requests);
         h2.await.unwrap();
+    };
+
+    join(mock, h2).await;
+}
+
+#[tokio::test]
+async fn many_small_final_data_frames_exhaust_budget_when_uncounted_lifetime_exceeded() {
+    h2_support::trace_init!();
+
+    // 200 tiny EOS frames exceed the 25600 budget and should trigger
+    // ENHANCE_YOUR_CALM.
+    const NUM_STREAMS: u32 = 200;
+
+    let (io, mut srv) = mock::new();
+
+    let mock = async move {
+        let settings = srv.assert_client_handshake().await;
+        assert_default_settings!(settings);
+        for i in 0..NUM_STREAMS {
+            let stream_id = 1 + i * 2;
+            srv.recv_frame(
+                frames::headers(stream_id)
+                    .request("GET", "https://http2.akamai.com/")
+                    .eos(),
+            )
+            .await;
+        }
+        for i in 0..NUM_STREAMS {
+            let stream_id = 1 + i * 2;
+            srv.send_frame(frames::headers(stream_id).response(200))
+                .await;
+            srv.send_frame(frames::data(stream_id, "a").eos()).await;
+        }
+        // The client must send GOAWAY with ENHANCE_YOUR_CALM once the
+        // budget is exceeded: 200 × 255 > 25600 even before the app polls
+        // (releases only happen on poll). Require it — a silent timeout
+        // would mask a missing flood signal. The h2 driver below
+        // independently asserts the connection errors with CALM.
+        tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            srv.recv_frame(frames::go_away(0).calm().data("too_many_data_frames")),
+        )
+        .await
+        .expect("mock timed out waiting for GOAWAY");
+    };
+
+    let h2 = async move {
+        let (mut client, h2) = client::handshake(io).await.unwrap();
+        let requests = async move {
+            let mut responses = Vec::new();
+            for _ in 0..NUM_STREAMS {
+                poll_fn(|cx| client.poll_ready(cx)).await.unwrap();
+                let request = Request::builder()
+                    .uri("https://http2.akamai.com/")
+                    .body(())
+                    .unwrap();
+                responses.push(client.send_request(request, true).unwrap().0);
+            }
+            let mut received = Vec::new();
+            for response in responses {
+                // Responses may fail once GOAWAY fires; we simply collect
+                // what succeeds and let the h2 driver report the connection
+                // error below.
+                if let Ok(resp) = response.await {
+                    received.push(resp);
+                }
+            }
+            // At least some responses should have arrived before GOAWAY;
+            // exact count is timing-dependent, but we must not have gotten
+            // all 200 without the budget firing.
+            assert!(
+                received.len() < NUM_STREAMS as usize,
+                "expected budget to trigger before all 200 EOS; got {}",
+                received.len()
+            );
+        };
+        let reqs = tokio::spawn(requests);
+        let err = h2.await.unwrap_err();
+        // Await task so its assertion is observed.
+        reqs.await.unwrap();
+        assert_eq!(err.reason(), Some(Reason::ENHANCE_YOUR_CALM));
     };
 
     join(mock, h2).await;

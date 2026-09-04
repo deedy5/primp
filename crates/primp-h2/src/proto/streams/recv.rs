@@ -829,7 +829,10 @@ impl Recv {
             return Ok(());
         }
 
-        let is_budgeted = !frame.is_end_stream();
+        // Every DATA frame is budgeted (see `recv_data` accounting in
+        // `streams.rs`): empty EOS frames release their cost when polled, so
+        // flag them budgeted to keep consume/release symmetric.
+        let is_budgeted = true;
         let event = Event::Data(DataEvent {
             payload: frame.into_payload(),
             is_budgeted,

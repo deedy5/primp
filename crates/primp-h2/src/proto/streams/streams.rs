@@ -243,16 +243,11 @@ where
             // SETTINGS, WU(conn), HEADERS, WU(stream) — matching real browsers
             {
                 let mut me = self.inner.lock().unwrap();
-                // SAFETY: `store` and `recv` are disjoint fields of `me`, so
-                // creating raw pointers and then converting back to mutable
-                // references is safe as long as we don't create overlapping
-                // references. This pattern is needed because the borrow checker
-                // cannot prove disjointness through `me.actions.recv`.
-                let (recv, store) = unsafe {
-                    let recv = &mut *(&mut me.actions.recv as *mut Recv);
-                    let store = &mut *(&mut me.store as *mut Store);
-                    (recv, store)
-                };
+                // Borrow `actions` and `store` disjointly via `&mut *me`.
+                #[allow(clippy::explicit_auto_deref)]
+                let inner: &mut Inner = &mut *me;
+                let (actions, store) = (&mut inner.actions, &mut inner.store);
+                let recv = &mut actions.recv;
                 ready!(recv.send_initial_window_update(cx, dst, store))?;
             }
 
@@ -710,12 +705,19 @@ impl Inner {
 
         self.counts.transition(stream, |counts, stream| {
             let sz = frame.flow_controlled_len();
-            let is_end_stream = frame.is_end_stream();
             let payload_len = frame.payload().len();
             let mut res = actions.recv.recv_data(frame, stream);
-            // A stream can receive at most one final DATA frame, so it cannot
-            // be used to create unbounded framing overhead on that stream.
-            if res.is_ok() && !is_end_stream {
+            // Count every DATA frame toward the connection budget, including
+            // empty ones: 101 empty frames on one stream must trip
+            // ENHANCE_YOUR_CALM (see `too_many_empty_data_frames_sends_goaway`).
+            // Exempting empties lets a peer burn codec/wakeup CPU with 9-byte
+            // frames for free. Empty EOS still releases on poll via
+            // `is_budgeted`, so streaming consumers that poll promptly are
+            // unaffected; only un-polled bursts count. Calibration:
+            // budget 25600 (=256×100); 1-byte frames cost 255 each, so 100
+            // fit, the 101st trips (see
+            // `many_small_final_data_frames_exhaust_budget_when_uncounted_lifetime_exceeded`).
+            if res.is_ok() {
                 res = counts.record_data_frame(payload_len).map_err(|_| {
                     tracing::debug!("too many small DATA frames");
                     Error::library_go_away_data(Reason::ENHANCE_YOUR_CALM, "too_many_data_frames")

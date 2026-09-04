@@ -26,6 +26,51 @@ fn sanity_unclaimed_ratio() {
     assert!(UNCLAIMED_DENOMINATOR > 0);
 }
 
+#[test]
+fn send_data_beyond_window_returns_flow_control_error() {
+    // Regression guard for the prioritize.rs connection-window fix: the
+    // primitive must report overrun instead of panicking so callers can
+    // re-queue rather than emit illegal wire data (RFC 9113 §6.9).
+    let mut fc = FlowControl::new();
+    fc.inc_window(100).unwrap();
+    assert!(fc.send_data(101).is_err());
+    // Window untouched by the failed send.
+    assert_eq!(fc.window_size(), 100);
+    // Exact fit succeeds.
+    assert!(fc.send_data(100).is_ok());
+    assert_eq!(fc.window_size(), 0);
+    // Zero-length sends are always legal.
+    assert!(fc.send_data(0).is_ok());
+}
+
+#[test]
+fn failed_conn_send_after_assign_claim_restores() {
+    // Failed send must restore `available`.
+    let mut fc = FlowControl::new();
+    fc.inc_window(50).unwrap();
+    let avail_before = fc.available();
+    fc.assign_capacity(100).unwrap();
+    assert!(fc.send_data(100).is_err());
+    fc.claim_capacity(100).unwrap();
+    assert_eq!(fc.available(), avail_before);
+}
+
+#[test]
+fn window_arithmetic_rejects_out_of_range_sizes() {
+    // `u32::MAX as i32 == -1`: without try_from guards, huge sizes would
+    // wrap and corrupt the window instead of failing closed.
+    let mut fc = FlowControl::new();
+    fc.inc_window(100).unwrap();
+    assert!(fc.send_data(u32::MAX).is_err());
+    assert!(fc.inc_window(u32::MAX).is_err());
+    assert_eq!(fc.window_size(), 100);
+
+    let mut w = Window(0);
+    assert!(w.decrease_by(u32::MAX).is_err());
+    assert!(w.increase_by(u32::MAX).is_err());
+    assert_eq!(w, Window(0));
+}
+
 #[derive(Copy, Clone, Debug)]
 pub struct FlowControl {
     /// Window the peer knows about.
@@ -111,7 +156,11 @@ impl FlowControl {
     ///
     /// This is called after receiving a WINDOW_UPDATE frame
     pub fn inc_window(&mut self, sz: WindowSize) -> Result<(), Reason> {
-        let (val, overflow) = self.window_size.0.overflowing_add(sz as i32);
+        // `sz as i32` would wrap for values > i32::MAX (turning a huge
+        // increment into a negative one); fail closed instead. Protocol paths
+        // never supply such sizes, but arithmetic must not depend on that.
+        let sz = i32::try_from(sz).map_err(|_| Reason::FLOW_CONTROL_ERROR)?;
+        let (val, overflow) = self.window_size.0.overflowing_add(sz);
 
         if overflow {
             return Err(Reason::FLOW_CONTROL_ERROR);
@@ -177,8 +226,10 @@ impl FlowControl {
 
         // If send size is zero it's meaningless to update flow control window
         if sz > 0 {
-            // Ensure that the argument is correct
-            assert!(self.window_size.0 >= sz as i32);
+            // Compare in i64: `sz as i32` would wrap above i32::MAX.
+            if (self.window_size.0 as i64) < (sz as i64) {
+                return Err(Reason::FLOW_CONTROL_ERROR);
+            }
 
             // Update values
             self.window_size.decrease_by(sz)?;
@@ -213,7 +264,10 @@ impl Window {
     }
 
     pub fn decrease_by(&mut self, other: WindowSize) -> Result<(), Reason> {
-        if let Some(v) = self.0.checked_sub(other as i32) {
+        // Fail closed on values outside the i32 window range instead of
+        // wrapping (`u32::MAX as i32 == -1` would *add* to the window).
+        let other = i32::try_from(other).map_err(|_| Reason::FLOW_CONTROL_ERROR)?;
+        if let Some(v) = self.0.checked_sub(other) {
             self.0 = v;
             Ok(())
         } else {
@@ -228,7 +282,8 @@ impl Window {
     }
 
     pub fn add(&self, other: WindowSize) -> Result<Self, Reason> {
-        if let Some(v) = self.0.checked_add(other as i32) {
+        let other = i32::try_from(other).map_err(|_| Reason::FLOW_CONTROL_ERROR)?;
+        if let Some(v) = self.0.checked_add(other) {
             Ok(Self(v))
         } else {
             Err(Reason::FLOW_CONTROL_ERROR)
