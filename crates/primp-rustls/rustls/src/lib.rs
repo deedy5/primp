@@ -392,6 +392,11 @@ extern crate alloc;
 #[cfg(any(feature = "std", test))]
 extern crate std;
 
+#[cfg(all(feature = "fips", feature = "ml-dsa"))]
+compile_error!(
+    "The `ml-dsa` feature is not FIPS-validated in this build and cannot be combined with `fips`"
+);
+
 #[cfg(doc)]
 use crate::crypto::CryptoProvider;
 

@@ -12,6 +12,8 @@ pub(crate) struct ImpersonationTls {
     pub(crate) identity: Option<crate::Identity>,
     pub(crate) tls_sni: bool,
     pub(crate) tls_sslkeylogfile: bool,
+    pub(crate) min_tls_version: Option<crate::tls::Version>,
+    pub(crate) max_tls_version: Option<crate::tls::Version>,
 }
 
 /// Apply impersonation settings to a primp ClientBuilder.
@@ -80,13 +82,38 @@ pub(crate) fn build_impersonate_tls_config(
         settings.browser_emulator.is_chrome_based() || settings.browser_emulator.is_firefox();
 
     // Build the base config (verifier stage) for this browser.
-    let verifier_builder = if needs_ech_grease {
-        rustls::ClientConfig::builder_with_provider(provider)
+    // Honor tls_version_min/max even under impersonation (mirrors non-impersonated path).
+    // Unknown versions (SSLv2/SSLv3/future) are dropped fail-closed on both
+    // filters so min/max behave symmetrically for version pinning.
+    let mut versions = rustls::ALL_VERSIONS.to_vec();
+    if let Some(min) = tls.min_tls_version {
+        versions.retain(|&sv| crate::tls::Version::version_ge_min(sv.version, min));
+    }
+    if let Some(max) = tls.max_tls_version {
+        versions.retain(|&sv| crate::tls::Version::version_le_max(sv.version, max));
+    }
+    if versions.is_empty() {
+        return Err(crate::error::builder("empty supported tls versions"));
+    }
+    let version_filtered = versions.len() != rustls::ALL_VERSIONS.len();
+    if needs_ech_grease && version_filtered {
+        log::warn!(
+            "ECH GREASE suppressed due to custom TLS version filter (versions={:?}); JA4 fingerprint will differ from browser",
+            versions
+                .iter()
+                .map(|v| format!("{:?}", v.version))
+                .collect::<Vec<_>>()
+        );
+    }
+    let verifier_builder = if needs_ech_grease && !version_filtered {
+        rustls::ClientConfig::builder_with_provider(provider.clone())
             .with_ech(EchMode::Grease(get_ech_grease_config()))
             .map_err(|e| crate::error::builder(format!("invalid ECH GREASE config: {e}")))?
     } else {
+        // When version filtered, build via explicit versions (ECH GREASE is omitted to allow filtering;
+        // the user explicitly requested a version range which takes precedence over fingerprint fidelity).
         rustls::ClientConfig::builder_with_provider(provider)
-            .with_safe_default_protocol_versions()
+            .with_protocol_versions(&versions)
             .map_err(|e| crate::error::builder(format!("invalid TLS versions: {e}")))?
     };
 
@@ -171,6 +198,12 @@ fn impersonation_provider(
         });
 
     if !advertises_mldsa {
+        return provider;
+    }
+
+    // FIPS: ML-DSA is not FIPS-approved; do not enable verification in FIPS mode.
+    if provider.fips() {
+        log::warn!("ML-DSA advertised but provider is FIPS; keeping FIPS verification set");
         return provider;
     }
 
@@ -277,6 +310,8 @@ mod cert_compression_tests {
             identity: None,
             tls_sni: true,
             tls_sslkeylogfile: false,
+            min_tls_version: None,
+            max_tls_version: None,
         };
         let config = build_impersonate_tls_config(&settings, &[], &tls)
             .expect("build impersonate tls config");
@@ -335,6 +370,8 @@ mod cert_compression_tests {
             identity: None,
             tls_sni: true,
             tls_sslkeylogfile: false,
+            min_tls_version: None,
+            max_tls_version: None,
         };
         let config = build_impersonate_tls_config(&settings, &[], &tls)
             .expect("build impersonate tls config");
@@ -440,5 +477,115 @@ mod cert_compression_tests {
                 "{imp:?} does not advertise ML-DSA, so its provider must not accept it; got {schemes:?}",
             );
         }
+    }
+
+    fn tls_config_debug_for_versions(
+        imp: Impersonate,
+        min: Option<crate::tls::Version>,
+        max: Option<crate::tls::Version>,
+    ) -> String {
+        let settings = get_browser_settings(imp, Some(ImpersonateOS::Linux));
+        let tls = ImpersonationTls {
+            certs_verification: true,
+            hostname_verification: true,
+            tls_certs_only: false,
+            identity: None,
+            tls_sni: true,
+            tls_sslkeylogfile: false,
+            min_tls_version: min,
+            max_tls_version: max,
+        };
+        let config = build_impersonate_tls_config(&settings, &[], &tls)
+            .expect("build impersonate tls config");
+        format!("{config:?}")
+    }
+
+    #[test]
+    fn impersonation_max_tls12_excludes_tls13() {
+        // Early-return bypass would still advertise 1.3 here.
+        let dbg = tls_config_debug_for_versions(
+            Impersonate::ChromeV151,
+            None,
+            Some(crate::tls::Version::TLS_1_2),
+        );
+        assert!(dbg.contains("TLSv1_2"), "max=1.2 must keep 1.2, got {dbg}");
+        assert!(
+            !dbg.contains("TLSv1_3"),
+            "max=1.2 must exclude 1.3, got {dbg}"
+        );
+    }
+
+    #[test]
+    fn impersonation_min_tls13_excludes_tls12() {
+        let dbg = tls_config_debug_for_versions(
+            Impersonate::ChromeV151,
+            Some(crate::tls::Version::TLS_1_3),
+            None,
+        );
+        assert!(dbg.contains("TLSv1_3"), "min=1.3 must keep 1.3, got {dbg}");
+        assert!(
+            !dbg.contains("TLSv1_2"),
+            "min=1.3 must exclude 1.2, got {dbg}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod version_filter_tests {
+    use crate::tls::Version;
+
+    #[test]
+    fn unknown_versions_are_fail_closed_when_max_set() {
+        // Calls the production predicate directly (no mirror).
+        let max = Version::TLS_1_2;
+        assert!(Version::version_le_max(
+            rustls::ProtocolVersion::TLSv1_2,
+            max
+        ));
+        assert!(!Version::version_le_max(
+            rustls::ProtocolVersion::TLSv1_3,
+            max
+        ));
+        // Pre-fix `unwrap_or(true)` let these through (fail-open).
+        assert_eq!(Version::from_rustls(rustls::ProtocolVersion::SSLv2), None);
+        assert!(!Version::version_le_max(
+            rustls::ProtocolVersion::SSLv2,
+            max
+        ));
+        assert!(!Version::version_le_max(
+            rustls::ProtocolVersion::SSLv3,
+            max
+        ));
+        let future = rustls::ProtocolVersion::from(0x7FFFu16);
+        assert_eq!(Version::from_rustls(future), None);
+        assert!(!Version::version_le_max(future, max));
+        assert!(!Version::version_le_max(future, Version::TLS_1_3));
+    }
+
+    #[test]
+    fn unknown_versions_are_fail_closed_when_min_set() {
+        // `min` is symmetric fail-closed via the shared production predicate.
+        let min = Version::TLS_1_2;
+        assert!(Version::version_ge_min(
+            rustls::ProtocolVersion::TLSv1_2,
+            min
+        ));
+        assert!(Version::version_ge_min(
+            rustls::ProtocolVersion::TLSv1_3,
+            min
+        ));
+        assert!(!Version::version_ge_min(
+            rustls::ProtocolVersion::TLSv1_1,
+            min
+        ));
+        assert_eq!(Version::from_rustls(rustls::ProtocolVersion::SSLv2), None);
+        assert!(!Version::version_ge_min(
+            rustls::ProtocolVersion::SSLv2,
+            min
+        ));
+        let future = rustls::ProtocolVersion::from(0x7FFFu16);
+        assert_eq!(Version::from_rustls(future), None);
+        assert!(!Version::version_ge_min(future, min));
+        assert!(!Version::version_ge_min(future, Version::TLS_1_3));
     }
 }
