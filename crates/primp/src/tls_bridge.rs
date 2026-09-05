@@ -63,6 +63,15 @@ impl<T: AsyncRead + Unpin> Read for SyncReadAdapter<'_, '_, T> {
     }
 }
 
+#[inline]
+fn is_plaintext_buffer_full(err: &io::Error) -> bool {
+    err.kind() == io::ErrorKind::Other
+        && err
+            .to_string()
+            .to_ascii_lowercase()
+            .contains("plaintext buffer full")
+}
+
 struct Stream<'a, IO> {
     io: &'a mut IO,
     session: &'a mut ClientConnection,
@@ -257,10 +266,7 @@ impl<'a, IO: AsyncRead + AsyncWrite + Unpin> AsyncRead for Stream<'a, IO> {
                             io_pending = true;
                             break;
                         }
-                        Poll::Ready(Err(err))
-                            if err.kind() == io::ErrorKind::Other
-                                && err.to_string() == "received plaintext buffer full" =>
-                        {
+                        Poll::Ready(Err(err)) if is_plaintext_buffer_full(&err) => {
                             // Plaintext buffer full (16 KiB): stop and drain.
                             break;
                         }
@@ -276,10 +282,7 @@ impl<'a, IO: AsyncRead + AsyncWrite + Unpin> AsyncRead for Stream<'a, IO> {
                     Poll::Pending => {
                         io_pending = true;
                     }
-                    Poll::Ready(Err(err))
-                        if err.kind() == io::ErrorKind::Other
-                            && err.to_string() == "received plaintext buffer full" =>
-                    {
+                    Poll::Ready(Err(err)) if is_plaintext_buffer_full(&err) => {
                         // Buffer full: drain first.
                     }
                     Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
@@ -339,10 +342,7 @@ impl<'a, IO: AsyncRead + AsyncWrite + Unpin> AsyncRead for Stream<'a, IO> {
                                 }
                             }
                             Poll::Pending => return Poll::Pending,
-                            Poll::Ready(Err(err))
-                                if err.kind() == io::ErrorKind::Other
-                                    && err.to_string() == "received plaintext buffer full" =>
-                            {
+                            Poll::Ready(Err(err)) if is_plaintext_buffer_full(&err) => {
                                 // Plaintext buffer full - drain it first.
                                 match self.session.reader().read(buf.initialize_unfilled()) {
                                     Ok(n) => {
@@ -590,5 +590,42 @@ impl<IO: AsyncRead + AsyncWrite + Unpin> AsyncWrite for TokioTlsStream<IO> {
         let this = self.get_mut();
         let mut stream = Stream::new(&mut this.io, &mut this.session);
         Pin::new(&mut stream).poll_shutdown(cx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_plaintext_buffer_full;
+    use std::io;
+
+    #[test]
+    fn plaintext_buffer_full_detection_is_contains_case_insensitive() {
+        // Exact rustls message (pre-fix `==` target).
+        assert!(is_plaintext_buffer_full(&io::Error::new(
+            io::ErrorKind::Other,
+            "received plaintext buffer full"
+        )));
+        // Case/wrapping variants: old `==` missed these.
+        assert!(is_plaintext_buffer_full(&io::Error::new(
+            io::ErrorKind::Other,
+            "Received Plaintext Buffer Full"
+        )));
+        assert!(is_plaintext_buffer_full(&io::Error::new(
+            io::ErrorKind::Other,
+            "rustls: plaintext buffer full (16 KiB)"
+        )));
+        // Non-full: wrong message, wrong kind, partial substring.
+        assert!(!is_plaintext_buffer_full(&io::Error::new(
+            io::ErrorKind::Other,
+            "connection reset"
+        )));
+        assert!(!is_plaintext_buffer_full(&io::Error::new(
+            io::ErrorKind::WouldBlock,
+            "received plaintext buffer full"
+        )));
+        assert!(!is_plaintext_buffer_full(&io::Error::new(
+            io::ErrorKind::Other,
+            "plain buffer"
+        )));
     }
 }

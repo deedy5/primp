@@ -620,6 +620,8 @@ pub(crate) fn extract_ja4_os(imp: Impersonate, os: Option<ImpersonateOS>) -> (St
         identity: None,
         tls_sni: true,
         tls_sslkeylogfile: false,
+        min_tls_version: None,
+        max_tls_version: None,
     };
     let config =
         build_impersonate_tls_config(&settings, &[], &tls).expect("build impersonate tls config");

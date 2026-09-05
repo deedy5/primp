@@ -21,12 +21,15 @@ use crate::client::{tls13, ClientConfig, EchMode, EchStatus};
 use crate::common_state::{CommonState, HandshakeKind, KxState, State};
 use crate::conn::ConnectionRandoms;
 use crate::crypto::{ActiveKeyExchange, KeyExchangeAlgorithm};
+#[cfg(feature = "impersonate")]
+use crate::enums::SignatureScheme;
 use crate::enums::{
     AlertDescription, CertificateType, CipherSuite, ContentType, HandshakeType, ProtocolVersion,
 };
 use crate::error::{Error, PeerIncompatible, PeerMisbehaved};
 use crate::hash_hs::HandshakeHashBuffer;
-use crate::log::{debug, trace};
+#[allow(unused_imports)]
+use crate::log::{debug, trace, warn};
 use crate::msgs::base::Payload;
 #[cfg(feature = "impersonate")]
 use crate::msgs::base::{PayloadU16, PayloadU8};
@@ -580,13 +583,23 @@ fn choose_extension_order_seed(config: &ClientConfig) -> u16 {
         .browser_emulation
         .as_ref()
         .and_then(|be| be.extension_order_seed)
-        .unwrap_or_else(|| crate::rand::random_u16(config.provider.secure_random).unwrap_or(0))
+        .unwrap_or_else(|| {
+            crate::rand::random_u16(config.provider.secure_random).unwrap_or_else(|_| {
+                warn!(
+                    "secure_random failure for extension order seed; using deterministic fallback"
+                );
+                0
+            })
+        })
 }
 
 /// Non-impersonation builds only have the per-connection random seed.
 #[cfg(not(feature = "impersonate"))]
 fn choose_extension_order_seed(config: &ClientConfig) -> u16 {
-    crate::rand::random_u16(config.provider.secure_random).unwrap_or(0)
+    crate::rand::random_u16(config.provider.secure_random).unwrap_or_else(|_| {
+        warn!("secure_random failure for extension order seed; using deterministic fallback");
+        0
+    })
 }
 
 impl ClientHelloInput {
@@ -706,6 +719,100 @@ impl ClientHelloInput {
     }
 }
 
+/// Keep FIPS schemes; fallback to all approved if empty.
+#[cfg(feature = "impersonate")]
+fn intersect_sig_schemes_fips(
+    schemes: &[SignatureScheme],
+    allowed: &[SignatureScheme],
+) -> Vec<SignatureScheme> {
+    let filtered: Vec<_> = schemes
+        .iter()
+        .filter(|s| allowed.contains(s))
+        .copied()
+        .collect();
+    if filtered.is_empty() {
+        allowed.to_vec()
+    } else {
+        filtered
+    }
+}
+
+/// Groups contain only GREASE?
+#[cfg(feature = "impersonate")]
+fn named_groups_degenerate(groups: &[NamedGroup]) -> bool {
+    !groups.is_empty() && groups.iter().all(|g| *g == NamedGroup::GREASE)
+}
+
+/// Needs FIPS fallback (empty/GREASE-only)?
+#[cfg(feature = "impersonate")]
+fn named_groups_need_fips_fallback(groups: &[NamedGroup]) -> bool {
+    groups.is_empty() || named_groups_degenerate(groups)
+}
+
+/// trust_anchors payload; empty is `00 00`.
+#[cfg(feature = "impersonate")]
+fn trust_anchors_payload(major: u16) -> Option<Payload<'static>> {
+    if major >= 152 {
+        Some(Payload::new(vec![0, 0]))
+    } else {
+        None
+    }
+}
+
+/// Fallback for unsupported suites (`None` if unadvertised).
+#[cfg(feature = "impersonate")]
+fn select_cipher_fallback(
+    provider_suites: &[SupportedCipherSuite],
+    advertised: Option<&[CipherSuite]>,
+    selected: CipherSuite,
+) -> Option<SupportedCipherSuite> {
+    let suites = advertised?;
+    if !suites.contains(&selected) {
+        return None;
+    }
+    let fallback = match selected {
+        CipherSuite::TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
+        | CipherSuite::TLS_RSA_WITH_AES_128_GCM_SHA256
+        | CipherSuite::TLS_RSA_WITH_AES_128_CBC_SHA
+        | CipherSuite::TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
+        | CipherSuite::TLS_ECDHE_ECDSA_WITH_3DES_EDE_CBC_SHA
+        | CipherSuite::TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
+        | CipherSuite::TLS_RSA_WITH_3DES_EDE_CBC_SHA => provider_suites
+            .iter()
+            .find(|s| s.suite() == CipherSuite::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256)
+            .copied()
+            .or_else(|| {
+                provider_suites
+                    .iter()
+                    .find(|s| s.suite() == CipherSuite::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256)
+                    .copied()
+            }),
+        CipherSuite::TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
+        | CipherSuite::TLS_RSA_WITH_AES_256_GCM_SHA384
+        | CipherSuite::TLS_RSA_WITH_AES_256_CBC_SHA
+        | CipherSuite::TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA => provider_suites
+            .iter()
+            .find(|s| s.suite() == CipherSuite::TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384)
+            .copied()
+            .or_else(|| {
+                provider_suites
+                    .iter()
+                    .find(|s| s.suite() == CipherSuite::TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384)
+                    .copied()
+            }),
+        _ => provider_suites
+            .iter()
+            .find(|s| s.version().version == ProtocolVersion::TLSv1_2)
+            .copied(),
+    };
+    fallback.or_else(|| {
+        provider_suites
+            .iter()
+            .find(|s| s.version().version == ProtocolVersion::TLSv1_2)
+            .copied()
+    })
+}
+
 /// Emits the initial ClientHello or a ClientHello in response to
 /// a HelloRetryRequest.
 ///
@@ -773,13 +880,54 @@ fn emit_client_hello_for_retry(
         .browser_emulation
         .as_ref()
         .and_then(|be| be.named_groups.as_ref())
-        .map(|groups| groups.to_vec())
+        .map(|groups| {
+            groups
+                .iter()
+                .filter(|ng| {
+                    // GREASE placeholder is always kept
+                    if **ng == NamedGroup::GREASE {
+                        return true;
+                    }
+                    if let Some(skxg) = config
+                        .provider
+                        .kx_groups
+                        .iter()
+                        .find(|kx| kx.name() == **ng)
+                    {
+                        // Unreachable today (`provider.fips()` needs all
+                        // groups FIPS); kept as defense-in-depth.
+                        if config.provider.fips() && !skxg.fips() {
+                            return false;
+                        }
+                        supported_versions
+                            .clone()
+                            .any(|v| skxg.usable_for_version(v))
+                    } else {
+                        // Unknown group not in provider. GREASE is already
+                        // handled above, so in FIPS mode drop unknowns
+                        // (fail-closed); otherwise keep for compatibility.
+                        if config.provider.fips() {
+                            return false;
+                        }
+                        true
+                    }
+                })
+                .copied()
+                .collect()
+        })
         .unwrap_or_else(|| {
             config
                 .provider
                 .kx_groups
                 .iter()
-                .filter(|skxg| supported_versions.any(|v| skxg.usable_for_version(v)))
+                .filter(|skxg| {
+                    if config.provider.fips() && !skxg.fips() {
+                        return false;
+                    }
+                    supported_versions
+                        .clone()
+                        .any(|v| skxg.usable_for_version(v))
+                })
                 .map(|skxg| skxg.name())
                 .collect()
         });
@@ -789,11 +937,34 @@ fn emit_client_hello_for_retry(
         .provider
         .kx_groups
         .iter()
-        .filter(|skxg| supported_versions.any(|v| skxg.usable_for_version(v)))
+        .filter(|skxg| {
+            if config.provider.fips() && !skxg.fips() {
+                return false;
+            }
+            supported_versions.any(|v| skxg.usable_for_version(v))
+        })
         .map(|skxg| skxg.name())
         .collect();
 
     // Replace hardcoded GREASE named group (0x0a0a) with dynamic value from random
+    #[cfg(feature = "impersonate")]
+    if named_groups_need_fips_fallback(&named_groups_vec) && config.provider.fips() {
+        // Empty or GREASE-only would abort; use provider FIPS groups.
+        named_groups_vec = config
+            .provider
+            .kx_groups
+            .iter()
+            .filter(|skxg| {
+                if !skxg.fips() {
+                    return false;
+                }
+                supported_versions
+                    .clone()
+                    .any(|v| skxg.usable_for_version(v))
+            })
+            .map(|skxg| skxg.name())
+            .collect();
+    }
     #[cfg(feature = "impersonate")]
     if let Some((_, grease_ng, _, _, _)) = grease_vals {
         for ng in named_groups_vec.iter_mut() {
@@ -813,7 +984,17 @@ fn emit_client_hello_for_retry(
                 .browser_emulation
                 .as_ref()
                 .and_then(|be| be.signature_algorithms.as_ref())
-                .map(|schemes| schemes.to_vec())
+                .map(|schemes| {
+                    if config.provider.fips() {
+                        // Intersect impersonated list with FIPS-approved verifier
+                        // schemes; otherwise we'd advertise ML-DSA etc. that we
+                        // then refuse to verify. Never empty (see helper).
+                        let allowed = config.verifier.supported_verify_schemes();
+                        intersect_sig_schemes_fips(schemes, &allowed)
+                    } else {
+                        schemes.to_vec()
+                    }
+                })
                 .unwrap_or_else(|| config.verifier.supported_verify_schemes()),
         ),
         #[cfg(not(feature = "impersonate"))]
@@ -841,11 +1022,11 @@ fn emit_client_hello_for_retry(
                 v.extend_from_slice(b"\xC9\xBB\x32"); // һ2
                 exts.unknown_extensions
                     .push((ExtensionType::Unknown(0x44cd), Payload::new(v)));
-                // Trust-anchors extension (0xCA34) — Chrome 152+
-                // Empty payload; appears between psk_key_exchange_modes and supported_groups.
-                if be.version.major >= 152 {
+                // trust_anchors (0xCA34), Chrome 152+: empty list is `00 00`,
+                // not a zero-length extension (servers reject that).
+                if let Some(payload) = trust_anchors_payload(be.version.major) {
                     exts.unknown_extensions
-                        .push((ExtensionType::Unknown(0xCA34), Payload::empty()));
+                        .push((ExtensionType::Unknown(0xCA34), payload));
                 }
                 // GREASE extensions for Chrome fingerprinting (RFC 8701)
                 // Chrome places GREASE at first and last positions in the extension list
@@ -1648,6 +1829,7 @@ impl State<ClientConnectionData> for ExpectServerHello {
             }
         }
 
+        #[allow(clippy::unnecessary_lazy_evaluations)]
         let suite = config
             .find_cipher_suite(server_hello.cipher_suite)
             .or_else(|| {
@@ -1658,70 +1840,28 @@ impl State<ClientConnectionData> for ExpectServerHello {
                 // continue the handshake while preserving ja4/ja4_ro.
                 #[cfg(feature = "impersonate")]
                 if let Some(be) = config.browser_emulation.as_ref() {
-                    if let Some(suites) = be.cipher_suites.as_ref() {
-                        if suites.contains(&server_hello.cipher_suite) {
-                            let fallback = match server_hello.cipher_suite {
-                                CipherSuite::TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
-                                | CipherSuite::TLS_RSA_WITH_AES_128_GCM_SHA256
-                                | CipherSuite::TLS_RSA_WITH_AES_128_CBC_SHA
-                                | CipherSuite::TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
-                                | CipherSuite::TLS_ECDHE_ECDSA_WITH_3DES_EDE_CBC_SHA
-                                | CipherSuite::TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
-                                | CipherSuite::TLS_RSA_WITH_3DES_EDE_CBC_SHA => config
-                                    .provider
-                                    .cipher_suites
-                                    .iter()
-                                    .find(|s| {
-                                        s.suite()
-                                            == CipherSuite::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-                                    })
-                                    .copied()
-                                    .or_else(|| {
-                                        config
-                                            .provider
-                                            .cipher_suites
-                                            .iter()
-                                            .find(|s| {
-                                                s.suite()
-                                                    == CipherSuite::TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
-                                            })
-                                            .copied()
-                                    }),
-                                CipherSuite::TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
-                                | CipherSuite::TLS_RSA_WITH_AES_256_GCM_SHA384
-                                | CipherSuite::TLS_RSA_WITH_AES_256_CBC_SHA
-                                | CipherSuite::TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA => config
-                                    .provider
-                                    .cipher_suites
-                                    .iter()
-                                    .find(|s| {
-                                        s.suite()
-                                            == CipherSuite::TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-                                    })
-                                    .copied()
-                                    .or_else(|| {
-                                        config
-                                            .provider
-                                            .cipher_suites
-                                            .iter()
-                                            .find(|s| {
-                                                s.suite()
-                                                    == CipherSuite::TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
-                                            })
-                                            .copied()
-                                    }),
-                                _ => config
-                                    .provider
-                                    .cipher_suites
-                                    .iter()
-                                    .find(|s| {
-                                        s.version().version == TLSv1_2
-                                    })
-                                    .copied(),
-                            };
-                            return fallback
-                                .or_else(|| config.provider.cipher_suites.first().copied());
-                        }
+                    if let Some(fallback) = select_cipher_fallback(
+                        &config.provider.cipher_suites,
+                        be.cipher_suites.as_deref(),
+                        server_hello.cipher_suite,
+                    ) {
+                        warn!(
+                            "TLS cipher suite fallback: server selected {:?} (advertised for JA4 fidelity but not implemented); falling back to {:?}",
+                            server_hello.cipher_suite,
+                            fallback.suite()
+                        );
+                        // Avoid unused_variables warning when `logging` feature is disabled
+                        // (warn! expands to nothing, leaving `fallback` unused).
+                        let _ = fallback;
+                        return Some(fallback);
+                    }
+                    if be
+                        .cipher_suites
+                        .as_ref()
+                        .is_some_and(|suites| suites.contains(&server_hello.cipher_suite))
+                    {
+                        // Advertised but no TLS 1.2 fallback available.
+                        return None;
                     }
                 }
                 None
@@ -2135,9 +2275,11 @@ impl Deref for ClientSessionValue {
 #[cfg(all(test, feature = "impersonate"))]
 mod tests {
     use super::choose_extension_order_seed;
+    use super::named_groups_need_fips_fallback;
     use super::BrowserType;
     use crate::client::client_emulator::BrowserEmulator;
     use crate::client::ClientConfig;
+    use crate::msgs::enums::NamedGroup;
     use crate::verify::{
         DigitallySignedStruct, HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier,
     };
@@ -2145,6 +2287,93 @@ mod tests {
     use alloc::vec::Vec;
     use core::fmt::Debug;
     use pki_types::{CertificateDer, ServerName, UnixTime};
+
+    #[test]
+    fn cipher_fallback_selects_tls12_not_first() {
+        use super::select_cipher_fallback;
+        use crate::crypto::aws_lc_rs::default_provider;
+        use crate::CipherSuite;
+        use crate::ProtocolVersion;
+        let provider = default_provider();
+        let suites = &provider.cipher_suites;
+        // Provider must offer both TLS 1.3 (first) and TLS 1.2, otherwise
+        // the test cannot discriminate first() vs first-TLS1.2.
+        assert!(suites
+            .iter()
+            .any(|s| s.version().version == ProtocolVersion::TLSv1_3));
+        assert!(suites
+            .iter()
+            .any(|s| s.version().version == ProtocolVersion::TLSv1_2));
+        // Unadvertised suite -> None (handshake must abort, not fallback).
+        assert!(select_cipher_fallback(
+            suites,
+            None,
+            CipherSuite::TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
+        )
+        .is_none());
+        assert!(select_cipher_fallback(
+            suites,
+            Some(&[]),
+            CipherSuite::TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
+        )
+        .is_none());
+        // Advertised legacy 128-bit CBC -> GCM 128 fallback (TLS 1.2).
+        let advertised = [CipherSuite::TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA];
+        let fb = select_cipher_fallback(
+            suites,
+            Some(&advertised),
+            CipherSuite::TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+        )
+        .expect("must fallback");
+        assert_eq!(fb.version().version, ProtocolVersion::TLSv1_2);
+        assert_eq!(
+            fb.suite(),
+            CipherSuite::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+        );
+        // Generic unknown-but-advertised suite -> first TLS 1.2, never TLS 1.3
+        // first() (old code used provider.cipher_suites.first()).
+        let advertised = [CipherSuite::TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256];
+        let fb = select_cipher_fallback(
+            suites,
+            Some(&advertised),
+            CipherSuite::TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+        )
+        .expect("must fallback");
+        assert_eq!(fb.version().version, ProtocolVersion::TLSv1_2);
+    }
+
+    #[test]
+    fn empty_or_grease_only_groups_need_fips_fallback() {
+        // Empty is as illegal as GREASE-only.
+        assert!(named_groups_need_fips_fallback(&[]));
+        assert!(named_groups_need_fips_fallback(&[NamedGroup::GREASE]));
+        // Negative: real groups must NOT trigger fallback (old
+        // `named_groups_degenerate`-only check missed empty, and an
+        // inverted predicate would force fallback on every handshake).
+        assert!(!named_groups_need_fips_fallback(&[NamedGroup::X25519]));
+        assert!(!named_groups_need_fips_fallback(&[
+            NamedGroup::GREASE,
+            NamedGroup::secp256r1
+        ]));
+    }
+
+    #[test]
+    fn trust_anchors_payload_is_00_00_on_152_plus() {
+        use super::trust_anchors_payload;
+        // Chrome 152+: present with raw bytes [0x00, 0x00] (empty u16 list),
+        // not zero-length (old Payload::empty() sent [] and was rejected).
+        for major in [152, 153, 200] {
+            let payload = trust_anchors_payload(major).expect("must be present");
+            assert_eq!(payload.bytes(), &[0, 0], "wrong bytes for {major}");
+        }
+        // Pre-152: absent.
+        for major in [0, 148, 149, 150, 151] {
+            assert!(
+                trust_anchors_payload(major).is_none(),
+                "must be absent for {major}"
+            );
+        }
+    }
 
     /// Regression guard: asserts the per-browser/per-version ClientHello extension
     /// order matches the ground-truth captures verbatim. Every
@@ -2719,5 +2948,41 @@ mod tests {
             sv, cs,
             "SV GREASE must be independent of the cipher-suite GREASE"
         );
+    }
+
+    /// Empty sig schemes fallback to approved.
+    #[test]
+    fn fips_sig_scheme_filter_never_returns_empty() {
+        use super::intersect_sig_schemes_fips;
+        use crate::SignatureScheme;
+
+        let allowed = [SignatureScheme::ECDSA_NISTP256_SHA256];
+        // Disjoint (ML-DSA-only profile) → fallback to allowed.
+        let mldsa = [SignatureScheme::ML_DSA_65];
+        assert_eq!(intersect_sig_schemes_fips(&mldsa, &allowed), allowed);
+        // Overlap → real intersection.
+        let mixed = [
+            SignatureScheme::ML_DSA_65,
+            SignatureScheme::ECDSA_NISTP256_SHA256,
+        ];
+        assert_eq!(
+            intersect_sig_schemes_fips(&mixed, &allowed),
+            [SignatureScheme::ECDSA_NISTP256_SHA256]
+        );
+    }
+
+    /// Detect GREASE-only groups.
+    #[test]
+    fn fips_named_group_filter_detects_grease_only() {
+        use super::named_groups_degenerate;
+        use crate::msgs::enums::NamedGroup;
+
+        assert!(!named_groups_degenerate(&[]));
+        assert!(!named_groups_degenerate(&[NamedGroup::X25519]));
+        assert!(named_groups_degenerate(&[NamedGroup::GREASE]));
+        assert!(!named_groups_degenerate(&[
+            NamedGroup::GREASE,
+            NamedGroup::secp256r1
+        ]));
     }
 }

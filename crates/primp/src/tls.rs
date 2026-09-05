@@ -74,6 +74,9 @@ impl Certificate {
     /// # }
     /// ```
     pub fn from_der(der: &[u8]) -> crate::Result<Certificate> {
+        if der.is_empty() {
+            return Err(crate::error::builder("invalid certificate encoding"));
+        }
         Ok(Certificate {
             original: Cert::Der(der.to_owned()),
         })
@@ -96,6 +99,12 @@ impl Certificate {
     /// # }
     /// ```
     pub fn from_pem(pem: &[u8]) -> crate::Result<Certificate> {
+        // Eagerly validate PEM contains at least one certificate.
+        let mut reader = std::io::BufReader::new(pem);
+        let certs = Self::read_pem_certs(&mut reader)?;
+        if certs.is_empty() {
+            return Err(crate::error::builder("invalid certificate encoding"));
+        }
         Ok(Certificate {
             original: Cert::Pem(pem.to_owned()),
         })
@@ -121,7 +130,11 @@ impl Certificate {
     pub fn from_pem_bundle(pem_bundle: &[u8]) -> crate::Result<Vec<Certificate>> {
         let mut reader = BufReader::new(pem_bundle);
 
-        Self::read_pem_certs(&mut reader)?
+        let certs = Self::read_pem_certs(&mut reader)?;
+        if certs.is_empty() {
+            return Err(crate::error::builder("invalid certificate encoding"));
+        }
+        certs
             .iter()
             .map(|cert_vec| Certificate::from_der(cert_vec))
             .collect::<crate::Result<Vec<Certificate>>>()
@@ -140,6 +153,9 @@ impl Certificate {
             Cert::Pem(buf) => {
                 let mut reader = Cursor::new(buf);
                 let certs = Self::read_pem_certs(&mut reader)?;
+                if certs.is_empty() {
+                    return Err(crate::error::builder("invalid certificate encoding"));
+                }
                 for c in certs {
                     root_cert_store
                         .add(c.into())
@@ -156,24 +172,63 @@ impl Certificate {
     #[cfg(feature = "http3")]
     pub(crate) fn as_der_many(&self) -> crate::Result<Vec<Vec<u8>>> {
         match &self.original {
-            Cert::Der(buf) => Ok(vec![buf.clone()]),
+            Cert::Der(buf) => {
+                if buf.is_empty() {
+                    return Err(crate::error::builder("invalid certificate encoding"));
+                }
+                Ok(vec![buf.clone()])
+            }
             Cert::Pem(buf) => {
                 use std::io::Cursor;
 
                 let mut reader = Cursor::new(buf.clone());
-                Self::read_pem_certs(&mut reader)
+                let certs = Self::read_pem_certs(&mut reader)?;
+                if certs.is_empty() {
+                    return Err(crate::error::builder("invalid certificate encoding"));
+                }
+                Ok(certs)
             }
         }
     }
 
     fn read_pem_certs(reader: &mut impl BufRead) -> crate::Result<Vec<Vec<u8>>> {
-        rustls_pki_types::CertificateDer::pem_reader_iter(reader)
+        // Be lenient with surrounding whitespace on PEM lines: editors
+        // leave trailing spaces/tabs and tests indent blocks. Strip
+        // leading/trailing SP/HTAB/CR per line before feeding to the
+        // strict pem decoder (see
+        // `certificates_from_pem_tolerates_trailing_whitespace`).
+        let mut raw = Vec::new();
+        reader
+            .read_to_end(&mut raw)
+            .map_err(crate::error::builder)?;
+        let cleaned = clean_pem_lines(&raw);
+        let mut cursor = std::io::Cursor::new(cleaned);
+        let certs: Vec<Vec<u8>> = rustls_pki_types::CertificateDer::pem_reader_iter(&mut cursor)
             .map(|result| match result {
                 Ok(cert) => Ok(cert.as_ref().to_vec()),
                 Err(_) => Err(crate::error::builder("invalid certificate encoding")),
             })
-            .collect()
+            .collect::<crate::Result<Vec<Vec<u8>>>>()?;
+        Ok(certs)
     }
+}
+
+/// Trim PEM line whitespace.
+fn clean_pem_lines(raw: &[u8]) -> Vec<u8> {
+    let mut cleaned = Vec::with_capacity(raw.len());
+    for line in raw.split(|&b| b == b'\n') {
+        let mut start = 0;
+        while start < line.len() && matches!(line[start], b' ' | b'\t' | b'\r') {
+            start += 1;
+        }
+        let mut end = line.len();
+        while end > start && matches!(line[end - 1], b' ' | b'\t' | b'\r') {
+            end -= 1;
+        }
+        cleaned.extend_from_slice(&line[start..end]);
+        cleaned.push(b'\n');
+    }
+    cleaned
 }
 
 impl Identity {
@@ -202,8 +257,10 @@ impl Identity {
         use rustls_pki_types::{pem::SectionKind, PrivateKeyDer};
         use std::io::Cursor;
 
+        // Tolerate indented blocks / trailing SP/HTAB like certificates do.
+        let cleaned = clean_pem_lines(buf);
         let (key, certs) = {
-            let mut pem = Cursor::new(buf);
+            let mut pem = Cursor::new(cleaned);
             let mut sk = Vec::<rustls_pki_types::PrivateKeyDer>::new();
             let mut certs = Vec::<rustls_pki_types::CertificateDer>::new();
 
@@ -221,12 +278,18 @@ impl Identity {
                     SectionKind::EcPrivateKey => sk.push(PrivateKeyDer::Sec1(data.into())),
                     _ => {
                         return Err(crate::error::builder(TLSError::General(String::from(
-                            "No valid certificate was found",
+                            "Invalid identity PEM file: unexpected section",
                         ))))
                     }
                 }
             }
 
+            if sk.len() > 1 {
+                // Multiple keys are ambiguous; reject instead of picking one.
+                return Err(crate::error::builder(TLSError::General(String::from(
+                    "multiple private keys found",
+                ))));
+            }
             if let (Some(sk), false) = (sk.pop(), certs.is_empty()) {
                 (sk, certs)
             } else {
@@ -279,8 +342,9 @@ impl CertificateRevocationList {
     ///
     /// This requires the `rustls(-...)` Cargo feature enabled.
     pub fn from_pem(pem: &[u8]) -> crate::Result<CertificateRevocationList> {
+        let cleaned = clean_pem_lines(pem);
         Ok(CertificateRevocationList {
-            inner: rustls_pki_types::CertificateRevocationListDer::from_pem_slice(pem)
+            inner: rustls_pki_types::CertificateRevocationListDer::from_pem_slice(&cleaned)
                 .map_err(|_| crate::error::builder("invalid crl encoding"))?,
         })
     }
@@ -307,12 +371,18 @@ impl CertificateRevocationList {
     ///
     /// This requires the `rustls(-...)` Cargo feature enabled.
     pub fn from_pem_bundle(pem_bundle: &[u8]) -> crate::Result<Vec<CertificateRevocationList>> {
-        rustls_pki_types::CertificateRevocationListDer::pem_slice_iter(pem_bundle)
-            .map(|result| match result {
-                Ok(crl) => Ok(CertificateRevocationList { inner: crl }),
-                Err(_) => Err(crate::error::builder("invalid crl encoding")),
-            })
-            .collect::<crate::Result<Vec<CertificateRevocationList>>>()
+        let cleaned = clean_pem_lines(pem_bundle);
+        let crls: Vec<CertificateRevocationList> =
+            rustls_pki_types::CertificateRevocationListDer::pem_slice_iter(&cleaned)
+                .map(|result| match result {
+                    Ok(crl) => Ok(CertificateRevocationList { inner: crl }),
+                    Err(_) => Err(crate::error::builder("invalid crl encoding")),
+                })
+                .collect::<crate::Result<Vec<CertificateRevocationList>>>()?;
+        if crls.is_empty() {
+            return Err(crate::error::builder("invalid crl encoding"));
+        }
+        Ok(crls)
     }
 
     pub(crate) fn as_rustls_crl<'a>(&self) -> rustls_pki_types::CertificateRevocationListDer<'a> {
@@ -373,6 +443,20 @@ impl Version {
             rustls::ProtocolVersion::TLSv1_3 => Some(Self(InnerVersion::Tls1_3)),
             _ => None,
         }
+    }
+
+    /// Meets `min`? Unknown versions fail.
+    pub(crate) fn version_ge_min(proto: rustls::ProtocolVersion, min: Version) -> bool {
+        Version::from_rustls(proto)
+            .map(|v| v >= min)
+            .unwrap_or(false)
+    }
+
+    /// Meets `max`? Unknown versions fail.
+    pub(crate) fn version_le_max(proto: rustls::ProtocolVersion, max: Version) -> bool {
+        Version::from_rustls(proto)
+            .map(|v| v <= max)
+            .unwrap_or(false)
     }
 }
 
@@ -638,6 +722,23 @@ mod tests {
     }
 
     #[test]
+    fn certificates_from_pem_tolerates_trailing_whitespace() {
+        // Editors may leave trailing SP/HTAB on PEM lines; be as lenient as
+        // with leading indentation (see `read_pem_certs`).
+        let bundle = b"-----BEGIN CERTIFICATE-----   \nMIIBtjCCAVugAwIBAgITBmyf1XSXNmY/Owua2eiedgPySjAKBggqhkjOPQQDAjA5\nMQswCQYDVQQGEwJVUzEPMA0GA1UEChMGQW1hem9uMRkwFwYDVQQDExBBbWF6b24g\nUm9vdCBDQSAzMB4XDTE1MDUyNjAwMDAwMFoXDTQwMDUyNjAwMDAwMFowOTELMAkG\nA1UEBhMCVVMxDzANBgNVBAoTBkFtYXpvbjEZMBcGA1UEAxMQQW1hem9uIFJvb3Qg\nQ0EgMzBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABCmXp8ZBf8ANm+gBG1bG8lKl\nui2yEujSLtf6ycXYqm0fc4E7O5hrOXwzpcVOho6AF2hiRVd9RFgdszflZwjrZt6j\nQjBAMA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgGGMB0GA1UdDgQWBBSr\nttvXBp43rDCGB5Fwx5zEGbF4wDAKBggqhkjOPQQDAgNJADBGAiEA4IWSoxe3jfkr\nBqWTrBqYaGFy+uGh0PsceGCmQ5nFuMQCIQCcAu/xlJyzlvnrxir4tiz+OpAUFteM\nYyRIHN8wfdVoOw==\t\n-----END CERTIFICATE-----  \n";
+        assert!(Certificate::from_pem_bundle(bundle).is_ok());
+    }
+
+    #[test]
+    fn certificates_from_pem_tolerates_trailing_tab_on_begin() {
+        // rustls-pki-types BEGIN parser skips only SP/CR/LF, not HTAB;
+        // `read_pem_certs` must strip trailing HTAB (leading-only trim
+        // yields IllegalSectionStart).
+        let bundle = b"-----BEGIN CERTIFICATE-----\t\nMIIBtjCCAVugAwIBAgITBmyf1XSXNmY/Owua2eiedgPySjAKBggqhkjOPQQDAjA5\nMQswCQYDVQQGEwJVUzEPMA0GA1UEChMGQW1hem9uMRkwFwYDVQQDExBBbWF6b24g\nUm9vdCBDQSAzMB4XDTE1MDUyNjAwMDAwMFoXDTQwMDUyNjAwMDAwMFowOTELMAkG\nA1UEBhMCVVMxDzANBgNVBAoTBkFtYXpvbjEZMBcGA1UEAxMQQW1hem9uIFJvb3Qg\nQ0EgMzBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABCmXp8ZBf8ANm+gBG1bG8lKl\nui2yEujSLtf6ycXYqm0fc4E7O5hrOXwzpcVOho6AF2hiRVd9RFgdszflZwjrZt6j\nQjBAMA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgGGMB0GA1UdDgQWBBSr\nttvXBp43rDCGB5Fwx5zEGbF4wDAKBggqhkjOPQQDAgNJADBGAiEA4IWSoxe3jfkr\nBqWTrBqYaGFy+uGh0PsceGCmQ5nFuMQCIQCcAu/xlJyzlvnrxir4tiz+OpAUFteM\nYyRIHN8wfdVoOw==\n-----END CERTIFICATE-----\n";
+        assert!(Certificate::from_pem_bundle(bundle).is_ok());
+    }
+
+    #[test]
     fn crl_from_pem() {
         let pem = b"-----BEGIN X509 CRL-----\n-----END X509 CRL-----\n";
 
@@ -653,6 +754,40 @@ mod tests {
         assert!(result.is_ok());
         let result = result.unwrap();
         assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn empty_pem_bundle_is_rejected() {
+        assert!(Certificate::from_pem_bundle(b"").is_err());
+        assert!(Certificate::from_pem_bundle(b"   \n\t\n").is_err());
+        assert!(Certificate::from_pem(b"").is_err());
+    }
+
+    #[test]
+    fn from_der_rejects_empty() {
+        assert!(Certificate::from_der(b"").is_err());
+    }
+
+    #[test]
+    fn clean_pem_lines_strips_sp_htab_cr() {
+        let raw = b"  abc  \n\tdef\t\n\r\n";
+        assert_eq!(super::clean_pem_lines(raw), b"abc\ndef\n\n\n");
+    }
+
+    #[test]
+    fn crl_from_pem_bundle_tolerates_whitespace() {
+        let raw = std::fs::read("tests/support/crl.pem").unwrap();
+        let mut padded = b"   \n".to_vec();
+        padded.extend_from_slice(&raw);
+        padded.extend_from_slice(b"\t  \n");
+        let result = CertificateRevocationList::from_pem_bundle(&padded);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn empty_crl_bundle_is_rejected() {
+        assert!(CertificateRevocationList::from_pem_bundle(b"").is_err());
+        assert!(CertificateRevocationList::from_pem_bundle(b"   \n").is_err());
     }
 
     #[test]
