@@ -6,7 +6,6 @@ use http::header;
 use http::method::{self, Method};
 use http::status::{self, StatusCode};
 
-use std::cmp;
 use std::collections::VecDeque;
 use std::io::Cursor;
 use std::ops::ControlFlow;
@@ -15,7 +14,9 @@ use std::str::Utf8Error;
 /// Decodes headers using HPACK
 #[derive(Debug)]
 pub struct Decoder {
-    // Protocol indicated that the max table size will update
+    // Protocol indicated that the max table size will update. Only the most
+    // recent value matters: `decode` validates the next wire `SizeUpdate`
+    // against a single limit, so intermediate updates are not retained.
     max_size_update: Option<usize>,
     last_max_update: usize,
     table: Table,
@@ -162,14 +163,8 @@ impl Decoder {
         }
     }
 
-    /// Queues a potential size update
-    #[allow(dead_code)]
+    /// Store pending size update (last wins).
     pub fn queue_size_update(&mut self, size: usize) {
-        let size = match self.max_size_update {
-            Some(v) => cmp::max(v, size),
-            None => size,
-        };
-
         self.max_size_update = Some(size);
     }
 
@@ -186,6 +181,8 @@ impl Decoder {
 
         let mut can_resize = true;
 
+        // Apply the latest SETTINGS size update, if any. It becomes the
+        // limit the subsequent wire `SizeUpdate` is validated against.
         if let Some(size) = self.max_size_update.take() {
             self.last_max_update = size;
         }
@@ -900,6 +897,35 @@ mod test {
         let mut buf = BytesMut::new();
         huffman::encode(src, &mut buf);
         buf
+    }
+
+    #[test]
+    fn size_update_keeps_last() {
+        // Only the most recent SETTINGS size update is used to validate the
+        // next wire SizeUpdate; intermediate values must not accumulate.
+        let mut de = Decoder::new(4096);
+        de.queue_size_update(4096);
+        de.queue_size_update(0);
+        de.queue_size_update(4096);
+        assert_eq!(de.max_size_update, Some(4096));
+    }
+
+    #[test]
+    fn size_update_validated_against_last_not_max() {
+        // Discriminates last-wins from the old max() collapse: SETTINGS
+        // 4096 -> 0 must resolve to 0, so a wire SizeUpdate(4096) that the
+        // old policy wrongly accepted is now rejected.
+        let mut de = Decoder::new(4096);
+        de.queue_size_update(4096);
+        de.queue_size_update(0);
+        assert_eq!(de.max_size_update, Some(0));
+        // Wire SizeUpdate(4096) with a 5-bit prefix: 0x3F then 4065 base-128 LE.
+        let mut buf = BytesMut::from(&[0x3fu8, 0xE1, 0x1F][..]);
+        let mut wire = Cursor::new(&mut buf);
+        let err = de
+            .decode(&mut wire, |_| std::ops::ControlFlow::Continue(()))
+            .expect_err("SizeUpdate above the latest SETTINGS must be rejected");
+        assert!(matches!(err, DecoderError::InvalidMaxDynamicSize));
     }
 
     #[test]
