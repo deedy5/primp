@@ -181,6 +181,12 @@ impl PseudoOrderBuilder {
         }
         PseudoOrder { ids: self.ids }
     }
+
+    /// Build without default pseudo headers.
+    /// Unlisted pseudo headers append last.
+    pub fn build_without_extend(self) -> PseudoOrder {
+        PseudoOrder { ids: self.ids }
+    }
 }
 
 #[derive(Debug)]
@@ -892,6 +898,27 @@ impl Iterator for Iter {
                 }
             }
 
+            // Emit any remaining pseudo headers not covered by the order
+            // (e.g. :protocol for Extended CONNECT with a custom PseudoOrder).
+            if let Some(method) = pseudo.method.take() {
+                return Some(Method(method));
+            }
+            if let Some(scheme) = pseudo.scheme.take() {
+                return Some(Scheme(scheme));
+            }
+            if let Some(authority) = pseudo.authority.take() {
+                return Some(Authority(authority));
+            }
+            if let Some(path) = pseudo.path.take() {
+                return Some(Path(path));
+            }
+            if let Some(protocol) = pseudo.protocol.take() {
+                return Some(Protocol(protocol));
+            }
+            if let Some(status) = pseudo.status.take() {
+                return Some(Status(status));
+            }
+
             // All pseudo headers consumed
             self.pseudo = None;
         }
@@ -1168,11 +1195,24 @@ impl HeaderBlock {
                 .map(|(i, name)| (name, i))
                 .collect();
             let default_pos = order.len();
-            fields_vec.sort_by_key(|(name, _)| {
-                name.as_ref()
+            // Keep duplicate header continuations (None) grouped with their
+            // parent header's position instead of sending them to
+            // default_pos which would split e.g. `cookie: a=1, None:b=2`.
+            let mut current: Option<HeaderName> = None;
+            let mut keyed: Vec<(usize, usize, (Option<HeaderName>, HeaderValue))> =
+                Vec::with_capacity(fields_vec.len());
+            for (idx, (name, value)) in fields_vec.into_iter().enumerate() {
+                if let Some(ref n) = name {
+                    current = Some(n.clone());
+                }
+                let pos = current
+                    .as_ref()
                     .and_then(|n| order_map.get(n).copied())
-                    .unwrap_or(default_pos)
-            });
+                    .unwrap_or(default_pos);
+                keyed.push((pos, idx, (name, value)));
+            }
+            keyed.sort_by_key(|(pos, idx, _)| (*pos, *idx));
+            fields_vec = keyed.into_iter().map(|(_, _, kv)| kv).collect();
         }
 
         let headers = Iter {
@@ -1450,7 +1490,7 @@ mod test {
                     method.clone(),
                     Uri::from_static("https://example.com/a/b/c"),
                     None,
-                    None,
+                    None
                 ),
                 Pseudo {
                     method: method.into(),
@@ -1461,5 +1501,108 @@ mod test {
                 }
             );
         }
+    }
+
+    #[test]
+    fn duplicate_headers_stay_grouped_under_header_order() {
+        use crate::hpack::{Decoder, Encoder};
+        use std::io::Cursor;
+        use std::ops::ControlFlow;
+
+        // Duplicate `cookie` values arrive as `(Some, a=1)` + `(None, b=2)`
+        // continuations. With a `header_order` ranking `cookie` first, the
+        // continuation must keep the parent's position — not fall to the
+        // default bucket, which would split the cookies around `x-other`.
+        // Insert unordered header FIRST: HeaderMap iterates in key-insertion
+        // order, so this yields [x-other, cookie a=1, None b=2]. Old code ranked
+        // None as default_pos and emitted [cookie a, x-other, x-other b=2].
+        let mut fields = HeaderMap::new();
+        fields.insert(
+            HeaderName::from_static("x-other"),
+            HeaderValue::from_static("1"),
+        );
+        fields.append(http::header::COOKIE, HeaderValue::from_static("a=1"));
+        fields.append(http::header::COOKIE, HeaderValue::from_static("b=2"));
+
+        let block = HeaderBlock {
+            field_size: calculate_headermap_size(&fields),
+            fields,
+            is_over_size: false,
+            pseudo: Pseudo::default(),
+            header_order: Some(vec![http::header::COOKIE]),
+        };
+
+        let mut encoder = Encoder::default();
+        let mut encoded = block.into_encoding(&mut encoder);
+
+        let mut decoded: Vec<(String, String)> = Vec::new();
+        Decoder::new(4096)
+            .decode(&mut Cursor::new(&mut encoded.hpack), |h| {
+                if let crate::hpack::Header::Field { name, value } = h {
+                    decoded.push((name.as_str().to_owned(), value.to_str().unwrap().to_owned()));
+                }
+                ControlFlow::Continue(())
+            })
+            .unwrap();
+
+        let names: Vec<&str> = decoded.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, vec!["cookie", "cookie", "x-other"]);
+        assert_eq!(decoded[0].1, "a=1");
+        assert_eq!(decoded[1].1, "b=2");
+    }
+
+    #[test]
+    fn custom_pseudo_order_without_extend_keeps_four() {
+        // Custom 4-order [m,a,s,p] must not be auto-extended with
+        // :protocol/:status (browser impersonation orders).
+        let order = PseudoOrder::builder()
+            .push(PseudoId::Method)
+            .push(PseudoId::Authority)
+            .push(PseudoId::Scheme)
+            .push(PseudoId::Path)
+            .build_without_extend();
+        assert_eq!((&order).into_iter().count(), 4);
+    }
+
+    #[test]
+    fn custom_pseudo_order_without_extend_emits_protocol_trailing() {
+        // Custom 4-order [m,a,s,p] via `build_without_extend` omits :protocol
+        // (e.g. Chrome impersonation); `Iter` fallback must append it trailing,
+        // not drop it (RFC 8441 extended-CONNECT).
+        let order = PseudoOrder::builder()
+            .push(PseudoId::Method)
+            .push(PseudoId::Authority)
+            .push(PseudoId::Scheme)
+            .push(PseudoId::Path)
+            .build_without_extend();
+        let pseudo = Pseudo {
+            method: Some(Method::CONNECT),
+            authority: Some(BytesStr::from_static("example.com")),
+            scheme: Some(BytesStr::from_static("https")),
+            path: Some(BytesStr::from_static("/")),
+            protocol: Some(Protocol::from_static("websocket")),
+            status: None,
+            order: order.clone(),
+        };
+        let iter = Iter {
+            pseudo: Some(pseudo),
+            fields: Vec::new().into_iter(),
+            pseudo_order: order,
+        };
+        let names: Vec<&str> = iter
+            .map(|h| match h {
+                crate::hpack::Header::Method(_) => ":method",
+                crate::hpack::Header::Authority(_) => ":authority",
+                crate::hpack::Header::Scheme(_) => ":scheme",
+                crate::hpack::Header::Path(_) => ":path",
+                crate::hpack::Header::Protocol(_) => ":protocol",
+                crate::hpack::Header::Status(_) => ":status",
+                crate::hpack::Header::Field { .. } => "field",
+            })
+            .collect();
+        assert_eq!(
+            names,
+            vec![":method", ":authority", ":scheme", ":path", ":protocol"]
+        );
     }
 }

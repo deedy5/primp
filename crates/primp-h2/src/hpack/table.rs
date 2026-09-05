@@ -1,11 +1,11 @@
 use super::Header;
 
-use fnv::FnvHasher;
+use foldhash::fast::RandomState;
 use http::header;
 use http::method::Method;
 
 use std::collections::VecDeque;
-use std::hash::{Hash, Hasher};
+use std::hash::{BuildHasher, Hash, Hasher};
 use std::{cmp, mem};
 
 /// HPACK encoder table
@@ -18,6 +18,11 @@ pub struct Table {
     // Size is in bytes
     size: usize,
     max_size: usize,
+    // Per-table hash seed: isolates hash-collision DoS resistance per
+    // connection instead of sharing one process-wide seed (an attacker
+    // learning the seed on one connection must not get collisions for
+    // free on all others).
+    seed: RandomState,
 }
 
 #[derive(Debug)]
@@ -81,6 +86,7 @@ impl Table {
                 inserted: 0,
                 size: 0,
                 max_size,
+                seed: RandomState::default(),
             }
         } else {
             let capacity = cmp::max(to_raw_capacity(capacity).next_power_of_two(), 8);
@@ -92,6 +98,7 @@ impl Table {
                 inserted: 0,
                 size: 0,
                 max_size,
+                seed: RandomState::default(),
             }
         }
     }
@@ -172,7 +179,7 @@ impl Table {
             return Index::new(statik, header);
         }
 
-        let hash = hash_header(&header);
+        let hash = hash_header(&self.seed, &header);
 
         let desired_pos = desired_pos(self.mask, hash);
         let mut probe = desired_pos;
@@ -659,10 +666,10 @@ fn probe_distance(mask: usize, hash: HashValue, current: usize) -> usize {
     current.wrapping_sub(desired_pos(mask, hash)) & mask
 }
 
-fn hash_header(header: &Header) -> HashValue {
+fn hash_header(seed: &RandomState, header: &Header) -> HashValue {
     const MASK: u64 = (MAX_SIZE as u64) - 1;
 
-    let mut h = FnvHasher::default();
+    let mut h = seed.build_hasher();
     header.name().hash(&mut h);
     HashValue((h.finish() & MASK) as usize)
 }
@@ -757,5 +764,44 @@ fn index_static(header: &Header) -> Option<(usize, bool)> {
             500 => Some((14, true)),
             _ => Some((8, false)),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn custom_header(name: &str, value: &str) -> Header {
+        Header::Field {
+            name: name.parse().unwrap(),
+            value: value.parse().unwrap(),
+        }
+    }
+
+    #[test]
+    fn per_table_seed_still_indexes_repeated_header() {
+        // The per-table hash seed must not break dynamic-table indexing:
+        // a repeated custom header resolves to an indexed form.
+        let mut table = Table::new(4096, 4096);
+        let first = table.index(custom_header("x-custom-seed", "1"));
+        assert!(
+            matches!(
+                first,
+                Index::Inserted(..) | Index::InsertedValue(..) | Index::Name(..)
+            ),
+            "first insert: {first:?}"
+        );
+        let second = table.index(custom_header("x-custom-seed", "1"));
+        assert!(
+            matches!(second, Index::Indexed(..) | Index::Name(..)),
+            "repeat must be indexed, got {second:?}"
+        );
+    }
+
+    #[test]
+    fn hash_is_stable_within_a_table() {
+        let table = Table::new(4096, 4096);
+        let h = custom_header("x-stable", "v");
+        assert_eq!(hash_header(&table.seed, &h), hash_header(&table.seed, &h));
     }
 }

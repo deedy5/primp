@@ -696,6 +696,13 @@ impl Builder {
     /// # pub fn main() {}
     /// ```
     pub fn initial_window_size(&mut self, size: u32) -> &mut Self {
+        if size > proto::MAX_WINDOW_SIZE {
+            tracing::warn!(
+                "ignoring initial_window_size({size}): must be 0..={}",
+                proto::MAX_WINDOW_SIZE
+            );
+            return self;
+        }
         self.settings.set_initial_window_size(Some(size));
         self
     }
@@ -730,6 +737,14 @@ impl Builder {
     /// # pub fn main() {}
     /// ```
     pub fn initial_connection_window_size(&mut self, size: u32) -> &mut Self {
+        // 0 is RFC-legal (stall) but rejected (see client.rs).
+        if size == 0 || size > proto::MAX_WINDOW_SIZE {
+            tracing::warn!(
+                "ignoring initial_connection_window_size({size}): must be 1..={}",
+                proto::MAX_WINDOW_SIZE
+            );
+            return self;
+        }
         self.initial_target_connection_window_size = Some(size);
         self
     }
@@ -763,10 +778,7 @@ impl Builder {
     /// # pub fn main() {}
     /// ```
     ///
-    /// # Panics
-    ///
-    /// This function panics if `max` is not within the legal range specified
-    /// above.
+    /// Out-of-range warns, keeps previous.
     pub fn max_frame_size(&mut self, max: u32) -> &mut Self {
         self.settings.set_max_frame_size(Some(max));
         self
