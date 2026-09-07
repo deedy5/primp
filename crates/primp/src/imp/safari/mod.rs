@@ -128,7 +128,7 @@ fn safari_pseudo_order() -> &'static PseudoOrder {
             .push(PseudoId::Scheme)
             .push(PseudoId::Authority)
             .push(PseudoId::Path)
-            .build()
+            .build_without_extend()
     })
 }
 
