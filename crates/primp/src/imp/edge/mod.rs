@@ -290,7 +290,7 @@ fn edge_pseudo_order() -> &'static PseudoOrder {
             .push(PseudoId::Authority)
             .push(PseudoId::Scheme)
             .push(PseudoId::Path)
-            .build()
+            .build_without_extend()
     })
 }
 

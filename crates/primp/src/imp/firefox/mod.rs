@@ -222,7 +222,7 @@ fn firefox_pseudo_order() -> &'static super::PseudoOrder {
             .push(super::PseudoId::Path)
             .push(super::PseudoId::Authority)
             .push(super::PseudoId::Scheme)
-            .build()
+            .build_without_extend()
     })
 }
 

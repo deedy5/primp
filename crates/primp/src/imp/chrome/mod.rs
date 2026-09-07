@@ -57,8 +57,11 @@ pub(crate) fn build_chrome_settings(
         http::HeaderValue::from_static(crate::imp::os_platform(os)),
     );
 
-    // Chrome 150 adds a `sec-purpose` header.
-    if matches!(chrome, Impersonate::ChromeV150) {
+    // Chrome 150+ adds a `sec-purpose` header (prefetch/prerender).
+    if matches!(
+        chrome,
+        Impersonate::ChromeV150 | Impersonate::ChromeV151 | Impersonate::ChromeV152
+    ) {
         headers.insert(
             "sec-purpose",
             http::HeaderValue::from_static("prefetch;prerender"),
@@ -279,16 +282,15 @@ fn base_chrome_headers() -> &'static http::HeaderMap {
 
 /// Builds HTTP/2 settings for a Chrome version.
 fn build_http2_settings(chrome: Impersonate) -> crate::imp::Http2Data {
-    // Chrome 148+ uses different header order (sec-ch-ua after sec-fetch-*),
-    // except Chrome 150 which reverts to sec-ch-ua first and adds `sec-purpose`,
-    // and 152 which again uses upgrade-first.
-    let headers_order = if matches!(
-        chrome,
-        Impersonate::ChromeV148 | Impersonate::ChromeV149 | Impersonate::ChromeV152
-    ) {
+    // Chrome 148-149 uses sec-ch-ua after sec-fetch-*; Chrome 150+ reverts to
+    // sec-ch-ua first and adds `sec-purpose` (per real captures).
+    let headers_order = if matches!(chrome, Impersonate::ChromeV148 | Impersonate::ChromeV149) {
         Some(crate::imp::header_order_upgrade_first_sec_chua_last().clone())
-    } else if matches!(chrome, Impersonate::ChromeV150) {
-        Some(chrome150_header_order().clone())
+    } else if matches!(
+        chrome,
+        Impersonate::ChromeV150 | Impersonate::ChromeV151 | Impersonate::ChromeV152
+    ) {
+        Some(header_order_chrome150().clone())
     } else {
         Some(crate::imp::header_order_sec_chua_first().clone())
     };
@@ -326,13 +328,12 @@ fn chrome_pseudo_order() -> &'static PseudoOrder {
             .push(PseudoId::Authority)
             .push(PseudoId::Scheme)
             .push(PseudoId::Path)
-            .build()
+            .build_without_extend()
     })
 }
 
-/// Chrome 150 header order, identical to `header_order_sec_chua_first` but with
-/// `sec-purpose` inserted right after `user-agent` (per real capture).
-fn chrome150_header_order() -> &'static Vec<http::HeaderName> {
+/// Chrome 150+ order + `sec-purpose` after `user-agent`.
+fn header_order_chrome150() -> &'static Vec<http::HeaderName> {
     static ORDER: OnceLock<Vec<http::HeaderName>> = OnceLock::new();
     ORDER.get_or_init(|| {
         vec![

@@ -57,7 +57,7 @@ pub(crate) fn build_opera_settings(
         http::HeaderValue::from_static(crate::imp::os_platform(os)),
     );
 
-    // Opera 131+ adds cache-control as the first header
+    // Opera 131|132 adds cache-control as the first header
     if matches!(opera, Impersonate::OperaV131 | Impersonate::OperaV132) {
         headers.insert("cache-control", http::HeaderValue::from_static("max-age=0"));
     }
@@ -282,7 +282,7 @@ fn base_opera_headers() -> &'static http::HeaderMap {
 
 /// Builds HTTP/2 settings for an Opera version.
 fn build_http2_settings(opera: Impersonate) -> crate::imp::Http2Data {
-    // Opera 131+ uses cache-control-first header order
+    // Opera 131|132 uses cache-control-first header order
     let headers_order = if matches!(opera, Impersonate::OperaV131 | Impersonate::OperaV132) {
         Some(crate::imp::header_order_cache_control_first().clone())
     } else {
@@ -322,7 +322,7 @@ fn opera_pseudo_order() -> &'static PseudoOrder {
             .push(PseudoId::Authority)
             .push(PseudoId::Scheme)
             .push(PseudoId::Path)
-            .build()
+            .build_without_extend()
     })
 }
 
