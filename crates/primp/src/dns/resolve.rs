@@ -129,17 +129,21 @@ pub(crate) struct DnsResolverWithOverrides {
     overrides: Arc<HashMap<String, Vec<SocketAddr>>>,
 }
 
+/// Lowercase host, strip trailing dots for cache keys.
+pub(crate) fn normalize_host_key(raw: &str) -> String {
+    raw.trim_end_matches('.').to_ascii_lowercase()
+}
+
 impl DnsResolverWithOverrides {
     pub(crate) fn new(
         dns_resolver: Arc<dyn Resolve>,
         overrides: HashMap<String, Vec<SocketAddr>>,
     ) -> Self {
-        // DNS hostnames are case-insensitive, so normalize override keys to
-        // lowercase so that an override registered as `Example.com` still
-        // matches a query for `example.com`.
+        // DNS hostnames are case-insensitive and may be FQDN with trailing
+        // dot, so normalize override keys (see `normalize_host_key`).
         let overrides = overrides
             .into_iter()
-            .map(|(k, v)| (k.to_ascii_lowercase(), v))
+            .map(|(k, v)| (normalize_host_key(&k), v))
             .collect();
         DnsResolverWithOverrides {
             dns_resolver,
@@ -150,7 +154,8 @@ impl DnsResolverWithOverrides {
 
 impl Resolve for DnsResolverWithOverrides {
     fn resolve(&self, name: Name) -> Resolving {
-        match self.overrides.get(&name.as_str().to_ascii_lowercase()) {
+        let key = normalize_host_key(name.as_str());
+        match self.overrides.get(&key) {
             Some(dest) => {
                 let addrs: Addrs = Box::new(dest.clone().into_iter());
                 Box::pin(std::future::ready(Ok(addrs)))
@@ -357,5 +362,48 @@ mod tests {
         let uri: http::Uri = "https://example.com/".parse().unwrap();
         let mut iter = resolver.http_resolve(&uri).await.unwrap();
         assert_eq!(iter.next().unwrap().port(), 443);
+    }
+
+    #[test]
+    fn normalize_host_key_handles_case_and_trailing_dots() {
+        assert_eq!(normalize_host_key("Example.COM"), "example.com");
+        assert_eq!(normalize_host_key("example.com."), "example.com");
+        assert_eq!(normalize_host_key("Example.com.."), "example.com");
+        assert_eq!(normalize_host_key("example.com"), "example.com");
+    }
+
+    #[tokio::test]
+    async fn overrides_hit_through_resolver_with_case_and_trailing_dot() {
+        use foldhash::HashMapExt;
+        use std::str::FromStr;
+        // Insert FQDN-dot mixed-case key; lookups with/without dot and
+        // different case must hit the override without touching inner.
+        let names = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let fallback = Arc::new(RecordingResolver {
+            names: names.clone(),
+        });
+        let override_addr: std::net::SocketAddr = "10.9.8.7:0".parse().unwrap();
+        let mut overrides = HashMap::new();
+        overrides.insert("Example.COM.".to_string(), vec![override_addr]);
+        let resolver = DnsResolverWithOverrides::new(fallback, overrides);
+        for query in ["example.com", "example.com.", "EXAMPLE.COM", "EXAMPLE.COM."] {
+            let name = Name::from_str(query).unwrap();
+            let addrs: Vec<_> = resolver.resolve(name).await.unwrap().collect();
+            assert_eq!(addrs, vec![override_addr], "override miss for {query}");
+        }
+        assert!(
+            names.lock().unwrap().is_empty(),
+            "fallback must not be consulted on override hit"
+        );
+        // Reverse: insert bare key, lookup FQDN-dot.
+        let fallback2 = Arc::new(RecordingResolver {
+            names: Arc::new(std::sync::Mutex::new(Vec::new())),
+        });
+        let mut overrides2 = HashMap::new();
+        overrides2.insert("example.com".to_string(), vec![override_addr]);
+        let resolver2 = DnsResolverWithOverrides::new(fallback2, overrides2);
+        let name = Name::from_str("example.com.").unwrap();
+        let addrs: Vec<_> = resolver2.resolve(name).await.unwrap().collect();
+        assert_eq!(addrs, vec![override_addr]);
     }
 }

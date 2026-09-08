@@ -58,6 +58,20 @@ where
         Q: Hash + Eq + ?Sized,
     {
         let slot = *self.map.get(key)?;
+        // Stale slot (no value): evict cleanly instead of promoting to MRU.
+        if self.values[slot].is_none() {
+            log::warn!("lru stale slot for key on get_mut; evicting");
+            self.map.remove(key);
+            if self.prev[slot].is_some() || self.next[slot].is_some() || self.head == Some(slot) {
+                self.detach(slot);
+                self.len = self.len.saturating_sub(1);
+            }
+            self.keys[slot] = None;
+            if !self.free.contains(&slot) {
+                self.free.push(slot);
+            }
+            return None;
+        }
         self.detach(slot);
         self.attach_mru(slot);
         self.values[slot].as_mut()
@@ -88,12 +102,30 @@ where
     /// If the cache is at capacity, evicts the LRU entry.
     pub(crate) fn put(&mut self, key: K, value: V) {
         if let Some(&slot) = self.map.get(&key) {
-            *self.values[slot]
-                .as_mut()
-                .expect("slot in map has no value") = value;
-            self.detach(slot);
-            self.attach_mru(slot);
-            return;
+            if let Some(v) = self.values[slot].as_mut() {
+                *v = value;
+                self.detach(slot);
+                self.attach_mru(slot);
+                return;
+            }
+            // Unreachable via public API (`pop`/`evict_lru` always remove the
+            // map entry): the map points at a slot with no value. Fully evict
+            // the stale slot (unlink, uncount, free) and take the normal
+            // insert path below. In-place repair would be wrong: the slot may
+            // sit on the free list, and re-attaching it would alias live
+            // storage on the next alloc. A warn (not `debug_assert`) keeps a
+            // corrupted cache from panicking network clients in debug builds.
+            log::warn!("lru stale slot for key; reinserting");
+            self.map.remove(&key);
+            if self.prev[slot].is_some() || self.next[slot].is_some() || self.head == Some(slot) {
+                self.detach(slot);
+                self.len = self.len.saturating_sub(1);
+            }
+            self.keys[slot] = None;
+            self.values[slot] = None;
+            if !self.free.contains(&slot) {
+                self.free.push(slot);
+            }
         }
         let slot = self.alloc_slot();
         self.keys[slot] = Some(key.clone());
@@ -290,5 +322,44 @@ mod tests {
         assert!(c.peek(&"a".to_string()).is_none());
         assert!(c.peek(&"b".to_string()).is_some());
         assert!(c.peek(&"c".to_string()).is_some());
+    }
+
+    #[test]
+    fn put_over_stale_slot_reinserts_cleanly() {
+        // White-box: simulate a stale map->slot mapping with no value (cannot
+        // happen via public API). `put` must drop the stale mapping and take
+        // the normal path without corrupting order, length, or eviction.
+        let mut c = LruCache::new(cap(2));
+        c.put("a".to_string(), 1);
+        c.put("b".to_string(), 2);
+        let slot = *c.map.get(&"a".to_string()).unwrap();
+        c.values[slot] = None;
+        c.put("a".to_string(), 99);
+        assert_eq!(c.len(), 2);
+        assert_eq!(c.peek(&"a".to_string()), Some(&99));
+        assert_eq!(c.peek(&"b".to_string()), Some(&2));
+        // Order intact: b is LRU (a was re-promoted via fresh insert).
+        c.put("c".to_string(), 3);
+        assert!(c.peek(&"b".to_string()).is_none());
+        assert_eq!(c.peek(&"a".to_string()), Some(&99));
+        assert_eq!(c.peek(&"c".to_string()), Some(&3));
+    }
+
+    #[test]
+    fn get_mut_over_stale_slot_evicts_without_promoting() {
+        // Stale map entry must return None, not promote empty slot.
+        let mut c = LruCache::new(cap(2));
+        c.put("a".to_string(), 1);
+        c.put("b".to_string(), 2);
+        let slot = *c.map.get(&"a".to_string()).unwrap();
+        c.values[slot] = None;
+        assert_eq!(c.get_mut(&"a".to_string()), None);
+        assert!(c.peek(&"a".to_string()).is_none());
+        assert_eq!(c.len(), 1);
+        // Order intact, new insert works.
+        c.put("c".to_string(), 3);
+        assert_eq!(c.len(), 2);
+        assert!(c.peek(&"b".to_string()).is_some());
+        assert_eq!(c.peek(&"c".to_string()), Some(&3));
     }
 }
