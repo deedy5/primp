@@ -67,7 +67,15 @@ impl DohResolver {
             .trim_end_matches(']')
             .to_string();
         let port = parsed.port().unwrap_or(443);
-        let path = parsed.path().to_string();
+        let mut path = parsed.path().to_string();
+        // Preserve custom query strings (e.g. `?dataset=...`); skip empty
+        // queries (`https://host/path?`) to avoid a trailing `?`.
+        if let Some(query) = parsed.query() {
+            if !query.is_empty() {
+                path.push('?');
+                path.push_str(query);
+            }
+        }
         let bootstrap: Arc<dyn Resolve> = Arc::new(GaiResolver::new());
         Ok(Self {
             state: Arc::new(OnceCell::new()),
@@ -160,6 +168,18 @@ mod tests {
         let resolver = DohResolver::new("https://dns.google:8443/dns-query").unwrap();
         assert_eq!(resolver.doh_host, "dns.google");
         assert_eq!(resolver.doh_port, 8443);
+        assert_eq!(resolver.doh_path, "/dns-query");
+    }
+
+    #[test]
+    fn new_preserves_query_string() {
+        let resolver = DohResolver::new("https://example.com/dns-query?dataset=test").unwrap();
+        assert_eq!(resolver.doh_path, "/dns-query?dataset=test");
+    }
+
+    #[test]
+    fn new_ignores_empty_query_string() {
+        let resolver = DohResolver::new("https://example.com/dns-query?").unwrap();
         assert_eq!(resolver.doh_path, "/dns-query");
     }
 

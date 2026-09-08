@@ -78,7 +78,7 @@ fn load_hosts_file() -> HostsMap {
             continue;
         };
         for host in parts {
-            let key: Box<str> = host.to_ascii_lowercase().into_boxed_str();
+            let key: Box<str> = super::resolve::normalize_host_key(host).into_boxed_str();
             tmp.entry(key).or_default().push(ip);
         }
     }
@@ -111,7 +111,7 @@ impl std::fmt::Debug for HostsFileResolver {
 
 impl Resolve for HostsFileResolver {
     fn resolve(&self, name: Name) -> Resolving {
-        let host_lc = name.as_str().to_ascii_lowercase();
+        let host_lc = super::resolve::normalize_host_key(name.as_str());
         // hBlock hosts has only `::1 localhost`; bypass to avoid IPv4-only
         // test servers failing on `[::1]`.
         if host_lc == "localhost" {
@@ -153,14 +153,29 @@ mod tests {
 
     #[test]
     fn hosts_lookup_is_case_insensitive() {
+        use super::super::resolve::normalize_host_key;
         let mut map: HostsMap = HashMap::new();
+        // Prod `load_hosts_file` normalizes on insert; mirror that here so
+        // the lookup below exercises the real key form.
         map.insert(
-            "example.com".into(),
+            normalize_host_key("Example.COM.").into_boxed_str(),
             Arc::from([IpAddr::from([1, 1, 1, 1])] as [IpAddr; 1]),
         );
-        let _hosts = Arc::new(map);
-        // Simulate lookup via `global_hosts` path: lower-casing.
-        let key = "EXAMPLE.COM".to_ascii_lowercase();
-        assert_eq!(key, "example.com");
+        // Lookup path (`HostsFileResolver::resolve`) normalizes before `get`.
+        for query in ["example.com", "example.com.", "EXAMPLE.COM", "EXAMPLE.COM."] {
+            let key = normalize_host_key(query);
+            assert!(
+                map.contains_key(key.as_str()),
+                "hosts miss for {query} (key {key})"
+            );
+        }
+    }
+
+    #[test]
+    fn hosts_lookup_strips_trailing_dot() {
+        use super::super::resolve::normalize_host_key;
+        assert_eq!(normalize_host_key("EXAMPLE.COM."), "example.com");
+        assert_eq!(normalize_host_key("example.com."), "example.com");
+        assert_eq!(normalize_host_key("example.com"), "example.com");
     }
 }

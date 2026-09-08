@@ -184,10 +184,10 @@ impl DnsCacheResolver {
 
 impl Resolve for DnsCacheResolver {
     fn resolve(&self, name: Name) -> Resolving {
-        // DNS hostnames are case-insensitive, so normalize the cache key to
-        // lowercase. The original `name` (preserving case) is still passed to
-        // the inner resolver below.
-        let host_key = name.as_str().to_ascii_lowercase();
+        // DNS hostnames are case-insensitive and may be FQDN with trailing
+        // dot (e.g. `example.com.`). Normalize for the cache key (see
+        // `normalize_host_key`); original `name` still passed to inner resolver.
+        let host_key = super::resolve::normalize_host_key(name.as_str());
 
         // Blocking lock is fine: the critical section is one O(1) op
         // and the returned iterator is owned, so no cache borrow survives.

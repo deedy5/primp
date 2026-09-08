@@ -5,7 +5,7 @@ use hickory_resolver::{
     net::{runtime::TokioRuntimeProvider, NetError},
     TokioResolver,
 };
-use once_cell::sync::OnceCell;
+use tokio::sync::OnceCell;
 
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -28,7 +28,10 @@ impl Resolve for HickoryDnsResolver {
     fn resolve(&self, name: Name) -> Resolving {
         let resolver = self.clone();
         Box::pin(async move {
-            let resolver = resolver.state.get_or_try_init(new_resolver)?;
+            let resolver = resolver
+                .state
+                .get_or_try_init(|| async { new_resolver() })
+                .await?;
 
             let lookup = resolver.lookup_ip(name.as_str()).await?;
             let ips: Vec<IpAddr> = lookup.iter().collect();
