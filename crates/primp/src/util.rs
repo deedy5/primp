@@ -27,9 +27,8 @@ where
             let _ = write!(encoder, "{password}");
         }
     }
-    // base64 emits only visible ASCII, so this conversion can never fail;
-    // the fallback keeps a malformed username from aborting the process
-    // (`panic = "abort"`) on the request path.
+    // base64 output is always ASCII, so this never fails; the fallback
+    // avoids panicking on malformed input.
     let mut header = HeaderValue::from_maybe_shared(bytes::Bytes::from(buf))
         .unwrap_or_else(|_| HeaderValue::from_static("Basic "));
     header.set_sensitive(true);
@@ -98,49 +97,80 @@ pub(crate) fn add_cookie_header(
     }
 }
 
-/// Rebuild the `Cookie` header for a request carrying one-shot cookies: the
-/// jar's CURRENT cookies (fresh per redirect hop, minus any name the one-shot
-/// set overrides) followed by the one-shot cookies. Falls back to the
-/// one-shots alone if the jar produces an invalid header value — never panics.
+/// Strip CTLs, trim OWS, keep visible text.
+#[cfg(feature = "cookies")]
+pub(crate) fn sanitize_cookie_bytes(bytes: &[u8]) -> Vec<u8> {
+    let mut sanitized: Vec<u8> = bytes
+        .iter()
+        .copied()
+        .filter(|&b| b == b' ' || b == b'\t' || (0x20..=0x7e).contains(&b) || b >= 0x80)
+        .collect();
+    let leading = sanitized
+        .iter()
+        .take_while(|&&b| b == b' ' || b == b'\t')
+        .count();
+    sanitized.drain(..leading);
+    while matches!(sanitized.last(), Some(b' ') | Some(b'\t')) {
+        sanitized.pop();
+    }
+    sanitized
+}
+
+/// Merge jar + one-shot cookies (bytes, keeps non-UTF8).
 #[cfg(feature = "cookies")]
 pub(crate) fn merge_one_shot_cookie_header(
     cookie_store: &dyn crate::cookie::CookieStore,
     url: &url::Url,
     one_shot: &HeaderValue,
 ) -> HeaderValue {
-    let one_shot_str = one_shot.to_str().unwrap_or_default();
-    let one_shot_names: std::collections::HashSet<&str> = one_shot_str
-        .split(';')
-        .filter_map(|pair| {
-            let name = pair.split('=').next().unwrap_or("").trim();
-            (!name.is_empty()).then_some(name)
-        })
+    fn trim_ows(mut s: &[u8]) -> &[u8] {
+        while matches!(s.first(), Some(b' ') | Some(b'\t')) {
+            s = &s[1..];
+        }
+        while matches!(s.last(), Some(b' ') | Some(b'\t')) {
+            s = &s[..s.len() - 1];
+        }
+        s
+    }
+    fn pair_name(pair: &[u8]) -> &[u8] {
+        trim_ows(pair.split(|&b| b == b'=').next().unwrap_or(b""))
+    }
+
+    let one_shot_bytes = one_shot.as_bytes();
+    let one_shot_names: std::collections::HashSet<&[u8]> = one_shot_bytes
+        .split(|&b| b == b';')
+        .map(pair_name)
+        .filter(|name| !name.is_empty())
         .collect();
 
-    let mut out = String::new();
+    let mut out: Vec<u8> = Vec::new();
     if let Some(jar) = cookie_store.cookies(url) {
-        for pair in jar.to_str().unwrap_or_default().split(';') {
-            let pair = pair.trim();
-            let name = pair.split('=').next().unwrap_or("").trim();
+        for pair in jar.as_bytes().split(|&b| b == b';') {
+            let name = pair_name(pair);
             if name.is_empty() || one_shot_names.contains(name) {
                 continue;
             }
             if !out.is_empty() {
-                out.push_str("; ");
+                out.extend_from_slice(b"; ");
             }
-            out.push_str(pair);
+            out.extend_from_slice(trim_ows(pair));
         }
     }
-    if !one_shot_str.is_empty() {
+    let one_shot_trimmed = trim_ows(one_shot_bytes);
+    if !one_shot_trimmed.is_empty() {
         if !out.is_empty() {
-            out.push_str("; ");
+            out.extend_from_slice(b"; ");
         }
-        out.push_str(one_shot_str.trim());
+        out.extend_from_slice(one_shot_trimmed);
     }
 
-    match HeaderValue::from_str(out.trim()) {
+    match HeaderValue::from_bytes(&out) {
         Ok(hv) => hv,
-        Err(_) => one_shot.clone(),
+        Err(_) => {
+            // Invalid combined header: sanitize, fallback to one-shot.
+            let sanitized = sanitize_cookie_bytes(&out);
+            HeaderValue::from_bytes(&sanitized).unwrap_or_else(|_| one_shot.clone())
+        }
     }
 }
 
@@ -213,5 +243,103 @@ mod tests {
         let mut guard = recover_lock(&mutex);
         assert_eq!(*guard, 0);
         *guard = 42;
+    }
+
+    #[cfg(feature = "cookies")]
+    #[test]
+    fn merge_preserves_non_utf8_cookie_bytes() {
+        use crate::cookie::CookieStore;
+
+        struct FixedJar(Option<crate::header::HeaderValue>);
+        impl CookieStore for FixedJar {
+            fn set_cookies(
+                &self,
+                _cookie_headers: &mut dyn Iterator<Item = &crate::header::HeaderValue>,
+                _url: &url::Url,
+            ) {
+            }
+            fn cookies(&self, _url: &url::Url) -> Option<crate::header::HeaderValue> {
+                self.0.clone()
+            }
+        }
+
+        let url = url::Url::parse("http://example.com/").unwrap();
+        // 0xFF is valid obs-text in a HeaderValue but invalid UTF-8: a lossy
+        // `to_str` conversion would rewrite it to U+FFFD (E2 BF BD).
+        let jar = FixedJar(Some(
+            crate::header::HeaderValue::from_bytes(b"a=\xff; b=2").unwrap(),
+        ));
+        let one_shot = crate::header::HeaderValue::from_static("c=3");
+        let merged = super::merge_one_shot_cookie_header(&jar, &url, &one_shot);
+        assert_eq!(merged.as_bytes(), b"a=\xff; b=2; c=3");
+    }
+
+    #[cfg(feature = "cookies")]
+    #[test]
+    fn merge_one_shot_overrides_jar_names() {
+        use crate::cookie::CookieStore;
+
+        struct FixedJar(Option<crate::header::HeaderValue>);
+        impl CookieStore for FixedJar {
+            fn set_cookies(
+                &self,
+                _cookie_headers: &mut dyn Iterator<Item = &crate::header::HeaderValue>,
+                _url: &url::Url,
+            ) {
+            }
+            fn cookies(&self, _url: &url::Url) -> Option<crate::header::HeaderValue> {
+                self.0.clone()
+            }
+        }
+
+        let url = url::Url::parse("http://example.com/").unwrap();
+        let jar = FixedJar(Some(crate::header::HeaderValue::from_static("a=1; b=2")));
+        let one_shot = crate::header::HeaderValue::from_static("b=override");
+        let merged = super::merge_one_shot_cookie_header(&jar, &url, &one_shot);
+        assert_eq!(merged.as_bytes(), b"a=1; b=override");
+    }
+
+    #[cfg(feature = "cookies")]
+    #[test]
+    fn sanitize_cookie_bytes_strips_ctls() {
+        // Err branch unreachable via safe API; test helper directly.
+        use super::sanitize_cookie_bytes;
+        // Stripped: 0x01/1F/7F/NUL/CR; kept: SP/HTAB/obs-text.
+        assert_eq!(sanitize_cookie_bytes(b"a=\x01bad; b=2"), b"a=bad; b=2");
+        assert_eq!(sanitize_cookie_bytes(b"a=1\x1f; b=2"), b"a=1; b=2");
+        assert_eq!(sanitize_cookie_bytes(b"a=1\x7f; b=2"), b"a=1; b=2");
+        assert_eq!(sanitize_cookie_bytes(b"a=1\n; b=2\r"), b"a=1; b=2");
+        // SP/HTAB preserved inside, OWS trimmed at edges.
+        assert_eq!(sanitize_cookie_bytes(b"  a=1\t; b=2  "), b"a=1\t; b=2");
+        assert_eq!(sanitize_cookie_bytes(b"\ta=\xff; b=2"), b"a=\xff; b=2");
+        // 0x80+ obs-text preserved.
+        assert_eq!(sanitize_cookie_bytes(b"a=\xff; b=\x80"), b"a=\xff; b=\x80");
+        assert!(crate::header::HeaderValue::from_bytes(b"a=\x01bad").is_err());
+    }
+
+    #[cfg(feature = "cookies")]
+    #[test]
+    fn merge_sanitize_branch_strips_ctls() {
+        use crate::cookie::CookieStore;
+
+        struct FixedJar(Option<crate::header::HeaderValue>);
+        impl CookieStore for FixedJar {
+            fn set_cookies(
+                &self,
+                _cookie_headers: &mut dyn Iterator<Item = &crate::header::HeaderValue>,
+                _url: &url::Url,
+            ) {
+            }
+            fn cookies(&self, _url: &url::Url) -> Option<crate::header::HeaderValue> {
+                self.0.clone()
+            }
+        }
+
+        let url = url::Url::parse("http://example.com/").unwrap();
+        // Valid jars take Ok path.
+        let jar = FixedJar(Some(crate::header::HeaderValue::from_static("a=1; b=2")));
+        let one_shot = crate::header::HeaderValue::from_static("c=3");
+        let merged = super::merge_one_shot_cookie_header(&jar, &url, &one_shot);
+        assert_eq!(merged.as_bytes(), b"a=1; b=2; c=3");
     }
 }

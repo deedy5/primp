@@ -81,19 +81,26 @@ impl Builder {
         self
     }
 
-    /// Set the max extra load (as a fraction of request rate) the budget allows.
-    ///
-    /// For example, 1000 req/s with `0.3` allows 300 more req/s in retries;
-    /// `2.5` allows 2,500 more.
-    ///
-    /// # Panics
-    ///
-    /// `extra_percent` must be within `[0.0, 1000.0]`.
-    pub fn max_extra_load(mut self, extra_percent: f32) -> Self {
-        assert!(extra_percent >= 0.0);
-        assert!(extra_percent <= 1000.0);
+    /// Max extra retry load; errors if not finite in range.
+    pub fn try_max_extra_load(mut self, extra_percent: f32) -> crate::Result<Self> {
+        if !extra_percent.is_finite() {
+            return Err(crate::error::builder(format!(
+                "extra_percent must be finite, got {extra_percent}"
+            )));
+        }
+        if !(0.0..=1000.0).contains(&extra_percent) {
+            return Err(crate::error::builder(format!(
+                "extra_percent must be within [0.0, 1000.0], got {extra_percent}"
+            )));
+        }
         self.budget = Some(extra_percent);
-        self
+        Ok(self)
+    }
+
+    /// Max extra retry load; panics if out of range.
+    pub fn max_extra_load(self, extra_percent: f32) -> Self {
+        self.try_max_extra_load(extra_percent)
+            .expect("extra_percent must be finite and within [0.0, 1000.0]")
     }
 
     // pub fn max_replay_body
@@ -199,7 +206,7 @@ impl<B> tower::retry::Policy<Req, http::Response<B>, crate::Error> for Policy {
                     return None;
                 }
                 if self.budget.as_ref().map(|b| b.withdraw()).unwrap_or(true) {
-                    self.retry_cnt += 1;
+                    self.retry_cnt = self.retry_cnt.saturating_add(1);
                     Some(std::future::ready(()))
                 } else {
                     log::debug!("retryable but could not withdraw from budget");
@@ -222,7 +229,36 @@ impl<B> tower::retry::Policy<Req, http::Response<B>, crate::Error> for Policy {
         *new.method_mut() = req.method().clone();
         *new.uri_mut() = req.uri().clone();
         *new.version_mut() = req.version();
-        *new.headers_mut() = req.headers().clone();
+        let mut headers = req.headers().clone();
+        // Strip hop-by-hop headers per RFC 7230 §6.1 (should not be forwarded on retry).
+        // NOTE: Proxy-Authorization is intentionally preserved: retry targets
+        // the same proxy/URI, and execute_request attached it outer to Retry.
+        // Stripping it causes 407 on authenticated http proxies.
+        headers.remove(http::header::CONNECTION);
+        // `http` has no `KEEP_ALIVE` const; both are hop-by-hop connection
+        // management headers that must not be replayed on retry.
+        headers.remove(http::HeaderName::from_static("keep-alive"));
+        headers.remove(http::header::PROXY_AUTHENTICATE);
+        headers.remove(http::header::TE);
+        headers.remove(http::header::TRAILER);
+        headers.remove(http::header::TRANSFER_ENCODING);
+        headers.remove(http::header::UPGRADE);
+        // Non-standard but widely sent by clients/proxies; http has no const.
+        headers.remove(http::HeaderName::from_static("proxy-connection"));
+        // Also strip Connection-listed headers, except preserved Proxy-Authorization.
+        if let Some(conn) = req.headers().get(http::header::CONNECTION) {
+            if let Ok(val) = conn.to_str() {
+                for name in val.split(',') {
+                    if let Ok(hn) = http::HeaderName::from_bytes(name.trim().as_bytes()) {
+                        if hn == http::header::PROXY_AUTHORIZATION {
+                            continue;
+                        }
+                        headers.remove(hn);
+                    }
+                }
+            }
+        }
+        *new.headers_mut() = headers;
         *new.extensions_mut() = req.extensions().clone();
 
         Some(new)
@@ -266,9 +302,17 @@ fn is_retryable_error(err: &crate::Error) -> bool {
             // h3 0.0.8 marks `ConnectionError::Timeout` as `#[non_exhaustive]`
             // with a private variant, so it cannot be matched or constructed
             // from this crate. The only public signal is the `Display` string,
-            // which currently yields "timeout". If a future h3 version exposes
-            // a typed classifier, prefer that over this string compare.
-            return err.to_string().as_str() == "timeout";
+            // which yields "Timeout" (capital T) but older ran as "timeout".
+            // Use case-insensitive contains to survive Display tweaks (e.g.
+            // "timeout: idle" future) and log for diagnostics.
+            // TODO(h3>0.0.8): match the typed variant once upstream exposes it;
+            // substring matching could misclassify a future error message
+            // containing "timeout" (scope is narrowed to ConnectionError only).
+            let s = err.to_string().to_ascii_lowercase();
+            if s.contains("timeout") {
+                return true;
+            }
+            return false;
         }
 
         current = node.source();
@@ -549,5 +593,179 @@ mod tests {
             baseline,
             "out-of-scope successes must not deposit into the shared budget"
         );
+    }
+
+    #[test]
+    fn clone_request_preserves_proxy_authorization() {
+        // Retry targets the same proxy, so Proxy-Authorization must survive.
+        // Stripping it causes 407 on the retry (regression).
+        let mut policy = Builder::default().into_policy();
+        let mut req = http::Request::builder()
+            .uri("http://example.com/")
+            .body(crate::async_impl::body::Body::empty())
+            .unwrap();
+        req.headers_mut().insert(
+            http::header::PROXY_AUTHORIZATION,
+            http::HeaderValue::from_static("Basic dXNlcjpwYXNz"),
+        );
+        req.headers_mut().insert(
+            http::header::AUTHORIZATION,
+            http::HeaderValue::from_static("Bearer token"),
+        );
+        let cloned =
+            <Policy as tower::retry::Policy<Req, http::Response<()>, crate::Error>>::clone_request(
+                &mut policy,
+                &req,
+            )
+            .expect("cloneable body must retry");
+        assert!(
+            cloned
+                .headers()
+                .contains_key(http::header::PROXY_AUTHORIZATION),
+            "retry must preserve Proxy-Authorization for same-proxy retry"
+        );
+        assert_eq!(
+            cloned.headers().get(http::header::PROXY_AUTHORIZATION),
+            req.headers().get(http::header::PROXY_AUTHORIZATION)
+        );
+        // Hop-by-hop still stripped.
+        assert!(!cloned.headers().contains_key(http::header::CONNECTION));
+    }
+
+    #[test]
+    fn clone_request_strips_keep_alive_and_proxy_connection() {
+        let mut policy = Builder::default().into_policy();
+        let mut req = http::Request::builder()
+            .uri("http://example.com/")
+            .body(crate::async_impl::body::Body::empty())
+            .unwrap();
+        req.headers_mut().insert(
+            http::HeaderName::from_static("keep-alive"),
+            http::HeaderValue::from_static("timeout=5"),
+        );
+        req.headers_mut().insert(
+            http::HeaderName::from_static("proxy-connection"),
+            http::HeaderValue::from_static("keep-alive"),
+        );
+        let cloned =
+            <Policy as tower::retry::Policy<Req, http::Response<()>, crate::Error>>::clone_request(
+                &mut policy,
+                &req,
+            )
+            .expect("cloneable body must retry");
+        assert!(!cloned
+            .headers()
+            .contains_key(http::HeaderName::from_static("keep-alive")));
+        assert!(!cloned
+            .headers()
+            .contains_key(http::HeaderName::from_static("proxy-connection")));
+    }
+
+    #[test]
+    fn clone_request_strips_connection_listed_headers() {
+        let mut policy = Builder::default().into_policy();
+        let mut req = http::Request::builder()
+            .uri("http://example.com/")
+            .body(crate::async_impl::body::Body::empty())
+            .unwrap();
+        req.headers_mut().insert(
+            http::header::CONNECTION,
+            http::HeaderValue::from_static("X-Custom, keep-alive"),
+        );
+        req.headers_mut().insert(
+            http::HeaderName::from_static("x-custom"),
+            http::HeaderValue::from_static("1"),
+        );
+        let cloned =
+            <Policy as tower::retry::Policy<Req, http::Response<()>, crate::Error>>::clone_request(
+                &mut policy,
+                &req,
+            )
+            .expect("cloneable body must retry");
+        assert!(!cloned.headers().contains_key("x-custom"));
+        assert!(!cloned.headers().contains_key(http::header::CONNECTION));
+    }
+
+    #[test]
+    fn clone_request_keeps_proxy_auth_even_when_connection_lists_it() {
+        // Connection-listed Proxy-Authorization must stay (else 407).
+        let mut policy = Builder::default().into_policy();
+        let mut req = http::Request::builder()
+            .uri("http://example.com/")
+            .body(crate::async_impl::body::Body::empty())
+            .unwrap();
+        req.headers_mut().insert(
+            http::header::PROXY_AUTHORIZATION,
+            http::HeaderValue::from_static("Basic dXNlcjpwYXNz"),
+        );
+        req.headers_mut().insert(
+            http::header::CONNECTION,
+            http::HeaderValue::from_static("Proxy-Authorization, X-Custom"),
+        );
+        req.headers_mut().insert(
+            http::HeaderName::from_static("x-custom"),
+            http::HeaderValue::from_static("1"),
+        );
+        let cloned =
+            <Policy as tower::retry::Policy<Req, http::Response<()>, crate::Error>>::clone_request(
+                &mut policy,
+                &req,
+            )
+            .expect("cloneable body must retry");
+        assert!(
+            cloned
+                .headers()
+                .contains_key(http::header::PROXY_AUTHORIZATION),
+            "Connection-listed Proxy-Authorization must still be preserved"
+        );
+        assert!(!cloned.headers().contains_key("x-custom"));
+    }
+
+    #[test]
+    fn try_max_extra_load_rejects_non_finite_and_out_of_range() {
+        use std::error::Error as _;
+        let msg_of = |e: &crate::Error| e.source().map(|s| s.to_string()).unwrap_or_default();
+        // NaN/inf => finite error (distinct from range error).
+        for v in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let err = super::for_host("x").try_max_extra_load(v).unwrap_err();
+            assert!(err.is_builder(), "NaN/inf must be Builder Err, got {err:?}");
+            let msg = msg_of(&err);
+            assert!(
+                msg.contains("finite"),
+                "finite message expected, got {msg:?}"
+            );
+        }
+        // Out-of-range => within error, not finite error.
+        for v in [-1.0, -0.001, 1000.001, 2000.0] {
+            let err = super::for_host("x").try_max_extra_load(v).unwrap_err();
+            assert!(
+                err.is_builder(),
+                "out-of-range must be Builder Err, got {err:?}"
+            );
+            let msg = msg_of(&err);
+            assert!(
+                msg.contains("within"),
+                "within message expected, got {msg:?}"
+            );
+            assert!(
+                !msg.contains("finite"),
+                "messages must be distinct, got {msg:?}"
+            );
+        }
+        // Boundaries valid.
+        for v in [0.0, 0.3, 1000.0] {
+            assert!(
+                super::for_host("x").try_max_extra_load(v).is_ok(),
+                "valid {v} must be Ok"
+            );
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "extra_percent must be finite")]
+    fn max_extra_load_still_panics_documented_gap() {
+        // Gap: `max_extra_load` is back-compat `expect` wrapper (unwind),
+        // `try_max_extra_load` is the non-panicking path for Python BuilderError.
+        let _ = super::for_host("x").max_extra_load(f32::NAN);
     }
 }
