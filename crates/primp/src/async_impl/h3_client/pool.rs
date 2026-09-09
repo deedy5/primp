@@ -13,6 +13,7 @@ use tokio::time::Instant;
 
 use crate::async_impl::body::ResponseBody;
 use crate::error::{BoxError, Error, Kind};
+use crate::util::recover_lock;
 use crate::Body;
 use bytes::Buf;
 use h3::client::SendRequest;
@@ -35,7 +36,7 @@ impl Drop for Pool {
     fn drop(&mut self) {
         // Owner tears down drivers; if body still streams, detach until idle.
         if self.is_owner {
-            let mut inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+            let mut inner = recover_lock(&self.inner);
             for conn in inner.idle_conns.values_mut() {
                 if conn.active_streams.load(Ordering::Acquire) == 0 {
                     if let Some(handle) = &conn.connection_task {
@@ -93,7 +94,7 @@ impl ConnectingLock {
 impl Drop for ConnectingLock {
     fn drop(&mut self) {
         if let Some(ConnectingLockInner { key, pool }) = self.0.take() {
-            let mut pool = pool.lock().unwrap();
+            let mut pool = recover_lock(&pool);
             pool.connecting.remove(&key);
             trace!("HTTP/3 connecting lock for {:?} is dropped", key);
         }
@@ -133,7 +134,7 @@ impl Pool {
 
     /// Acquire a connecting lock, ensuring only one HTTP/3 connection per host.
     pub fn connecting(&self, key: &Key) -> Connecting {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = recover_lock(&self.inner);
 
         if let Some(sender) = inner.connecting.get(key) {
             Connecting::InProgress(ConnectingWaiter {
@@ -147,7 +148,7 @@ impl Pool {
     }
 
     pub fn try_pool(&self, key: &Key) -> Option<PoolClient> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = recover_lock(&self.inner);
         let timeout = inner.timeout;
         let unusable = inner.idle_conns.get(key).is_some_and(|conn| {
             // remove the connection from the pool if invalid or expired
@@ -160,7 +161,7 @@ impl Pool {
                 // expiry — mirrors H1/H2 `busy == 0` / `active_streams == 0`
                 // gating so a long-held borrow isn't evicted mid-stream.
                 if conn.active_streams.load(Ordering::Acquire) == 0 {
-                    let idle = *conn.idle_timeout.lock().unwrap_or_else(|p| p.into_inner());
+                    let idle = *recover_lock(&conn.idle_timeout);
                     if Instant::now().saturating_duration_since(idle) > duration {
                         return true;
                     }
@@ -198,7 +199,7 @@ impl Pool {
         let stream_completed = Arc::new(Notify::new());
         let idle_timeout = Arc::new(Mutex::new(Instant::now()));
 
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = recover_lock(&self.inner);
 
         // We clean up "connecting" here so we don't have to acquire the lock again.
         let key = lock.forget();
@@ -228,9 +229,7 @@ impl Pool {
 
         // The caller is a borrower too: it holds the response body as it
         // streams on this connection.
-        self.inner
-            .lock()
-            .unwrap()
+        recover_lock(&self.inner)
             .idle_conns
             .get_mut(&key)
             .map(PoolConnection::pool)
@@ -455,7 +454,7 @@ impl PoolConnection {
     }
 
     pub fn pool(&mut self) -> PoolClient {
-        *self.idle_timeout.lock().unwrap_or_else(|p| p.into_inner()) = Instant::now();
+        *recover_lock(&self.idle_timeout) = Instant::now();
         self.client.checked_out(
             &self.active_streams,
             &self.stream_completed,
@@ -548,7 +547,7 @@ impl<S, B> Drop for Incoming<S, B> {
                 Ok(old) => {
                     if old == 1 {
                         if let Some(ref idle) = self.idle_timeout {
-                            *idle.lock().unwrap_or_else(|p| p.into_inner()) = Instant::now();
+                            *recover_lock(idle) = Instant::now();
                         }
                         if let Some(ref notify) = self.stream_completed {
                             notify.notify_waiters();

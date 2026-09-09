@@ -115,3 +115,64 @@ async fn range_request_gets_identity_accept_encoding_h2() {
     drop(client);
     let _ = server.await;
 }
+
+#[tokio::test]
+async fn range_request_through_redirect_preserves_identity_on_each_hop() {
+    use std::sync::{Arc, Mutex};
+    // 2 hops: /start (302) -> /final (200). An outer RangeGuard would be
+    // bypassed on hop 1; the guard inside FollowRedirect must re-apply
+    // per hop.
+    let seen: Arc<Mutex<Vec<(String, String)>>> = Arc::new(Mutex::new(Vec::new()));
+    let seen_clone = Arc::clone(&seen);
+    let server = server::http(move |req| {
+        let seen_clone = Arc::clone(&seen_clone);
+        async move {
+            let ae = req
+                .headers()
+                .get("accept-encoding")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .to_string();
+            let range = req
+                .headers()
+                .get("range")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .to_string();
+            seen_clone.lock().unwrap().push((ae, range));
+            if req.uri() == "/start" {
+                http::Response::builder()
+                    .status(302)
+                    .header("location", "/final")
+                    .body(primp::Body::default())
+                    .unwrap()
+            } else {
+                assert_eq!(req.uri(), "/final");
+                http::Response::builder()
+                    .status(200)
+                    .body(primp::Body::from("ok"))
+                    .unwrap()
+            }
+        }
+    });
+
+    let client = primp::Client::builder().no_proxy().build().unwrap();
+    let res = client
+        .get(format!("http://{}/start", server.addr()))
+        .header("range", "bytes=0-10")
+        .header("accept-encoding", "gzip")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), primp::StatusCode::OK);
+    let _ = res.text().await.unwrap();
+    let hops = seen.lock().unwrap().clone();
+    assert_eq!(hops.len(), 2, "expected start+final hops, got {hops:?}");
+    for (i, (ae, range)) in hops.iter().enumerate() {
+        assert_eq!(range, "bytes=0-10", "hop {i} must preserve Range");
+        assert_eq!(
+            ae, "identity",
+            "hop {i} RangeGuard must force identity, got {ae:?}"
+        );
+    }
+}

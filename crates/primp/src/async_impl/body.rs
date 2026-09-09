@@ -318,6 +318,12 @@ pub(crate) fn total_timeout<B>(body: B, timeout: Pin<Box<Sleep>>) -> TotalTimeou
 }
 
 pub(crate) fn with_read_timeout<B>(body: B, timeout: Duration) -> ReadTimeoutBody<B> {
+    // Zero is rejected at the builder API (`try_read_timeout`); a zero here
+    // degrades to an immediate timeout rather than panicking the library.
+    debug_assert!(
+        !timeout.is_zero(),
+        "read_timeout must be non-zero, got 0; use None to disable"
+    );
     ReadTimeoutBody {
         inner: body,
         sleep: None,
@@ -436,6 +442,13 @@ where
 {
     use http_body_util::BodyExt;
 
+    // Defense-in-depth: builders reject zero read timeouts with an error, but
+    // `Request::read_timeout_mut` is public, so a zero can still arrive here.
+    // A panic inside the async task is never acceptable; treat zero as
+    // disabled (the `with_read_timeout` assert documents the invariant for
+    // direct callers).
+    let read_timeout = read_timeout.filter(|d| !d.is_zero());
+
     match (deadline, read_timeout) {
         (Some(total), Some(read)) => {
             let body = with_read_timeout(body, read).map_err(box_err);
@@ -522,5 +535,13 @@ mod tests {
         let stream_body = Body::wrap(empty_body);
         assert!(stream_body.is_end_stream());
         assert_eq!(stream_body.size_hint().exact(), Some(0));
+    }
+
+    #[test]
+    fn response_tolerates_zero_read_timeout() {
+        // Defense-in-depth: a zero read timeout bypassing builder validation
+        // (e.g. via `Request::read_timeout_mut`) must not panic the async
+        // task; it is treated as disabled.
+        let _ = super::response(Body::empty(), None, Some(std::time::Duration::ZERO));
     }
 }
