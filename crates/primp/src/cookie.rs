@@ -179,25 +179,29 @@ impl CookieStore for Jar {
     }
 
     fn cookies(&self, url: &url::Url) -> Option<HeaderValue> {
-        let mut s = String::new();
+        let mut valid_parts = Vec::new();
         for (name, value) in self
             .0
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .get_request_values(url)
         {
-            if !s.is_empty() {
-                s.push_str("; ");
+            let part = format!("{name}={value}");
+            if HeaderValue::from_str(&part).is_ok() {
+                valid_parts.push(part);
+            } else {
+                // `debug!`, not `warn!`: this fires per request for
+                // attacker-influenced cookie names (log spam + injection via
+                // embedded newlines if the log sink is line-oriented).
+                log::debug!("skipping cookie with invalid header value");
             }
-            s.push_str(name);
-            s.push('=');
-            s.push_str(value);
         }
 
-        if s.is_empty() {
+        if valid_parts.is_empty() {
             return None;
         }
 
+        let s = valid_parts.join("; ");
         HeaderValue::from_maybe_shared(Bytes::from(s)).ok()
     }
 }
@@ -397,5 +401,22 @@ mod tests {
 
         // `add_cookie_str` must also recover.
         jar.add_cookie_str("c=3", &url);
+    }
+
+    #[test]
+    fn jar_skips_invalid_part_keeps_valid() {
+        let jar = Jar::default();
+        let url = url::Url::parse("http://example.com/").unwrap();
+        jar.add_cookie_str("good=1", &url);
+        jar.add_cookie_str("bad=\x01", &url);
+        jar.add_cookie_str("good2=2", &url);
+        let hv = jar
+            .cookies(&url)
+            .expect("valid cookies must survive bad part");
+        // cookie_store emits in hashmap order — compare order-insensitively
+        // (byte sort: "good2=2" < "good=1" since '2' < '=').
+        let mut parts: Vec<_> = hv.to_str().unwrap().split("; ").collect();
+        parts.sort_unstable();
+        assert_eq!(parts, ["good2=2", "good=1"]);
     }
 }
