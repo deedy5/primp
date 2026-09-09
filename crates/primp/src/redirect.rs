@@ -306,7 +306,11 @@ impl TowerRedirectPolicy {
     /// cross-host strip removes it, so re-attach per hop when this hop is
     /// also routed through an auth proxy (same matcher the connector uses).
     fn reattach_proxy_auth(&self, req: &mut http::Request<async_impl::body::Body>) {
-        if req.uri().scheme() != Some(&Scheme::HTTP) {
+        let scheme = req.uri().scheme();
+        // HTTP-only: for https the proxy auth belongs in the CONNECT tunnel
+        // request (see Client::proxy_auth), never in the tunneled inner
+        // request, otherwise proxy credentials leak to the origin.
+        if scheme != Some(&Scheme::HTTP) {
             return;
         }
         if req.headers().contains_key(PROXY_AUTHORIZATION) {
@@ -327,7 +331,12 @@ impl TowerRedirectPolicy {
                     }
                     Ok(None) => continue,
                     Err(e) => {
-                        log::warn!("proxy intercept error in reattach_proxy_auth: {e}");
+                        // Hop-N can't return Err (`on_request` is void).
+                        // Skip re-attach; connector fails closed on same Err.
+                        log::warn!(
+                            "proxy intercept error in reattach_proxy_auth for {}: {e}",
+                            req.uri()
+                        );
                         break;
                     }
                 }
@@ -435,7 +444,8 @@ impl TowerPolicy<async_impl::body::Body, crate::Error> for TowerRedirectPolicy {
         // erase the override after hop 1.
         self.override_policy = self.override_policy.or(req
             .extensions()
-            .get::<crate::config::RedirectOverride>()
+            .get::<crate::config::RequestConfig<crate::config::RedirectPolicyOverride>>()
+            .and_then(|c| c.get_value())
             .copied());
 
         if let Ok(next_url) = Url::parse(&req.uri().to_string()) {
@@ -788,5 +798,37 @@ async fn clone_body_errors_for_streaming_body() {
     assert!(
         result.is_err(),
         "streaming-body replay on 307/308 must error, not send empty body"
+    );
+}
+
+#[test]
+fn reattach_proxy_auth_http_only() {
+    use std::sync::{Arc, RwLock};
+    // Regression: Proxy-Authorization must only be re-attached to plain-http
+    // inner requests. For https the auth belongs in CONNECT, and inserting it
+    // into the tunneled inner request leaks proxy creds to the origin.
+    let proxy = crate::proxy::Proxy::all("http://user:pass@127.0.0.1:8080").unwrap();
+    let matcher = proxy.into_matcher();
+    let mut policy = TowerRedirectPolicy::new(Policy::default());
+    policy.with_proxies(Arc::new(RwLock::new(vec![matcher])));
+
+    let mut http_req = http::Request::builder()
+        .uri("http://example.com/start")
+        .body(crate::async_impl::body::Body::empty())
+        .unwrap();
+    policy.reattach_proxy_auth(&mut http_req);
+    assert!(
+        http_req.headers().contains_key(PROXY_AUTHORIZATION),
+        "http hop must re-attach proxy auth"
+    );
+
+    let mut https_req = http::Request::builder()
+        .uri("https://example.com/start")
+        .body(crate::async_impl::body::Body::empty())
+        .unwrap();
+    policy.reattach_proxy_auth(&mut https_req);
+    assert!(
+        !https_req.headers().contains_key(PROXY_AUTHORIZATION),
+        "https inner request must NOT carry Proxy-Authorization (CONNECT carries it)"
     );
 }
