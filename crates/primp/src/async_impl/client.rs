@@ -2,7 +2,7 @@ use std::future::Future;
 use std::net::IpAddr;
 use std::pin::Pin;
 use std::sync::{Arc, RwLock};
-use std::task::{ready, Context, Poll};
+use std::task::{Context, Poll};
 use std::time::Duration;
 use std::{convert::TryInto, net::SocketAddr};
 use std::{fmt, str};
@@ -61,13 +61,6 @@ use pin_project_lite::pin_project;
 use quinn::TransportConfig;
 #[cfg(feature = "http3")]
 use quinn::VarInt;
-
-/// Convert a `u64` to a QUIC [`VarInt`], clamping to `VarInt::MAX`
-/// (2^62 - 1) instead of panicking on out-of-range values.
-#[cfg(feature = "http3")]
-fn clamp_varint(value: u64) -> VarInt {
-    VarInt::from_u64(value).unwrap_or(VarInt::MAX)
-}
 use tokio::time::Sleep;
 use tower::util::BoxCloneSyncServiceLayer;
 use tower::{Layer, Service};
@@ -78,6 +71,35 @@ use tower::{Layer, Service};
     feature = "deflate"
 ))]
 use tower_http::decompression::Decompression;
+
+/// RFC 9113 window bound (2^31-1).
+const H2_MAX_WINDOW_SIZE: u32 = (1 << 31) - 1;
+
+/// `u64` to QUIC [`VarInt`], clamped to max.
+/// (2^62 - 1) instead of panicking on out-of-range values.
+#[cfg(feature = "http3")]
+fn clamp_varint(value: u64) -> VarInt {
+    VarInt::from_u64(value).unwrap_or(VarInt::MAX)
+}
+/// DNS timeout capped by connect timeout (min 1ms).
+/// `None` passes through (no cap).
+pub(crate) fn effective_dns_timeout(dns: Duration, connect: Option<Duration>) -> Duration {
+    match connect {
+        Some(c) if dns >= c => c
+            .saturating_sub(Duration::from_millis(1))
+            .max(Duration::from_millis(1)),
+        _ => dns,
+    }
+}
+
+/// Pool cap: per-host or total max (`0` stays `0`).
+pub(crate) fn fallback_pool_max(idle_per_host: usize, max_connections: usize) -> usize {
+    if idle_per_host != usize::MAX {
+        idle_per_host.min(max_connections)
+    } else {
+        max_connections
+    }
+}
 use tower_http::follow_redirect::FollowRedirect;
 
 /// An asynchronous `Client` to make Requests with.
@@ -118,6 +140,31 @@ pub(crate) enum HttpVersionPref {
     #[cfg(feature = "http3")]
     Http3,
     All,
+}
+
+/// ALPNs for H2 connector.
+pub(crate) fn h2_alpn_for_pref(pref: HttpVersionPref) -> Vec<Vec<u8>> {
+    match pref {
+        HttpVersionPref::Http1 => vec![b"http/1.1".to_vec()],
+        HttpVersionPref::All => vec![b"h2".to_vec(), b"http/1.1".to_vec()],
+        _ => vec![b"h2".to_vec()],
+    }
+}
+
+/// Must impersonated ALPN be overwritten?
+pub(crate) fn should_override_impersonated_alpn(
+    impersonating: bool,
+    pref: HttpVersionPref,
+) -> bool {
+    if !impersonating {
+        return true;
+    }
+    match pref {
+        HttpVersionPref::Http1 | HttpVersionPref::Http2 => true,
+        #[cfg(feature = "http3")]
+        HttpVersionPref::Http3 => true,
+        HttpVersionPref::All => false,
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -435,6 +482,8 @@ impl ClientBuilder {
                     identity: self.config.identity.clone(),
                     tls_sni: self.config.tls_sni,
                     tls_sslkeylogfile: self.config.tls_sslkeylogfile,
+                    min_tls_version: self.config.min_tls_version,
+                    max_tls_version: self.config.max_tls_version,
                 };
                 let settings = crate::imp::get_browser_settings(imp, Some(os));
                 return crate::impersonation::apply_impersonation(self, settings, &root_certs, tls);
@@ -485,12 +534,7 @@ impl ClientBuilder {
             let dns_timeout = config
                 .dns_timeout
                 .unwrap_or(crate::dns::cache::DNS_RESOLUTION_TIMEOUT);
-            let dns_timeout = match config.connect_timeout {
-                Some(connect) if dns_timeout >= connect => {
-                    connect.saturating_sub(Duration::from_millis(1))
-                }
-                _ => dns_timeout,
-            };
+            let dns_timeout = effective_dns_timeout(dns_timeout, config.connect_timeout);
             let cached: Arc<dyn Resolve> = Arc::new(match config.dns_cache_ttl {
                 Some(ttl) => crate::dns::cache::DnsCacheResolver::with_ttl_and_timeout(
                     base,
@@ -731,9 +775,16 @@ impl ClientBuilder {
                         // browser emulation is active (impersonation). Real
                         // browsers advertise ["h2", "http/1.1"] in the
                         // ClientHello ALPN extension, not just ["h2"].
-                        if h2_tls.browser_emulation.is_none()
-                            || matches!(config.http_version_pref, HttpVersionPref::Http1)
-                        {
+                        //
+                        // Exception: when the caller explicitly selects
+                        // http2/http3 prior knowledge, we must restrict ALPN
+                        // to ["h2"] even under impersonation (otherwise the
+                        // server could negotiate http/1.1 violating the
+                        // prior-knowledge contract).
+                        if should_override_impersonated_alpn(
+                            h2_tls.browser_emulation.is_some(),
+                            config.http_version_pref,
+                        ) {
                             // When http_version_pref is All, advertise both
                             // protocols so the server can pick via ALPN.
                             // If the server picks http/1.1, the H2 connector
@@ -742,13 +793,10 @@ impl ClientBuilder {
                             // HTTP/1.1 over it without a second handshake.
                             // When the caller forces HTTP/1, only offer
                             // http/1.1 so the legacy h1 parser is used.
-                            h2_tls.alpn_protocols = match config.http_version_pref {
-                                HttpVersionPref::Http1 => vec!["http/1.1".into()],
-                                HttpVersionPref::All => {
-                                    vec!["h2".into(), "http/1.1".into()]
-                                }
-                                _ => vec!["h2".into()],
-                            };
+                            h2_tls.alpn_protocols = h2_alpn_for_pref(config.http_version_pref)
+                                .into_iter()
+                                .map(|v| v.into())
+                                .collect();
                         }
                         // tls_proxy: no ALPN, for TLS-to-proxy connections.
                         let mut h2_tls_proxy = (*conn).clone();
@@ -797,21 +845,13 @@ impl ClientBuilder {
 
                     if let Some(min_tls_version) = config.min_tls_version {
                         versions.retain(|&supported_version| {
-                            match tls::Version::from_rustls(supported_version.version) {
-                                Some(version) => version >= min_tls_version,
-                                // Assume it's so new we don't know about it, allow it
-                                // (as of writing this is unreachable)
-                                None => true,
-                            }
+                            tls::Version::version_ge_min(supported_version.version, min_tls_version)
                         });
                     }
 
                     if let Some(max_tls_version) = config.max_tls_version {
                         versions.retain(|&supported_version| {
-                            match tls::Version::from_rustls(supported_version.version) {
-                                Some(version) => version <= max_tls_version,
-                                None => false,
-                            }
+                            tls::Version::version_le_max(supported_version.version, max_tls_version)
                         });
                     }
 
@@ -1054,11 +1094,12 @@ impl ClientBuilder {
                 .http2_max_concurrent_streams
                 .map(|v| v as usize)
                 .unwrap_or(DEFAULT_H2_MAX_CONCURRENT_STREAMS);
-            let mut pool = Pool::new(
-                config.pool_idle_timeout,
-                config.pool_max_connections,
-                max_streams,
-            );
+            // Fallback pools should respect pool_max_idle_per_host when set,
+            // otherwise fall back to pool_max_connections. This mirrors the
+            // legacy hyper_util pool's pool_max_idle_per_host handling.
+            let pool_max =
+                fallback_pool_max(config.pool_max_idle_per_host, config.pool_max_connections);
+            let mut pool = Pool::new(config.pool_idle_timeout, pool_max, max_streams);
             pool.spawn_idle_cleanup();
             pool
         };
@@ -1069,47 +1110,51 @@ impl ClientBuilder {
         let connection = NegotiatingConnection {
             h2_pool,
             h2_connector: Arc::new(h2_connector),
-            http1_pool: Http1Pool::with_idle_timeout(
-                config.pool_max_connections,
-                config.pool_idle_timeout,
-            ),
+            http1_pool: {
+                let pool_max =
+                    fallback_pool_max(config.pool_max_idle_per_host, config.pool_max_connections);
+                Http1Pool::with_idle_timeout(pool_max, config.pool_idle_timeout)
+            },
             http1_client,
             http_version_pref: config.http_version_pref,
         };
 
-        let svc = tower::retry::Retry::new(retry_policy.clone(), connection);
-
+        // Build inner service with decompression+RangeGuard INSIDE redirect,
+        // so FollowRedirect re-enters RangeGuard on each hop (outer RangeGuard
+        // would be bypassed on the second hop, leaving Range+Accept-Encoding:gzip -> 206 corruption).
+        let base = tower::retry::Retry::new(retry_policy.clone(), connection);
         #[cfg(feature = "cookies")]
-        let svc = CookieService::new(svc, config.cookie_store.clone());
-        let svc = FollowRedirect::with_policy(svc, redirect_policy.clone());
+        let base = CookieService::new(base, config.cookie_store.clone());
         #[cfg(any(
             feature = "gzip",
             feature = "brotli",
             feature = "zstd",
             feature = "deflate"
         ))]
-        let svc = Decompression::new(svc)
-            // set everything to NO, in case tower-http has it enabled but
-            // primp does not. then set to config value if cfg allows.
-            .no_gzip()
-            .no_deflate()
-            .no_br()
-            .no_zstd();
-        #[cfg(feature = "gzip")]
-        let svc = svc.gzip(config.accepts.gzip);
-        #[cfg(feature = "brotli")]
-        let svc = svc.br(config.accepts.brotli);
-        #[cfg(feature = "zstd")]
-        let svc = svc.zstd(config.accepts.zstd);
-        #[cfg(feature = "deflate")]
-        let svc = svc.deflate(config.accepts.deflate);
-        #[cfg(any(
+        let base = {
+            let svc = Decompression::new(base)
+                .no_gzip()
+                .no_deflate()
+                .no_br()
+                .no_zstd();
+            #[cfg(feature = "gzip")]
+            let svc = svc.gzip(config.accepts.gzip);
+            #[cfg(feature = "brotli")]
+            let svc = svc.br(config.accepts.brotli);
+            #[cfg(feature = "zstd")]
+            let svc = svc.zstd(config.accepts.zstd);
+            #[cfg(feature = "deflate")]
+            let svc = svc.deflate(config.accepts.deflate);
+            range_guard::RangeGuard::new(svc)
+        };
+        #[cfg(not(any(
             feature = "gzip",
             feature = "brotli",
             feature = "zstd",
             feature = "deflate"
-        ))]
-        let svc = range_guard::RangeGuard::new(svc);
+        )))]
+        let base = range_guard::RangeGuard::new(base);
+        let svc = FollowRedirect::with_policy(base, redirect_policy.clone());
 
         Ok(Client {
             inner: Arc::new(ClientRef {
@@ -1120,38 +1165,39 @@ impl ClientBuilder {
                 h3_client: match h3_connector {
                     Some(h3_connector) => {
                         let h3_service = H3Client::new(h3_connector, config.pool_idle_timeout);
-                        let svc = tower::retry::Retry::new(retry_policy.clone(), h3_service);
+                        let base = tower::retry::Retry::new(retry_policy.clone(), h3_service);
                         #[cfg(feature = "cookies")]
-                        let svc = CookieService::new(svc, config.cookie_store.clone());
-                        let svc = FollowRedirect::with_policy(svc, redirect_policy.clone());
+                        let base = CookieService::new(base, config.cookie_store.clone());
                         #[cfg(any(
                             feature = "gzip",
                             feature = "brotli",
                             feature = "zstd",
                             feature = "deflate"
                         ))]
-                        let svc = Decompression::new(svc)
-                            // set everything to NO, in case tower-http has it enabled but
-                            // primp does not. then set to config value if cfg allows.
-                            .no_gzip()
-                            .no_deflate()
-                            .no_br()
-                            .no_zstd();
-                        #[cfg(feature = "gzip")]
-                        let svc = svc.gzip(config.accepts.gzip);
-                        #[cfg(feature = "brotli")]
-                        let svc = svc.br(config.accepts.brotli);
-                        #[cfg(feature = "zstd")]
-                        let svc = svc.zstd(config.accepts.zstd);
-                        #[cfg(feature = "deflate")]
-                        let svc = svc.deflate(config.accepts.deflate);
-                        #[cfg(any(
+                        let base = {
+                            let svc = Decompression::new(base)
+                                .no_gzip()
+                                .no_deflate()
+                                .no_br()
+                                .no_zstd();
+                            #[cfg(feature = "gzip")]
+                            let svc = svc.gzip(config.accepts.gzip);
+                            #[cfg(feature = "brotli")]
+                            let svc = svc.br(config.accepts.brotli);
+                            #[cfg(feature = "zstd")]
+                            let svc = svc.zstd(config.accepts.zstd);
+                            #[cfg(feature = "deflate")]
+                            let svc = svc.deflate(config.accepts.deflate);
+                            range_guard::RangeGuard::new(svc)
+                        };
+                        #[cfg(not(any(
                             feature = "gzip",
                             feature = "brotli",
                             feature = "zstd",
                             feature = "deflate"
-                        ))]
-                        let svc = range_guard::RangeGuard::new(svc);
+                        )))]
+                        let base = range_guard::RangeGuard::new(base);
+                        let svc = FollowRedirect::with_policy(base, redirect_policy.clone());
                         Some(svc)
                     }
                     None => None,
@@ -1547,8 +1593,21 @@ impl ClientBuilder {
     ///
     /// Default is no timeout.
     pub fn read_timeout(mut self, timeout: Duration) -> ClientBuilder {
-        self.config.read_timeout = Some(timeout);
+        self = self
+            .try_read_timeout(timeout)
+            .expect("read_timeout must be non-zero, got 0; use None to disable");
         self
+    }
+
+    /// Read timeout; `Err` on zero.
+    pub fn try_read_timeout(mut self, timeout: Duration) -> crate::Result<ClientBuilder> {
+        if timeout.is_zero() {
+            return Err(crate::error::builder(
+                "read_timeout must be non-zero, got 0; use None to disable",
+            ));
+        }
+        self.config.read_timeout = Some(timeout);
+        Ok(self)
     }
 
     /// Set a timeout for only the connect phase of a `Client`.
@@ -1699,7 +1758,18 @@ impl ClientBuilder {
     ///
     /// Default may change internally to optimize for common uses.
     pub fn http2_initial_stream_window_size(mut self, sz: impl Into<Option<u32>>) -> ClientBuilder {
-        self.config.http2_initial_stream_window_size = sz.into();
+        if let Some(v) = sz.into() {
+            if v > H2_MAX_WINDOW_SIZE {
+                log::warn!(
+                    "ignoring http2_initial_stream_window_size({v}): must be 0..={}",
+                    H2_MAX_WINDOW_SIZE
+                );
+                return self;
+            }
+            self.config.http2_initial_stream_window_size = Some(v);
+        } else {
+            self.config.http2_initial_stream_window_size = None;
+        }
         self
     }
 
@@ -1710,7 +1780,18 @@ impl ClientBuilder {
         mut self,
         sz: impl Into<Option<u32>>,
     ) -> ClientBuilder {
-        self.config.http2_initial_connection_window_size = sz.into();
+        if let Some(v) = sz.into() {
+            if v == 0 || v > H2_MAX_WINDOW_SIZE {
+                log::warn!(
+                    "ignoring http2_initial_connection_window_size({v}): must be 1..={}",
+                    H2_MAX_WINDOW_SIZE
+                );
+                return self;
+            }
+            self.config.http2_initial_connection_window_size = Some(v);
+        } else {
+            self.config.http2_initial_connection_window_size = None;
+        }
         self
     }
 
@@ -1727,7 +1808,15 @@ impl ClientBuilder {
     ///
     /// Default is currently 16,384 but may change internally to optimize for common uses.
     pub fn http2_max_frame_size(mut self, sz: impl Into<Option<u32>>) -> ClientBuilder {
-        self.config.http2_max_frame_size = sz.into();
+        if let Some(v) = sz.into() {
+            if !(16384..=16777215).contains(&v) {
+                log::warn!("ignoring http2_max_frame_size({v}): must be 16384..=16777215");
+                return self;
+            }
+            self.config.http2_max_frame_size = Some(v);
+        } else {
+            self.config.http2_max_frame_size = None;
+        }
         self
     }
 
@@ -2411,7 +2500,7 @@ impl ClientBuilder {
     ///
     /// [`TransportConfig`]: https://docs.rs/quinn/latest/quinn/struct.TransportConfig.html
     ///
-    /// Values above the QUIC maximum (2^62 - 1) are clamped to that maximum.
+    /// Clamp to QUIC max (2^62-1).
     #[cfg(feature = "http3")]
     #[cfg_attr(docsrs, doc(cfg(feature = "http3")))]
     pub fn http3_stream_receive_window(mut self, value: u64) -> ClientBuilder {
@@ -2426,7 +2515,7 @@ impl ClientBuilder {
     ///
     /// [`TransportConfig`]: https://docs.rs/quinn/latest/quinn/struct.TransportConfig.html
     ///
-    /// Values above the QUIC maximum (2^62 - 1) are clamped to that maximum.
+    /// Clamp to QUIC max (2^62-1).
     #[cfg(feature = "http3")]
     #[cfg_attr(docsrs, doc(cfg(feature = "http3")))]
     pub fn http3_conn_receive_window(mut self, value: u64) -> ClientBuilder {
@@ -2498,7 +2587,7 @@ impl ClientBuilder {
     /// base connector [`Service`](https://docs.rs/tower/latest/tower/trait.Service.html) which
     /// is responsible for connection establishment.
     ///
-    /// Each subsequent invocation of this function will wrap previous layers.
+    /// Layers apply in push order; first is outermost (like `tower`).
     ///
     /// If configured, the `connect_timeout` will be the outermost layer.
     ///
@@ -2507,10 +2596,12 @@ impl ClientBuilder {
     /// use std::time::Duration;
     ///
     /// # let client = primp::Client::builder()
-    ///                      // resolved to outermost layer, meaning while we are waiting on concurrency limit
+    ///                      // outermost layer: covers waiting on inner layers
     ///                      .connect_timeout(Duration::from_millis(200))
-    ///                      // underneath the concurrency check, so only after concurrency limit lets us through
+    ///                      // first pushed user layer = outermost user layer,
+    ///                      // sees the request before the concurrency limit
     ///                      .connector_layer(tower::timeout::TimeoutLayer::new(Duration::from_millis(50)))
+    ///                      // second pushed = innermost, closest to connection establishment
     ///                      .connector_layer(tower::limit::concurrency::ConcurrencyLimitLayer::new(2))
     ///                      .build()
     ///                      .unwrap();
@@ -2781,8 +2872,12 @@ impl Client {
 
         let body = body.unwrap_or_else(Body::empty);
 
-        self.proxy_auth(&uri, &mut headers);
-        self.proxy_custom_headers(&uri, &mut headers);
+        if let Err(e) = self.proxy_auth(&uri, &mut headers) {
+            return Pending::new_err(e);
+        }
+        if let Err(e) = self.proxy_custom_headers(&uri, &mut headers) {
+            return Pending::new_err(e);
+        }
 
         let builder = hyper::Request::builder()
             .method(method.clone())
@@ -2802,7 +2897,9 @@ impl Client {
             .and_then(|c| c.get_value())
             .copied()
         {
-            req.extensions_mut().insert(override_policy);
+            *crate::config::RequestConfig::<crate::config::RedirectPolicyOverride>::get_mut(
+                req.extensions_mut(),
+            ) = Some(override_policy);
         }
 
         // Carry the per-request one-shot cookies onto the wire request so the
@@ -2864,20 +2961,20 @@ impl Client {
         }
     }
 
-    fn proxy_auth(&self, dst: &Uri, headers: &mut HeaderMap) {
+    fn proxy_auth(&self, dst: &Uri, headers: &mut HeaderMap) -> crate::Result<()> {
         if !self.inner.proxies_maybe_http_auth {
-            return;
+            return Ok(());
         }
 
         // Only set the header here if the destination scheme is 'http',
         // since otherwise, the header will be included in the CONNECT tunnel
         // request instead.
         if dst.scheme() != Some(&Scheme::HTTP) {
-            return;
+            return Ok(());
         }
 
         if headers.contains_key(PROXY_AUTHORIZATION) {
-            return;
+            return Ok(());
         }
 
         for proxy in self
@@ -2899,21 +2996,19 @@ impl Client {
                     break;
                 }
                 Ok(None) => continue,
-                Err(e) => {
-                    log::warn!("proxy intercept error in proxy_auth: {e}");
-                    break;
-                }
+                Err(e) => return Err(e),
             }
         }
+        Ok(())
     }
 
-    fn proxy_custom_headers(&self, dst: &Uri, headers: &mut HeaderMap) {
+    fn proxy_custom_headers(&self, dst: &Uri, headers: &mut HeaderMap) -> crate::Result<()> {
         if !self.inner.proxies_maybe_http_custom_headers {
-            return;
+            return Ok(());
         }
 
         if dst.scheme() != Some(&Scheme::HTTP) {
-            return;
+            return Ok(());
         }
 
         for proxy in self
@@ -2937,12 +3032,10 @@ impl Client {
                     break;
                 }
                 Ok(None) => continue,
-                Err(e) => {
-                    log::warn!("proxy intercept error in proxy_custom_headers: {e}");
-                    break;
-                }
+                Err(e) => return Err(e),
             }
         }
+        Ok(())
     }
 }
 
@@ -3180,7 +3273,7 @@ type MaybeCookieService<T> = CookieService<T>;
     feature = "zstd",
     feature = "deflate"
 )))]
-type MaybeDecompression<T> = T;
+type MaybeDecompression<T> = RangeGuard<T>;
 
 #[cfg(any(
     feature = "gzip",
@@ -3190,11 +3283,9 @@ type MaybeDecompression<T> = T;
 ))]
 type MaybeDecompression<T> = RangeGuard<Decompression<T>>;
 
-type LayeredService<T> = MaybeDecompression<
-    FollowRedirect<
-        MaybeCookieService<tower::retry::Retry<crate::retry::Policy, T>>,
-        TowerRedirectPolicy,
-    >,
+type LayeredService<T> = FollowRedirect<
+    MaybeDecompression<MaybeCookieService<tower::retry::Retry<crate::retry::Policy, T>>>,
+    TowerRedirectPolicy,
 >;
 type LayeredFuture<T> = <LayeredService<T> as Service<http::Request<Body>>>::Future;
 
@@ -3338,70 +3429,84 @@ impl Future for PendingRequest {
     type Output = Result<Response, crate::Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if let Some(delay) = self.as_mut().total_timeout().as_mut().as_pin_mut() {
-            if let Poll::Ready(()) = delay.poll(cx) {
-                // Total timeout during SOCKS handshake surfaces as bare
-                // `TimedOut` (not `is_connect`). For SOCKS, emit a connect
-                // timeout so the `socks5_wrong_auth_is_rejected` check holds.
-                let is_socks = {
-                    let uri: Result<http::Uri, _> = self.url.as_str().parse();
-                    if let Ok(uri) = uri {
-                        let proxies = self
-                            .client
-                            .proxies
-                            .read()
-                            .unwrap_or_else(|e| e.into_inner());
-                        proxies.iter().any(|m| {
-                            m.intercept(&uri)
-                                .ok()
-                                .flatten()
-                                .map(|ic| {
-                                    ic.uri()
-                                        .scheme_str()
-                                        .map(|s| s.starts_with("socks"))
+        // Poll in_flight first so a ready response wins over a simultaneous
+        // timeout (narrow race only). Read-timeout per-frame semantics are
+        // enforced by ReadTimeoutBody for body chunks; this does not by
+        // itself fix read_timeout counting connect/DNS time.
+        // Separate arms are required because Response and H3 have different
+        // body error types (BoxBody<Error> vs BoxBody<Box<dyn Error>>) and
+        // only unify after mapping via `super::body::boxed`.
+        let res = {
+            let mut this = self.as_mut();
+            match this.as_mut().in_flight().get_mut() {
+                ResponseFuture::Response(r) => match r.as_mut().poll(cx) {
+                    Poll::Pending => None,
+                    Poll::Ready(Err(e)) => {
+                        let url = this.url.clone();
+                        return Poll::Ready(Err(e.if_no_url(|| url)));
+                    }
+                    Poll::Ready(Ok(res)) => Some(res.map(super::body::boxed)),
+                },
+                #[cfg(feature = "http3")]
+                ResponseFuture::H3(r) => match r.as_mut().poll(cx) {
+                    Poll::Pending => None,
+                    Poll::Ready(Err(e)) => {
+                        let url = this.url.clone();
+                        return Poll::Ready(Err(e.if_no_url(|| url)));
+                    }
+                    Poll::Ready(Ok(res)) => Some(res.map(super::body::boxed)),
+                },
+            }
+        };
+        let res = match res {
+            None => {
+                // In-flight still pending: check timeouts before returning Pending.
+                if let Some(delay) = self.as_mut().total_timeout().as_mut().as_pin_mut() {
+                    if let Poll::Ready(()) = delay.poll(cx) {
+                        let is_socks = {
+                            let uri: Result<http::Uri, _> = self.url.as_str().parse();
+                            if let Ok(uri) = uri {
+                                let proxies = self
+                                    .client
+                                    .proxies
+                                    .read()
+                                    .unwrap_or_else(|e| e.into_inner());
+                                proxies.iter().any(|m| {
+                                    m.intercept(&uri)
+                                        .ok()
+                                        .flatten()
+                                        .map(|ic| {
+                                            ic.uri()
+                                                .scheme_str()
+                                                .map(|s| s.starts_with("socks"))
+                                                .unwrap_or(false)
+                                        })
                                         .unwrap_or(false)
                                 })
-                                .unwrap_or(false)
-                        })
-                    } else {
-                        false
+                            } else {
+                                false
+                            }
+                        };
+                        if is_socks {
+                            return Poll::Ready(Err(crate::error::request(std::io::Error::new(
+                                std::io::ErrorKind::TimedOut,
+                                "socks connect timeout",
+                            ))
+                            .with_url(self.url.clone())));
+                        }
+                        return Poll::Ready(Err(crate::error::request(crate::error::TimedOut)
+                            .with_url(self.url.clone())));
                     }
-                };
-                if is_socks {
-                    return Poll::Ready(Err(crate::error::request(std::io::Error::new(
-                        std::io::ErrorKind::TimedOut,
-                        "socks connect timeout",
-                    ))
-                    .with_url(self.url.clone())));
                 }
-                return Poll::Ready(Err(
-                    crate::error::request(crate::error::TimedOut).with_url(self.url.clone())
-                ));
+                if let Some(delay) = self.as_mut().read_timeout().as_mut().as_pin_mut() {
+                    if let Poll::Ready(()) = delay.poll(cx) {
+                        return Poll::Ready(Err(crate::error::request(crate::error::TimedOut)
+                            .with_url(self.url.clone())));
+                    }
+                }
+                return Poll::Pending;
             }
-        }
-
-        if let Some(delay) = self.as_mut().read_timeout().as_mut().as_pin_mut() {
-            if let Poll::Ready(()) = delay.poll(cx) {
-                return Poll::Ready(Err(
-                    crate::error::request(crate::error::TimedOut).with_url(self.url.clone())
-                ));
-            }
-        }
-
-        let res = match self.as_mut().in_flight().get_mut() {
-            ResponseFuture::Response(r) => match ready!(r.as_mut().poll(cx)) {
-                Err(e) => {
-                    return Poll::Ready(Err(e.if_no_url(|| self.url.clone())));
-                }
-                Ok(res) => res.map(super::body::boxed),
-            },
-            #[cfg(feature = "http3")]
-            ResponseFuture::H3(r) => match ready!(r.as_mut().poll(cx)) {
-                Err(e) => {
-                    return Poll::Ready(Err(e.if_no_url(|| self.url.clone())));
-                }
-                Ok(res) => res.map(super::body::boxed),
-            },
+            Some(res) => res,
         };
 
         if let Some(url) = &res
@@ -3440,6 +3545,28 @@ impl fmt::Debug for Pending {
 #[cfg(test)]
 mod tests {
     use crate::proxy::Proxy;
+
+    /// `FollowRedirect` wraps `RangeGuard` (re-applies each hop).
+    /// Type-order check; E2E passes either way.
+    #[test]
+    fn layered_service_orders_follow_redirect_outermost() {
+        let name = std::any::type_name::<super::LayeredService<()>>();
+        // FollowRedirect outermost, RangeGuard inside.
+        assert!(
+            name.contains("FollowRedirect"),
+            "LayeredService must contain FollowRedirect, got {name}"
+        );
+        assert!(
+            name.contains("RangeGuard"),
+            "LayeredService must contain RangeGuard, got {name}"
+        );
+        let follow_pos = name.find("FollowRedirect").unwrap();
+        let guard_pos = name.find("RangeGuard").unwrap();
+        assert!(
+            follow_pos < guard_pos,
+            "FollowRedirect must be outermost (before RangeGuard), got {name}"
+        );
+    }
 
     /// Regression test: `set_proxies()` correctly updates the shared proxy
     /// state for both header-attachment and connector routing.
@@ -3609,5 +3736,179 @@ oY2cklEMr3rB2d4zBYoOXv2WkHe8yOWAcGrC1k5u+dVK96bQB9EvsTMc\n\
             "impersonation + identity should build: {:?}",
             client.err()
         );
+    }
+
+    #[test]
+    fn dns_timeout_never_collapses_to_zero() {
+        use super::effective_dns_timeout;
+        use std::time::Duration;
+        assert_eq!(
+            effective_dns_timeout(Duration::from_secs(30), Some(Duration::from_millis(1))),
+            Duration::from_millis(1)
+        );
+        assert_eq!(
+            effective_dns_timeout(Duration::from_secs(30), Some(Duration::from_secs(10))),
+            Duration::from_millis(9999)
+        );
+        assert_eq!(
+            effective_dns_timeout(Duration::from_secs(2), Some(Duration::from_secs(10))),
+            Duration::from_secs(2)
+        );
+        // No connect cap → passthrough, including explicit ZERO (disabled).
+        assert_eq!(
+            effective_dns_timeout(Duration::from_secs(5), None),
+            Duration::from_secs(5)
+        );
+        assert_eq!(effective_dns_timeout(Duration::ZERO, None), Duration::ZERO);
+        // connect=ZERO inverts the invariant but stays harmless (floors to 1ms).
+        assert_eq!(
+            effective_dns_timeout(Duration::from_secs(1), Some(Duration::ZERO)),
+            Duration::from_millis(1)
+        );
+    }
+
+    #[test]
+    fn http2_window_and_frame_size_validation() {
+        // stream window 0 is legal per RFC 9113 §6.5.2 (0..=2^31-1)
+        assert_eq!(
+            super::ClientBuilder::new()
+                .http2_initial_stream_window_size(0)
+                .config
+                .http2_initial_stream_window_size,
+            Some(0)
+        );
+        assert_eq!(
+            super::ClientBuilder::new()
+                .http2_initial_stream_window_size(2147483648)
+                .config
+                .http2_initial_stream_window_size,
+            None
+        );
+        // connection window 0 stalls and is illegal
+        assert_eq!(
+            super::ClientBuilder::new()
+                .http2_initial_connection_window_size(0)
+                .config
+                .http2_initial_connection_window_size,
+            None
+        );
+        assert_eq!(
+            super::ClientBuilder::new()
+                .http2_max_frame_size(16383)
+                .config
+                .http2_max_frame_size,
+            None
+        );
+        assert_eq!(
+            super::ClientBuilder::new()
+                .http2_max_frame_size(16384)
+                .config
+                .http2_max_frame_size,
+            Some(16384)
+        );
+        let b = super::ClientBuilder::new()
+            .http2_max_frame_size(32768)
+            .http2_max_frame_size(1);
+        assert_eq!(b.config.http2_max_frame_size, Some(32768));
+    }
+
+    #[cfg(feature = "http3")]
+    #[test]
+    fn clamp_varint_clamps_to_quic_max() {
+        use super::clamp_varint;
+        // 0 and in-range values pass through.
+        assert_eq!(clamp_varint(0).into_inner(), 0);
+        assert_eq!(clamp_varint(1).into_inner(), 1);
+        let max = quinn::VarInt::MAX.into_inner();
+        assert_eq!(clamp_varint(max).into_inner(), max);
+        // Out-of-range clamps instead of panicking (old
+        // `VarInt::from_u64(v).unwrap()` panicked on u64::MAX).
+        assert_eq!(clamp_varint(u64::MAX).into_inner(), max);
+        assert_eq!(clamp_varint(max + 1).into_inner(), max);
+        // Builder stores send_window verbatim (u64 mem cap, not VarInt).
+        let b = super::ClientBuilder::new().http3_send_window(u64::MAX);
+        assert_eq!(b.config.quic_send_window, Some(u64::MAX));
+    }
+
+    #[test]
+    fn builder_try_read_timeout_rejects_zero() {
+        use std::time::Duration;
+        // Fallible path returns builder error (old code silently set
+        // immediate-timeout footgun; panicking wrapper must panic).
+        let err = super::ClientBuilder::new()
+            .try_read_timeout(Duration::ZERO)
+            .expect_err("zero read_timeout must be rejected");
+        assert!(err.is_builder(), "expected builder error, got {err:?}");
+        // Non-zero accepted and stored.
+        let b = super::ClientBuilder::new()
+            .try_read_timeout(Duration::from_secs(5))
+            .expect("non-zero must be accepted");
+        assert_eq!(b.config.read_timeout, Some(Duration::from_secs(5)));
+    }
+
+    #[test]
+    #[should_panic(expected = "read_timeout must be non-zero")]
+    fn builder_read_timeout_panics_on_zero() {
+        use std::time::Duration;
+        let _ = super::ClientBuilder::new().read_timeout(Duration::ZERO);
+    }
+    #[test]
+    fn h2_alpn_prior_knowledge_restricts_to_h2_under_impersonation() {
+        use super::{h2_alpn_for_pref, should_override_impersonated_alpn, HttpVersionPref};
+        // Offer shapes.
+        assert_eq!(
+            h2_alpn_for_pref(HttpVersionPref::Http1),
+            vec![b"http/1.1".to_vec()]
+        );
+        assert_eq!(
+            h2_alpn_for_pref(HttpVersionPref::All),
+            vec![b"h2".to_vec(), b"http/1.1".to_vec()]
+        );
+        assert_eq!(
+            h2_alpn_for_pref(HttpVersionPref::Http2),
+            vec![b"h2".to_vec()]
+        );
+        // Impersonation + All preserves broad offer (no overwrite).
+        assert!(!should_override_impersonated_alpn(
+            true,
+            HttpVersionPref::All
+        ));
+        // Impersonation + prior-knowledge must overwrite to h2-only
+        // (old code missed Http2/Http3, leaving broad ["h2","http/1.1"]).
+        assert!(should_override_impersonated_alpn(
+            true,
+            HttpVersionPref::Http2
+        ));
+        assert!(should_override_impersonated_alpn(
+            true,
+            HttpVersionPref::Http1
+        ));
+        // No impersonation always overwrites.
+        assert!(should_override_impersonated_alpn(
+            false,
+            HttpVersionPref::All
+        ));
+        #[cfg(feature = "http3")]
+        {
+            assert_eq!(
+                h2_alpn_for_pref(HttpVersionPref::Http3),
+                vec![b"h2".to_vec()]
+            );
+            assert!(should_override_impersonated_alpn(
+                true,
+                HttpVersionPref::Http3
+            ));
+        }
+    }
+
+    #[test]
+    fn fallback_pool_max_respects_idle_per_host() {
+        use super::fallback_pool_max;
+        // Unset (MAX) falls back to max_connections.
+        assert_eq!(fallback_pool_max(usize::MAX, 256), 256);
+        // Set values clamp to min(idle_per_host, max_connections).
+        assert_eq!(fallback_pool_max(1, 256), 1);
+        assert_eq!(fallback_pool_max(512, 256), 256);
+        assert_eq!(fallback_pool_max(0, 256), 0);
     }
 }

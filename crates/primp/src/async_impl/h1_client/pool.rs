@@ -62,8 +62,8 @@ pub(crate) struct Http1Pool {
     inner: Arc<Mutex<HashMap<String, Entry>>>,
     /// Maximum number of host entries (idle connections) kept in the pool.
     max_idle_entries: usize,
-    /// How long an idle connection is kept before eviction.
-    idle_timeout: Duration,
+    /// Idle timeout; `None` disables eviction.
+    idle_timeout: Option<Duration>,
 }
 
 impl Http1Pool {
@@ -76,12 +76,10 @@ impl Http1Pool {
     /// [`MAX_IDLE_ENTRIES`]. Clamped to at least 1.
     /// Idle timeout defaults to [`DEFAULT_IDLE_TIMEOUT`] (90s).
     pub(crate) fn with_max_idle_entries(max_idle_entries: usize) -> Self {
-        Self::with_idle_timeout(max_idle_entries, None)
+        Self::with_idle_timeout(max_idle_entries, Some(DEFAULT_IDLE_TIMEOUT))
     }
 
-    /// Create a pool with an explicit idle timeout. `None` → 90s default,
-    /// mirroring `Config::pool_idle_timeout`. Used by `client.rs` so
-    /// `ClientBuilder::pool_idle_timeout` applies to H1 as well as H2/H3.
+    /// Pool with timeout; `None` disables eviction.
     pub(crate) fn with_idle_timeout(
         max_idle_entries: usize,
         idle_timeout: Option<Duration>,
@@ -89,7 +87,7 @@ impl Http1Pool {
         Http1Pool {
             inner: Arc::new(Mutex::new(HashMap::new())),
             max_idle_entries: max_idle_entries.max(1),
-            idle_timeout: idle_timeout.unwrap_or(DEFAULT_IDLE_TIMEOUT),
+            idle_timeout,
         }
     }
 
@@ -108,10 +106,12 @@ impl Http1Pool {
                     // Drop an idle connection that has been parked longer than
                     // the idle timeout instead of handing back a likely-dead
                     // socket. The caller then opens a fresh connection.
-                    if entry.busy == 0 && entry.idle_since.elapsed() > self.idle_timeout {
-                        drop(sender);
-                        g.remove(key);
-                        return None;
+                    if let Some(timeout) = self.idle_timeout {
+                        if entry.busy == 0 && entry.idle_since.elapsed() > timeout {
+                            drop(sender);
+                            g.remove(key);
+                            return None;
+                        }
                     }
                     entry.busy += 1;
                     (Some(sender), entry.tls_info.clone())
@@ -523,11 +523,15 @@ fn return_sender_discard(pool: &Http1Pool, key: &str) {
 /// `max_idle_entries`) the oldest idle entries, so the map and its open
 /// sockets cannot grow without bound. Only entries holding an idle `sender`
 /// are eligible; busy entries and placeholders are never removed here.
-fn evict_stale(map: &mut HashMap<String, Entry>, max_idle_entries: usize, idle_timeout: Duration) {
+fn evict_stale(
+    map: &mut HashMap<String, Entry>,
+    max_idle_entries: usize,
+    idle_timeout: Option<Duration>,
+) {
     // 1. Drop timed-out idle entries (those actually holding a parked socket).
-    map.retain(|_, e| {
-        !(e.busy == 0 && e.sender.is_some() && e.idle_since.elapsed() > idle_timeout)
-    });
+    if let Some(timeout) = idle_timeout {
+        map.retain(|_, e| !(e.busy == 0 && e.sender.is_some() && e.idle_since.elapsed() > timeout));
+    }
 
     // 2. Enforce the hard cap by evicting the oldest idle entries.
     if map.len() <= max_idle_entries {
@@ -840,7 +844,7 @@ mod tests {
             },
         );
 
-        evict_stale(&mut map, MAX_IDLE_ENTRIES, DEFAULT_IDLE_TIMEOUT);
+        evict_stale(&mut map, MAX_IDLE_ENTRIES, Some(DEFAULT_IDLE_TIMEOUT));
 
         assert!(
             map.contains_key("http:placeholder:80"),
@@ -849,6 +853,64 @@ mod tests {
         assert!(
             map.contains_key("http:busy:80"),
             "busy entry must not be evicted"
+        );
+    }
+
+    /// `get` with `None` timeout keeps stale entries.
+    #[tokio::test]
+    async fn get_with_none_timeout_retains_stale_idle_connection() {
+        let pool = Http1Pool::with_idle_timeout(256, None);
+        let key = "http:none-timeout.example.com:80".to_string();
+        {
+            let mut g = recover_lock(&pool.inner);
+            g.entry(key.clone()).or_insert_with(|| Entry {
+                sender: None,
+                tls_info: None,
+                busy: 0,
+                idle_since: Instant::now(),
+            });
+        }
+        let (client_io, _server_io) = tokio::io::duplex(64 * 1024);
+        let guard = pool
+            .insert(key.clone(), Box::new(client_io), None)
+            .await
+            .expect("insert succeeds");
+        drop(guard);
+        {
+            let mut g = recover_lock(&pool.inner);
+            g.get_mut(&key).unwrap().idle_since =
+                Instant::now() - DEFAULT_IDLE_TIMEOUT * 10 - Duration::from_secs(1);
+        }
+        assert!(
+            pool.get(&key).await.is_some(),
+            "None timeout must not evict idle connection in get()"
+        );
+    }
+
+    /// `evict_stale` with `None` timeout keeps all entries.
+    #[tokio::test]
+    async fn evict_stale_none_disables_timeout_eviction() {
+        let (io, _peer) = tokio::io::duplex(64 * 1024);
+        let (sender, conn) = http1::handshake::<_, Body>(TokioIo::new(io))
+            .await
+            .expect("handshake over duplex");
+        tokio::spawn(async move {
+            let _ = conn.await;
+        });
+        let mut map: HashMap<String, Entry> = HashMap::new();
+        map.insert(
+            "http:old:80".into(),
+            Entry {
+                sender: Some(sender),
+                tls_info: None,
+                busy: 0,
+                idle_since: Instant::now() - DEFAULT_IDLE_TIMEOUT * 10,
+            },
+        );
+        evict_stale(&mut map, MAX_IDLE_ENTRIES, None);
+        assert!(
+            map.contains_key("http:old:80"),
+            "None timeout must retain idle entries"
         );
     }
 
@@ -895,7 +957,7 @@ mod tests {
         map.insert("http:old:80".into(), old_entry);
         map.insert("http:new:80".into(), new_entry);
 
-        evict_stale(&mut map, 1, DEFAULT_IDLE_TIMEOUT);
+        evict_stale(&mut map, 1, Some(DEFAULT_IDLE_TIMEOUT));
 
         assert!(
             !map.contains_key("http:old:80"),

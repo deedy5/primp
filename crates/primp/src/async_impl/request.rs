@@ -304,9 +304,25 @@ impl RequestBuilder {
         self
     }
 
-    /// Sets a per-read timeout for this request's response body; each read that
-    /// receives no data within the duration fails. Overrides `ClientBuilder::read_timeout()`.
+    /// Per-read timeout; panics on zero, use `try_*`.
     pub fn read_timeout(mut self, timeout: Duration) -> RequestBuilder {
+        if timeout.is_zero() {
+            panic!("read_timeout must be non-zero, got 0; use None to disable");
+        }
+        if let Ok(ref mut req) = self.request {
+            *req.read_timeout_mut() = Some(timeout);
+        }
+        self
+    }
+
+    /// Per-read timeout; `Err` on zero.
+    pub fn try_read_timeout(mut self, timeout: Duration) -> RequestBuilder {
+        if timeout.is_zero() {
+            self.request = Err(crate::error::builder(
+                "read_timeout must be non-zero, got 0; use None to disable",
+            ));
+            return self;
+        }
         if let Ok(ref mut req) = self.request {
             *req.read_timeout_mut() = Some(timeout);
         }
@@ -616,25 +632,36 @@ pub(crate) fn extract_authority(url: &mut Url) -> Option<(String, Option<String>
     use percent_encoding::percent_decode;
 
     if url.has_authority() {
-        let username: String = percent_decode(url.username().as_bytes())
-            .decode_utf8()
-            .ok()?
-            .into();
-        let password = url.password().and_then(|pass| {
+        let raw_username = url.username();
+        let raw_password = url.password();
+        let has_creds = !raw_username.is_empty() || raw_password.is_some();
+        if !has_creds {
+            return None;
+        }
+        let username: String = match percent_decode(raw_username.as_bytes()).decode_utf8() {
+            Ok(decoded) => decoded.into_owned(),
+            Err(_) => {
+                let _ = url.set_username("");
+                let _ = url.set_password(None);
+                return None;
+            }
+        };
+        let password = raw_password.and_then(|pass| {
             percent_decode(pass.as_bytes())
                 .decode_utf8()
                 .ok()
                 .map(String::from)
         });
         if !username.is_empty() || password.is_some() {
-            // `has_authority()` implies a host, so these cannot fail with the
-            // current url crate; ignore errors gracefully rather than aborting
-            // the host (`panic = "abort"`) on a future url-crate change.
+            // Setters can't fail today; ignore gracefully for future url changes.
             if url.set_username("").is_err() || url.set_password(None).is_err() {
                 return None;
             }
             return Some((username, password));
         }
+        // Percent-decode failed: still strip credentials to avoid leaking
+        let _ = url.set_username("");
+        let _ = url.set_password(None);
     }
 
     None
@@ -976,11 +1003,9 @@ mod tests {
 
     #[test]
     fn extract_authority_never_panics_on_adversarial_userinfo() {
-        // The `expect()`s in `set_username`/`set_password` were removed in
-        // favor of graceful fallbacks: any URL shape the url crate accepts
-        // must never abort the host (`panic = "abort"`). Includes invalid
-        // UTF-8 percent-escapes, which bail out before the setter calls.
-        for url in [
+        // Any accepted URL must strip credentials without panicking.
+        // Regression: %FF decode failure must still strip.
+        for original in [
             "http://u:p@example.com/",
             "http://user@example.com/",
             "http://u%FF:p@example.com/",
@@ -990,8 +1015,10 @@ mod tests {
             "https://%C3%A9:p@example.com/",
             "http://example.com/", // no userinfo at all
         ] {
-            let mut url = crate::Url::parse(url).expect("url must parse");
+            let mut url = crate::Url::parse(original).expect("url must parse");
             let _ = extract_authority(&mut url);
+            assert_eq!(url.username(), "", "userinfo not stripped for {original}");
+            assert_eq!(url.password(), None, "userinfo not stripped for {original}");
         }
     }
 
@@ -1112,5 +1139,29 @@ mod tests {
             .build()
             .expect_err("serialization must fail");
         assert!(err.is_json());
+    }
+
+    #[test]
+    fn per_request_try_read_timeout_rejects_zero() {
+        let err = Client::new()
+            .get("http://example.com/")
+            .try_read_timeout(std::time::Duration::ZERO)
+            .build()
+            .expect_err("zero read_timeout must fail");
+        assert!(err.is_builder(), "expected builder error, got {err:?}");
+        assert!(
+            format!("{err:?}").contains("read_timeout must be non-zero"),
+            "unexpected message: {err:?}"
+        );
+    }
+
+    #[test]
+    fn per_request_try_read_timeout_accepts_nonzero() {
+        let req = Client::new()
+            .get("http://example.com/")
+            .try_read_timeout(std::time::Duration::from_secs(5))
+            .build()
+            .expect("non-zero read_timeout is valid");
+        assert_eq!(req.read_timeout(), Some(&std::time::Duration::from_secs(5)));
     }
 }
