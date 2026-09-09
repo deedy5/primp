@@ -2,6 +2,7 @@ use std::error::Error;
 use std::fmt;
 use std::sync::Arc;
 
+#[cfg(test)]
 use http::uri::Scheme;
 use http::{header::HeaderValue, HeaderMap, Uri};
 use hyper_util::client::proxy::matcher;
@@ -92,8 +93,14 @@ pub trait IntoProxy {
 
 impl<S: IntoUrl> IntoProxy for S {
     fn into_proxy(self) -> crate::Result<Url> {
-        match self.as_str().into_url() {
+        // Proxy URLs may be socks, so parse directly with `Url::parse`
+        // instead of `IntoUrl` (which only allows http/https for client
+        // requests). We still require a host.
+        match Url::parse(self.as_str()) {
             Ok(mut url) => {
+                if url.host_str().is_none() {
+                    return Err(crate::error::builder("proxy URL must have a host"));
+                }
                 // Reject non-http(s)/socks schemes: `url::set_username` fails
                 // for them, which would panic `Proxy::basic_auth`.
                 if !matches!(
@@ -122,9 +129,6 @@ impl<S: IntoUrl> IntoProxy for S {
                             presumed_to_have_scheme = false;
                             break;
                         }
-                    } else if err.downcast_ref::<crate::error::BadScheme>().is_some() {
-                        presumed_to_have_scheme = false;
-                        break;
                     }
                     source = err.source();
                 }
@@ -485,51 +489,58 @@ impl Matcher {
         self.maybe_has_http_auth
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn http_non_tunnel_basic_auth(&self, dst: &Uri) -> Option<HeaderValue> {
+    #[cfg(test)]
+    pub(crate) fn http_non_tunnel_basic_auth(
+        &self,
+        dst: &Uri,
+    ) -> crate::Result<Option<HeaderValue>> {
         match self.intercept(dst) {
             Ok(Some(proxy)) => {
                 let scheme = proxy.uri().scheme();
                 if scheme == Some(&Scheme::HTTP) || scheme == Some(&Scheme::HTTPS) {
-                    return proxy.basic_auth().cloned();
+                    return Ok(proxy.basic_auth().cloned());
                 }
+                Ok(None)
             }
-            Ok(None) => {}
-            Err(e) => {
-                log::warn!("proxy intercept error in http_non_tunnel_basic_auth: {e}");
-            }
+            Ok(None) => Ok(None),
+            Err(e) => Err(e),
         }
-        None
     }
 
     pub(crate) fn maybe_has_http_custom_headers(&self) -> bool {
         self.maybe_has_http_custom_headers
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn http_non_tunnel_custom_headers(&self, dst: &Uri) -> Option<HeaderMap> {
+    #[cfg(test)]
+    pub(crate) fn http_non_tunnel_custom_headers(
+        &self,
+        dst: &Uri,
+    ) -> crate::Result<Option<HeaderMap>> {
         match self.intercept(dst) {
             Ok(Some(proxy)) => {
                 let scheme = proxy.uri().scheme();
                 if scheme == Some(&Scheme::HTTP) || scheme == Some(&Scheme::HTTPS) {
-                    return proxy.custom_headers().cloned();
+                    return Ok(proxy.custom_headers().cloned());
                 }
+                Ok(None)
             }
-            Ok(None) => {}
-            Err(e) => {
-                log::warn!("proxy intercept error in http_non_tunnel_custom_headers: {e}");
-            }
+            Ok(None) => Ok(None),
+            Err(e) => Err(e),
         }
-        None
     }
 }
 
 impl fmt::Debug for Matcher {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.inner {
-            Matcher_::Util(ref m) => m.fmt(f),
-            Matcher_::Custom(ref m) => m.fmt(f),
-        }
+        let kind = match self.inner {
+            Matcher_::Util(_) => "Util",
+            Matcher_::Custom(_) => "Custom",
+        };
+        f.debug_struct("Matcher")
+            .field("kind", &kind)
+            .field("has_auth", &self.maybe_has_http_auth)
+            .field("has_custom_headers", &self.maybe_has_http_custom_headers)
+            .finish_non_exhaustive()
     }
 }
 
@@ -648,17 +659,35 @@ impl Custom {
         let (Some(scheme), Some(host)) = (uri.scheme(), uri.host()) else {
             return Ok(None);
         };
+        // Preserve path and query for Custom proxy closures that inspect Url::path/query
+        // (e.g. "/connect/path?query=1"). The previous format discarded path/query.
+        // Userinfo and fragments are intentionally NOT forwarded: credentials
+        // are extracted into `Authorization` before routing, and fragments are
+        // never sent on the wire — closures route on origin + path only.
+        let path_and_query = uri.path_and_query().map(|pq| pq.as_str()).unwrap_or("/");
+        let host_stripped = crate::strip_ipv6_brackets(host);
+        let host_str = if host_stripped.contains(':') {
+            format!("[{host_stripped}]")
+        } else {
+            host_stripped.to_string()
+        };
         let url: Url = match format!(
             "{}://{}{}{}",
             scheme.as_str(),
-            host,
-            uri.port().map_or("", |_| ":"),
-            uri.port().map_or(String::new(), |p| p.to_string())
+            host_str,
+            uri.port().map_or(String::new(), |p| format!(":{p}")),
+            path_and_query
         )
         .parse()
         {
             Ok(u) => u,
-            Err(_) => return Ok(None),
+            Err(e) => {
+                // Going direct would be a fail-open bypass; error instead.
+                log::warn!("custom proxy target failed to parse as URL: {e}");
+                return Err(crate::error::builder(format!(
+                    "custom proxy target parse failure: {e}"
+                )));
+            }
         };
 
         // `func` returns `None` when no proxy is configured for this URI
@@ -698,17 +727,19 @@ pub(crate) fn encode_basic_auth(username: &str, password: &str) -> HeaderValue {
 pub(crate) fn decode_basic_auth(header: &HeaderValue) -> Option<(String, String)> {
     use base64::Engine;
     let value = header.to_str().ok()?;
-    // Tolerate optional leading/trailing whitespace around the scheme token
-    // (field-value OWS) and match the scheme case-insensitively instead of a
-    // fixed "Basic " prefix.
-    let encoded = value
-        .trim_start()
-        .split_once(' ')
-        .and_then(|(scheme, enc)| {
-            scheme
-                .eq_ignore_ascii_case("basic")
-                .then_some(enc.trim_start())
-        })?;
+    // Tolerate OWS *(SP / HTAB) around the scheme token (RFC 7230 §3.2.3)
+    // and match the scheme case-insensitively. Split on first SP or HTAB.
+    let trimmed = value.trim_start();
+    let (scheme, encoded) = {
+        let idx = trimmed.find([' ', '\t'])?;
+        let (s, rest) = trimmed.split_at(idx);
+        (s, rest.trim_start_matches([' ', '\t']))
+    };
+    if !scheme.eq_ignore_ascii_case("basic") {
+        return None;
+    }
+    // Tolerate trailing OWS after the credentials (RFC 7230 §3.2.3).
+    let encoded = encoded.trim_end_matches([' ', '\t']);
     // RFC 7617 §2.1: the base64 padding may be omitted — try the standard
     // (padded) decoder first, then the no-pad decoder for unpadded input.
     let decoded = base64::prelude::BASE64_STANDARD
@@ -829,6 +860,45 @@ mod tests {
             "unexpected form: {debug}"
         );
     }
+
+    #[test]
+    fn matcher_debug_shows_kind_but_redacts_credentials() {
+        // Util matcher with auth: kind visible, secrets not.
+        let m = Proxy::all("http://user:secret@proxy.example:8080")
+            .unwrap()
+            .basic_auth("Aladdin", "open sesame")
+            .into_matcher();
+        let debug = format!("{:?}", m);
+        assert!(debug.contains("Util"), "must show kind: {debug}");
+        assert!(
+            debug.contains("has_auth"),
+            "must show auth presence: {debug}"
+        );
+        assert!(
+            debug.contains("...") || debug.contains(".."),
+            "must be non-exhaustive: {debug}"
+        );
+        for leaked in [
+            "secret",
+            "open sesame",
+            "Aladdin",
+            "user:secret@",
+            "proxy.example:8080",
+        ] {
+            assert!(
+                !debug.contains(leaked),
+                "Matcher Debug leaked {leaked:?}: {debug}"
+            );
+        }
+        // Custom matcher shows Custom kind, same redaction.
+        let c = Proxy::custom(|_| Some("http://proxy.example:8080/")).into_matcher();
+        let cdebug = format!("{:?}", c);
+        assert!(cdebug.contains("Custom"), "must show kind: {cdebug}");
+        assert!(
+            !cdebug.contains("proxy.example:8080"),
+            "must not leak target: {cdebug}"
+        );
+    }
     #[test]
     fn test_https() {
         let target = "http://example.domain/";
@@ -878,6 +948,36 @@ mod tests {
         assert_eq!(intercepted_uri(&p, http), target2);
         assert_eq!(intercepted_uri(&p, https), target1);
         assert!(p.intercept(&url(other)).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_custom_closure_sees_path_and_query() {
+        use std::sync::{Arc, Mutex};
+
+        // Regression guard for path/query preservation: the closure must see
+        // the request path and query (previously only scheme://host:port was
+        // forwarded, so path-based routing silently saw "/").
+        let seen = Arc::new(Mutex::new((String::new(), None::<String>)));
+        let seen_in_closure = seen.clone();
+        let p = Proxy::custom(move |url| {
+            *seen_in_closure.lock().unwrap() =
+                (url.path().to_owned(), url.query().map(str::to_owned));
+            Some("http://proxy.example:8080".parse::<Url>().unwrap())
+        })
+        .into_matcher();
+
+        let got = p
+            .intercept(&url("http://example.com/api/v1?q=1"))
+            .unwrap()
+            .expect("must route via custom proxy");
+        assert_eq!(
+            got.uri(),
+            &"http://proxy.example:8080/".parse::<http::Uri>().unwrap()
+        );
+        assert_eq!(
+            *seen.lock().unwrap(),
+            ("/api/v1".to_owned(), Some("q=1".to_owned()))
+        );
     }
 
     #[test]
@@ -939,6 +1039,15 @@ mod tests {
     }
 
     #[test]
+    fn custom_target_parse_failure_is_builder_fail_closed() {
+        // `Custom::call` Url-build at `:687` is unreachable via valid `Uri`,
+        // but must stay fail-closed. Pin via the reachable closure-Err path.
+        let p = Proxy::custom(move |_url| Some("http://")).into_matcher();
+        let err = p.intercept(&url("http://example.com/")).unwrap_err();
+        assert!(err.is_builder(), "must be Builder Err, got {err:?}");
+    }
+
+    #[test]
     fn test_custom_error_swallowed_by_non_tunnel_helpers() {
         // A custom proxy whose closure returns an invalid proxy URL that
         // fails IntoProxy conversion. This makes Custom::call / intercept()
@@ -955,19 +1064,38 @@ mod tests {
             "intercept() should return Err for an invalid proxy URL"
         );
 
-        // BUG: http_non_tunnel_basic_auth silently swallows the error.
+        // Fixed: http_non_tunnel_* now propagates the error instead of swallowing.
         let auth = p.http_non_tunnel_basic_auth(&uri);
         assert!(
-            auth.is_none(),
-            "http_non_tunnel_basic_auth swallowed the error (BUG)"
+            auth.is_err(),
+            "http_non_tunnel_basic_auth should propagate intercept error"
         );
 
-        // BUG: http_non_tunnel_custom_headers also silently swallows it.
         let headers = p.http_non_tunnel_custom_headers(&uri);
         assert!(
-            headers.is_none(),
-            "http_non_tunnel_custom_headers swallowed the error (BUG)"
+            headers.is_err(),
+            "http_non_tunnel_custom_headers should propagate intercept error"
         );
+    }
+
+    #[test]
+    fn custom_catch_all_never_bypasses_http_uris() {
+        // Catch-all must route via proxy, never go direct (Ok(None)) and
+        // never abort (Err) for valid URIs. Fail-closed Err paths are
+        // covered by `test_custom_error_swallowed_by_non_tunnel_helpers`
+        // (`Some("")` invalid target -> is_err).
+        let p = Proxy::custom(|_| Some("http://proxy.example:8080/")).into_matcher();
+        for uri in [
+            "http://a.example/",
+            "http://b.example:1234/p?q=1",
+            "https://c.example/",
+        ] {
+            let got = p.intercept(&url(uri));
+            assert!(
+                matches!(got, Ok(Some(_))),
+                "catch-all must intercept {uri}, got {got:?}"
+            );
+        }
     }
 
     #[test]
@@ -999,6 +1127,17 @@ mod tests {
         // Regression: `basic_auth` used to panic on `file://` (set_username
         // fails on non-special schemes).
         assert!(Proxy::all("file://example.com/path").is_err());
+    }
+
+    #[test]
+    fn missing_proxy_host_reports_host_not_scheme() {
+        // Missing host must say so; scheme itself is allowed.
+        let err = Proxy::all("socks5:foo").unwrap_err();
+        let msg = format!("{err:?}");
+        assert!(
+            msg.to_lowercase().contains("host"),
+            "unexpected message: {msg}"
+        );
     }
 
     #[test]
@@ -1065,6 +1204,15 @@ mod tests {
             decode_basic_auth(&encoded),
             Some(("Aladdin".into(), "open sesame".into()))
         );
+    }
+
+    #[test]
+    fn decode_basic_auth_tolerates_trailing_ows() {
+        // RFC 7230 §3.2.3: optional whitespace around the field value.
+        let h = basic_header("Basic dXNlcjpwYXNz   ");
+        assert_eq!(decode_basic_auth(&h), Some(("user".into(), "pass".into())));
+        let h = basic_header("Basic\tdXNlcjpwYXNz\t");
+        assert_eq!(decode_basic_auth(&h), Some(("user".into(), "pass".into())));
     }
 
     #[test]

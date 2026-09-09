@@ -59,6 +59,18 @@ pub(crate) type BoxedConnectorService = BoxCloneSyncService<Unnameable, Conn, Bo
 pub(crate) type BoxedConnectorLayer =
     BoxCloneSyncServiceLayer<BoxedConnectorService, Unnameable, Conn, BoxError>;
 
+/// Wrap `base`; `layers[0]` stays outermost.
+fn wrap_connector_layers(
+    base: BoxedConnectorService,
+    layers: Vec<BoxedConnectorLayer>,
+) -> BoxedConnectorService {
+    let mut service = base;
+    for layer in layers.into_iter().rev() {
+        service = ServiceBuilder::new().layer(layer).service(service);
+    }
+    service
+}
+
 pub(crate) struct ConnectorBuilder {
     inner: Inner,
     proxies: Arc<RwLock<Vec<ProxyMatcher>>>,
@@ -127,11 +139,8 @@ impl ConnectorBuilder {
         let unnameable_service = ServiceBuilder::new()
             .layer(MapRequestLayer::new(|request: Unnameable| request.0))
             .service(base_service);
-        let mut service = BoxCloneSyncService::new(unnameable_service);
-
-        for layer in layers {
-            service = ServiceBuilder::new().layer(layer).service(service);
-        }
+        let base = BoxCloneSyncService::new(unnameable_service);
+        let service = wrap_connector_layers(base, layers);
 
         // now we handle the concrete stuff - any `connect_timeout`,
         // plus a final map_err layer we can use to cast default tower layer
@@ -207,14 +216,10 @@ impl ConnectorBuilder {
         http.set_nodelay(nodelay);
         http.enforce_http(false);
 
-        let (tls, tls_proxy) = if proxies.read().unwrap_or_else(|e| e.into_inner()).is_empty() {
-            let tls = Arc::new(tls);
-            (tls.clone(), tls)
-        } else {
-            let mut tls_proxy = tls.clone();
-            tls_proxy.alpn_protocols.clear();
-            (Arc::new(tls), Arc::new(tls_proxy))
-        };
+        let mut tls_proxy = tls.clone();
+        tls_proxy.alpn_protocols.clear();
+        let tls = Arc::new(tls);
+        let tls_proxy = Arc::new(tls_proxy);
 
         ConnectorBuilder {
             inner: Inner::RustlsTls {
@@ -1003,6 +1008,35 @@ pub(crate) mod socks {
         SocksProxyError::SocksConnect(Box::new(e))
     }
 
+    /// Is SOCKS error deterministic (no retry)?
+    pub(crate) fn socks_error_fail_fast(e: &SocksProxyError) -> bool {
+        match e {
+            SocksProxyError::SocksInvalidAuth | SocksProxyError::SocksUnsupportedScheme => true,
+            SocksProxyError::SocksConnect(io) => io
+                .downcast_ref::<std::io::Error>()
+                .is_some_and(|io| io.kind() == std::io::ErrorKind::PermissionDenied),
+            _ => false,
+        }
+    }
+
+    /// Validate SOCKS scheme/auth pre-dial.
+    pub(crate) fn validate_socks_config(
+        scheme: &str,
+        auth: &Option<(String, String)>,
+    ) -> Result<(), SocksProxyError> {
+        if !matches!(scheme, "socks4" | "socks4a" | "socks5" | "socks5h") {
+            return Err(SocksProxyError::SocksUnsupportedScheme);
+        }
+        if matches!(scheme, "socks5" | "socks5h") {
+            if let Some((u, p)) = auth {
+                if u.len() > 255 || p.len() > 255 {
+                    return Err(SocksProxyError::SocksInvalidAuth);
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) async fn connect(
         proxy: Intercepted,
         dst: Uri,
@@ -1014,64 +1048,87 @@ pub(crate) mod socks {
         // `Uri::host()` keeps IPv6 brackets; the handshake needs the bare
         // literal, or the proxy would receive `[::1]` as a DOMAIN name.
         let original_host = dst.host().ok_or(SocksProxyError::SocksNoHostInUrl)?;
-        let mut host = crate::strip_ipv6_brackets(original_host).to_owned();
+        let host = crate::strip_ipv6_brackets(original_host).to_owned();
         let port = match dst.port() {
             Some(p) => p.as_u16(),
             None if https => 443u16,
             _ => 80u16,
         };
 
-        if let DnsResolve::Local = dns_mode {
-            let maybe_new_target = resolver
-                .http_resolve(&dst)
-                .await
-                .map_err(SocksProxyError::SocksLocalResolve)?
-                .next();
-            if let Some(new_target) = maybe_new_target {
-                log::trace!("socks local dns resolved {new_target:?}");
-                host = new_target.ip().to_string();
-            }
-        }
-
+        // Deterministic config first: scheme + RFC 1929 auth length before
+        // any DNS or TCP dial (zero-dial fail-fast for local misconfig).
         let scheme = proxy
             .uri()
             .scheme_str()
-            .ok_or(SocksProxyError::SocksUnsupportedScheme)?;
-        let tcp = http_connector
-            .call(proxy.uri().clone())
-            .await
-            .map_err(|e| SocksProxyError::SocksConnect(Box::new(e)))?;
-        let tcp = tcp.into_inner();
+            .ok_or(SocksProxyError::SocksUnsupportedScheme)?
+            .to_owned();
+        let socks_auth = proxy.socks_auth();
+        validate_socks_config(&scheme, &socks_auth)?;
+        let is_4a = scheme == "socks4a";
 
-        match scheme {
-            "socks4" | "socks4a" => {
-                if host.parse::<IpAddr>().is_ok_and(|ip| ip.is_ipv6()) {
-                    // SOCKS4 addresses are 4 bytes; IPv6 cannot be expressed.
-                    return Err(socks_err(std::io::Error::new(
-                        std::io::ErrorKind::Unsupported,
-                        "socks4 does not support IPv6 destinations",
-                    )));
+        // Resolve to all IPs and try each in turn.
+        let hosts_to_try: Vec<String> = if let DnsResolve::Local = dns_mode {
+            let resolved: Vec<_> = resolver
+                .http_resolve(&dst)
+                .await
+                .map_err(SocksProxyError::SocksLocalResolve)?
+                .collect();
+            if resolved.is_empty() {
+                vec![host.clone()]
+            } else {
+                for addr in &resolved {
+                    log::trace!("socks local dns resolved {addr:?}");
                 }
-                let is_4a = scheme == "socks4a";
-                handshake_v4(tcp, &host, port, is_4a).await
+                resolved.into_iter().map(|a| a.ip().to_string()).collect()
             }
-            "socks5" | "socks5h" => {
-                // Source SOCKS5 credentials from the proxy. URL-embedded
-                // credentials are stored as `Auth::Raw` by hyper-util and are
-                // only reachable via `socks_auth()` (NOT `basic_auth()`, which
-                // returns `None` for those URLs). Explicit `custom_http_auth`
-                // Basic headers are also honored as a fallback.
-                let auth = proxy.socks_auth();
-                if let Some((username, password)) = &auth {
-                    // RFC 1929 single-octet length prefixes cap each at 255.
-                    if username.len() > 255 || password.len() > 255 {
-                        return Err(SocksProxyError::SocksInvalidAuth);
+        } else {
+            vec![host.clone()]
+        };
+
+        let mut last_err: Option<SocksProxyError> = None;
+        for try_host in hosts_to_try {
+            // Fresh TCP per attempt: a failed handshake consumes its stream.
+            let tcp = http_connector
+                .call(proxy.uri().clone())
+                .await
+                .map_err(|e| SocksProxyError::SocksConnect(Box::new(e)))?;
+            let tcp = tcp.into_inner();
+
+            let res = match scheme.as_str() {
+                "socks4" | "socks4a" => {
+                    if try_host.parse::<IpAddr>().is_ok_and(|ip| ip.is_ipv6()) {
+                        // SOCKS4 addresses are 4 bytes; IPv6 cannot be expressed.
+                        Err(socks_err(std::io::Error::new(
+                            std::io::ErrorKind::Unsupported,
+                            "socks4 does not support IPv6 destinations",
+                        )))
+                    } else {
+                        handshake_v4(tcp, &try_host, port, is_4a).await
                     }
                 }
-                handshake_v5(tcp, &host, port, auth).await
+                // Auth length checked above (RFC 1929).
+                "socks5" | "socks5h" => {
+                    handshake_v5(tcp, &try_host, port, socks_auth.clone()).await
+                }
+                _ => Err(SocksProxyError::SocksUnsupportedScheme),
+            };
+
+            match res {
+                Ok(stream) => return Ok(stream),
+                Err(e) => {
+                    // Deterministic config errors fail identically on every
+                    // IP — return immediately instead of wasting N×RTT.
+                    if socks_error_fail_fast(&e) {
+                        return Err(e);
+                    }
+                    log::trace!("socks connect via {try_host} failed: {e}");
+                    last_err = Some(e);
+                }
             }
-            _ => Err(SocksProxyError::SocksUnsupportedScheme),
         }
+        Err(last_err.unwrap_or(SocksProxyError::SocksConnect(Box::new(
+            std::io::Error::new(std::io::ErrorKind::NotFound, "no socks hosts to try"),
+        ))))
     }
 
     /// SOCKS4/4a CONNECT handshake. `is_4a` enables the domain-name request
@@ -1399,5 +1456,204 @@ mod verbose {
             }
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn proxy_tls_config_is_always_distinct_with_cleared_alpn() {
+        // Regression: empty-proxy builds shared one TLS Arc, so proxies
+        // added later via set_proxies kept stale ALPN to the https proxy.
+        let provider = rustls::crypto::CryptoProvider::get_default()
+            .cloned()
+            .unwrap_or_else(|| Arc::new(rustls::crypto::aws_lc_rs::default_provider()));
+        let mut tls = rustls::ClientConfig::builder_with_provider(provider)
+            .with_protocol_versions(&[&rustls::version::TLS13])
+            .unwrap()
+            .with_root_certificates(rustls::RootCertStore::empty())
+            .with_no_client_auth();
+        tls.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+
+        let proxies = Arc::new(RwLock::new(Vec::new()));
+        let http = HttpConnector::new_with_resolver(crate::dns::DynResolver::gai());
+        let builder = ConnectorBuilder::new_rustls_tls(
+            http,
+            tls,
+            proxies,
+            None,
+            None::<std::net::IpAddr>,
+            #[cfg(any(
+                target_os = "android",
+                target_os = "fuchsia",
+                target_os = "illumos",
+                target_os = "ios",
+                target_os = "linux",
+                target_os = "macos",
+                target_os = "solaris",
+                target_os = "tvos",
+                target_os = "visionos",
+                target_os = "watchos",
+            ))]
+            None,
+            true,
+            false,
+        );
+
+        let (tls, tls_proxy) = match &builder.inner {
+            Inner::RustlsTls { tls, tls_proxy, .. } => (tls, tls_proxy),
+            #[allow(unreachable_patterns)]
+            _ => panic!("expected RustlsTls inner"),
+        };
+        assert!(
+            !Arc::ptr_eq(tls, tls_proxy),
+            "tls and tls_proxy must not share Arc (stale ALPN on late set_proxies)"
+        );
+        assert_eq!(
+            tls.alpn_protocols,
+            vec![b"h2".to_vec(), b"http/1.1".to_vec()]
+        );
+        assert!(
+            tls_proxy.alpn_protocols.is_empty(),
+            "proxy TLS must have cleared ALPN"
+        );
+    }
+
+    use std::sync::Mutex;
+    use tower::Layer;
+
+    #[derive(Clone)]
+    struct DummyService;
+
+    impl Service<Unnameable> for DummyService {
+        type Response = Conn;
+        type Error = BoxError;
+        type Future = Pin<Box<dyn Future<Output = Result<Conn, BoxError>> + Send>>;
+
+        fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), BoxError>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn call(&mut self, _req: Unnameable) -> Self::Future {
+            Box::pin(async { Err("dummy connector service must not be reached".into()) })
+        }
+    }
+
+    #[derive(Clone)]
+    struct RecordLayer {
+        name: &'static str,
+        log: Arc<Mutex<Vec<&'static str>>>,
+    }
+
+    #[derive(Clone)]
+    struct RecordService {
+        inner: BoxedConnectorService,
+        name: &'static str,
+        call_log: Arc<Mutex<Vec<&'static str>>>,
+    }
+
+    impl Service<Unnameable> for RecordService {
+        type Response = Conn;
+        type Error = BoxError;
+        type Future = Pin<Box<dyn Future<Output = Result<Conn, BoxError>> + Send>>;
+
+        fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), BoxError>> {
+            self.inner.poll_ready(cx)
+        }
+
+        fn call(&mut self, req: Unnameable) -> Self::Future {
+            self.call_log.lock().unwrap().push(self.name);
+            let fut = self.inner.call(req);
+            Box::pin(async move { fut.await })
+        }
+    }
+
+    impl Layer<BoxedConnectorService> for RecordLayer {
+        type Service = BoxedConnectorService;
+
+        fn layer(&self, inner: BoxedConnectorService) -> Self::Service {
+            // Recorded at build time: the LAST applied layer is outermost.
+            self.log.lock().unwrap().push(self.name);
+            BoxCloneSyncService::new(RecordService {
+                inner,
+                name: self.name,
+                call_log: self.log.clone(),
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn connector_layers_preserve_push_order_outermost_first() {
+        let wrap_log = Arc::new(Mutex::new(Vec::new()));
+        let mk = |name: &'static str| {
+            BoxCloneSyncServiceLayer::new(RecordLayer {
+                name,
+                log: wrap_log.clone(),
+            })
+        };
+        let base = BoxCloneSyncService::new(DummyService);
+        let mut svc = wrap_connector_layers(base, vec![mk("A"), mk("B")]);
+
+        // Reverse application: B wraps base first, A wraps last → A outermost.
+        assert_eq!(*wrap_log.lock().unwrap(), vec!["B", "A"]);
+
+        // Request path goes outermost-first: A sees the request before B.
+        let uri: Uri = "http://example.com/".parse().unwrap();
+        let _ = svc.call(Unnameable(uri)).await;
+        assert_eq!(*wrap_log.lock().unwrap(), vec!["B", "A", "A", "B"]);
+    }
+
+    #[test]
+    fn socks_deterministic_errors_fail_fast() {
+        use super::socks::socks_error_fail_fast;
+        use super::socks::SocksProxyError;
+
+        assert!(socks_error_fail_fast(&SocksProxyError::SocksInvalidAuth));
+        assert!(socks_error_fail_fast(
+            &SocksProxyError::SocksUnsupportedScheme
+        ));
+        // Handshake-rejected creds are deterministic: fail fast.
+        let denied: Box<dyn std::error::Error + Send + Sync> = Box::new(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "socks5 proxy rejected the credentials",
+        ));
+        assert!(socks_error_fail_fast(&SocksProxyError::SocksConnect(
+            denied
+        )));
+        // Transport-level failures deserve per-IP retry.
+        assert!(!socks_error_fail_fast(&SocksProxyError::SocksNoHostInUrl));
+        let io: Box<dyn std::error::Error + Send + Sync> = Box::new(std::io::Error::new(
+            std::io::ErrorKind::ConnectionRefused,
+            "refused",
+        ));
+        assert!(!socks_error_fail_fast(&SocksProxyError::SocksConnect(io)));
+    }
+
+    #[test]
+    fn socks_auth_length_gated_to_socks5() {
+        use super::socks::{validate_socks_config, SocksProxyError};
+
+        let long = "u".repeat(256);
+        let auth = Some((long.clone(), "p".to_string()));
+        // socks5/5h carry RFC 1929 auth: >255 must fail fast pre-dial.
+        assert!(matches!(
+            validate_socks_config("socks5", &auth),
+            Err(SocksProxyError::SocksInvalidAuth)
+        ));
+        assert!(matches!(
+            validate_socks_config("socks5h", &auth),
+            Err(SocksProxyError::SocksInvalidAuth)
+        ));
+        // socks4/4a ignore auth: long creds must NOT reject (would
+        // otherwise block valid socks4 use with inherited auth).
+        assert!(validate_socks_config("socks4", &auth).is_ok());
+        assert!(validate_socks_config("socks4a", &auth).is_ok());
+        // Unsupported scheme fails fast pre-dial (no DNS/dial waste).
+        assert!(matches!(
+            validate_socks_config("http", &None),
+            Err(SocksProxyError::SocksUnsupportedScheme)
+        ));
     }
 }
