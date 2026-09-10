@@ -424,19 +424,20 @@ impl ClientConfig {
     }
 
     pub(super) fn needs_key_share(&self) -> bool {
-        self.supports_version(ProtocolVersion::TLSv1_3)
+        self.supports_version(ProtocolVersion::TLSv1_3, Protocol::Tcp)
     }
 
     /// We support a given TLS version if it's quoted in the configured
     /// versions *and* at least one ciphersuite for this version is
     /// also configured.
-    pub(crate) fn supports_version(&self, v: ProtocolVersion) -> bool {
+    pub(crate) fn supports_version(&self, v: ProtocolVersion, protocol: Protocol) -> bool {
         self.versions.contains(v)
             && self
                 .provider
                 .cipher_suites
                 .iter()
                 .any(|cs| cs.version().version == v)
+            && protocol.supports_version(v)
     }
 
     #[cfg(feature = "std")]
@@ -447,12 +448,16 @@ impl ClientConfig {
             .any(|cs| cs.usable_for_protocol(proto))
     }
 
-    pub(super) fn find_cipher_suite(&self, suite: CipherSuite) -> Option<SupportedCipherSuite> {
+    pub(super) fn find_cipher_suite(
+        &self,
+        suite: CipherSuite,
+        protocol: Protocol,
+    ) -> Option<SupportedCipherSuite> {
         self.provider
             .cipher_suites
             .iter()
             .copied()
-            .find(|&scs| scs.suite() == suite)
+            .find(|&scs| scs.suite() == suite && scs.usable_for_protocol(protocol))
     }
 
     pub(super) fn find_kx_group(

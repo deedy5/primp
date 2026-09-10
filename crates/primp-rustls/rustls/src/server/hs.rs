@@ -337,8 +337,12 @@ impl ExpectClientHello {
         m: &Message<'_>,
         cx: &mut ServerContext<'_>,
     ) -> NextStateOrError<'static> {
-        let tls13_enabled = self.config.supports_version(ProtocolVersion::TLSv1_3);
-        let tls12_enabled = self.config.supports_version(ProtocolVersion::TLSv1_2);
+        let tls13_enabled = self
+            .config
+            .supports_version(ProtocolVersion::TLSv1_3, cx.common.protocol);
+        let tls12_enabled = self
+            .config
+            .supports_version(ProtocolVersion::TLSv1_2, cx.common.protocol);
 
         // Are we doing TLS1.3?
         let version = if let Some(versions) = &client_hello.supported_versions {
@@ -362,15 +366,15 @@ impl ExpectClientHello {
                 AlertDescription::ProtocolVersion,
                 PeerIncompatible::Tls12NotOffered,
             ));
-        } else if !tls12_enabled && tls13_enabled {
-            return Err(cx.common.send_fatal_alert(
-                AlertDescription::ProtocolVersion,
-                PeerIncompatible::SupportedVersionsExtensionRequired,
-            ));
         } else if cx.common.is_quic() {
             return Err(cx.common.send_fatal_alert(
                 AlertDescription::ProtocolVersion,
                 PeerIncompatible::Tls13RequiredForQuic,
+            ));
+        } else if !tls12_enabled && tls13_enabled {
+            return Err(cx.common.send_fatal_alert(
+                AlertDescription::ProtocolVersion,
+                PeerIncompatible::SupportedVersionsExtensionRequired,
             ));
         } else {
             ProtocolVersion::TLSv1_2

@@ -705,7 +705,9 @@ impl ClientHelloInput {
         let session_id = match session_id {
             Some(session_id) => session_id,
             None if cx.common.is_quic() => SessionId::empty(),
-            None if !config.supports_version(ProtocolVersion::TLSv1_3) => SessionId::empty(),
+            None if !config.supports_version(ProtocolVersion::TLSv1_3, cx.common.protocol) => {
+                SessionId::empty()
+            }
             None => SessionId::random(config.provider.secure_random)?,
         };
 
@@ -906,14 +908,16 @@ fn emit_client_hello_for_retry(
 
     #[cfg(not(feature = "impersonate"))]
     let supported_versions = SupportedProtocolVersions {
-        tls12: config.supports_version(ProtocolVersion::TLSv1_2) && !forbids_tls12,
-        tls13: config.supports_version(ProtocolVersion::TLSv1_3),
+        tls12: config.supports_version(ProtocolVersion::TLSv1_2, cx.common.protocol)
+            && !forbids_tls12,
+        tls13: config.supports_version(ProtocolVersion::TLSv1_3, cx.common.protocol),
     };
 
     #[cfg(feature = "impersonate")]
     let mut supported_versions = SupportedProtocolVersions {
-        tls12: config.supports_version(ProtocolVersion::TLSv1_2) && !forbids_tls12,
-        tls13: config.supports_version(ProtocolVersion::TLSv1_3),
+        tls12: config.supports_version(ProtocolVersion::TLSv1_2, cx.common.protocol)
+            && !forbids_tls12,
+        tls13: config.supports_version(ProtocolVersion::TLSv1_3, cx.common.protocol),
         supported_versions_grease: None,
     };
 
@@ -1558,6 +1562,7 @@ fn emit_client_hello_for_retry(
         sent_extensions.push(*ext_type);
     }
     input.hello.sent_extensions = sent_extensions;
+    input.hello.offered_cipher_suites = chp_payload.cipher_suites.clone();
 
     let mut chp = HandshakeMessagePayload(HandshakePayload::ClientHello(chp_payload));
 
@@ -1692,7 +1697,7 @@ fn prepare_resumption<'a>(
             let is_safari = false;
 
             if !is_safari
-                && config.supports_version(ProtocolVersion::TLSv1_2)
+                && config.supports_version(ProtocolVersion::TLSv1_2, cx.common.protocol)
                 && config.resumption.tls12_resumption == Tls12Resumption::SessionIdOrTickets
             {
                 // If we don't have a ticket, request one.
@@ -1704,7 +1709,7 @@ fn prepare_resumption<'a>(
 
     let Some(tls13) = resuming.map(|csv| csv.tls13()) else {
         // TLS 1.2; send the ticket if we have support this protocol version
-        if config.supports_version(ProtocolVersion::TLSv1_2)
+        if config.supports_version(ProtocolVersion::TLSv1_2, cx.common.protocol)
             && config.resumption.tls12_resumption == Tls12Resumption::SessionIdOrTickets
         {
             exts.session_ticket = Some(ClientSessionTicket::Offer(Payload::new(resuming.ticket())));
@@ -1712,7 +1717,7 @@ fn prepare_resumption<'a>(
         return None; // TLS 1.2, so nothing to return here
     };
 
-    if !config.supports_version(ProtocolVersion::TLSv1_3) {
+    if !config.supports_version(ProtocolVersion::TLSv1_3, cx.common.protocol) {
         return None;
     }
 
@@ -1814,7 +1819,7 @@ impl State<ClientConnectionData> for ExpectServerHello {
 
         use crate::ProtocolVersion::{TLSv1_2, TLSv1_3};
         let config = &self.input.config;
-        let tls13_supported = config.supports_version(TLSv1_3);
+        let tls13_supported = config.supports_version(TLSv1_3, cx.common.protocol);
 
         let server_version = if server_hello.legacy_version == TLSv1_2 {
             server_hello
@@ -1826,7 +1831,7 @@ impl State<ClientConnectionData> for ExpectServerHello {
 
         let version = match server_version {
             TLSv1_3 if tls13_supported => TLSv1_3,
-            TLSv1_2 if config.supports_version(TLSv1_2) => {
+            TLSv1_2 if config.supports_version(TLSv1_2, cx.common.protocol) => {
                 if cx.data.early_data.is_enabled() && cx.common.early_traffic {
                     // The client must fail with a dedicated error code if the server
                     // responds with TLS 1.2 when offering 0-RTT.
@@ -1900,9 +1905,20 @@ impl State<ClientConnectionData> for ExpectServerHello {
         }
 
         #[allow(clippy::unnecessary_lazy_evaluations)]
-        let suite = config
-            .find_cipher_suite(server_hello.cipher_suite)
-            .or_else(|| {
+        // The server must select a suite from the suites we offered in our
+        // ClientHello. Check the offered list first, then resolve it against
+        // the provider (which additionally enforces protocol usability, e.g.
+        // no TLS 1.2-only suites on QUIC).
+        let suite = match self
+            .input
+            .hello
+            .offered_cipher_suites
+            .contains(&server_hello.cipher_suite)
+        {
+            false => None,
+            true => config
+                .find_cipher_suite(server_hello.cipher_suite, cx.common.protocol)
+                .or_else(|| {
                 // Impersonation advertises legacy CBC/RSA suites for JA4
                 // fidelity that the provider doesn't implement. If the server
                 // selects an advertised-but-unsupported suite, treat it as
@@ -1935,7 +1951,8 @@ impl State<ClientConnectionData> for ExpectServerHello {
                     }
                 }
                 None
-            })
+            }),
+        }
             .ok_or_else(|| {
                 cx.common.send_fatal_alert(
                     AlertDescription::HandshakeFailure,
@@ -2107,7 +2124,7 @@ impl ExpectServerHelloOrHelloRetryRequest {
         }
 
         // Or asks us to use a ciphersuite we didn't offer.
-        let Some(cs) = config.find_cipher_suite(hrr.cipher_suite) else {
+        let Some(cs) = config.find_cipher_suite(hrr.cipher_suite, cx.common.protocol) else {
             return Err({
                 cx.common.send_fatal_alert(
                     AlertDescription::IllegalParameter,
