@@ -1658,6 +1658,32 @@ pub mod encoding {
         handshake_framing(HandshakeType::ClientHello, out)
     }
 
+    pub fn server_hello(
+        legacy_version: ProtocolVersion,
+        random: &[u8; 32],
+        session_id: &[u8],
+        cipher_suite: CipherSuite,
+        extensions: Vec<Extension>,
+    ) -> Vec<u8> {
+        let mut out = vec![];
+
+        out.extend_from_slice(&legacy_version.to_array());
+        out.extend_from_slice(random);
+        out.extend_from_slice(session_id);
+        out.extend_from_slice(&cipher_suite.to_array());
+        out.extend_from_slice(&[0x00]); // null compression
+
+        let mut exts = vec![];
+        for e in extensions {
+            exts.extend_from_slice(&e.typ.to_array());
+            exts.extend_from_slice(&(e.body.len() as u16).to_be_bytes());
+            exts.extend_from_slice(&e.body);
+        }
+
+        out.extend(len_u16(exts));
+        handshake_framing(HandshakeType::ServerHello, out)
+    }
+
     /// Apply handshake framing to `body`.
     ///
     /// This does not do fragmentation.
@@ -1705,15 +1731,15 @@ pub mod encoding {
             }
         }
 
-        pub fn new_dummy_key_share() -> Self {
-            const SOME_POINT_ON_P256: &[u8] = &[
-                4, 41, 39, 177, 5, 18, 186, 227, 237, 220, 254, 70, 120, 40, 18, 139, 173, 41, 3,
-                38, 153, 25, 247, 8, 96, 105, 200, 196, 223, 108, 115, 40, 56, 199, 120, 121, 100,
-                234, 172, 0, 229, 146, 31, 177, 73, 138, 96, 244, 96, 103, 102, 179, 217, 104, 80,
-                1, 85, 141, 26, 151, 78, 115, 65, 81, 62,
-            ];
+        pub fn new_versions_server_tls13() -> Self {
+            Self {
+                typ: ExtensionType::SupportedVersions,
+                body: ProtocolVersion::TLSv1_3.to_array().to_vec(),
+            }
+        }
 
-            let mut share = len_u16(SOME_POINT_ON_P256.to_vec());
+        pub fn new_dummy_key_share() -> Self {
+            let mut share = len_u16(Self::SOME_POINT_ON_P256.to_vec());
             share.splice(0..0, NamedGroup::secp256r1.to_array());
 
             Self {
@@ -1721,6 +1747,30 @@ pub mod encoding {
                 body: len_u16(share),
             }
         }
+
+        pub fn new_dummy_key_share_server() -> Self {
+            let mut share = len_u16(Self::SOME_POINT_ON_P256.to_vec());
+            share.splice(0..0, NamedGroup::secp256r1.to_array());
+
+            Self {
+                typ: ExtensionType::KeyShare,
+                body: share,
+            }
+        }
+
+        pub fn new_alpn(body: &[u8]) -> Self {
+            Self {
+                typ: ExtensionType::ALProtocolNegotiation,
+                body: len_u16(body.to_vec()),
+            }
+        }
+
+        const SOME_POINT_ON_P256: &[u8] = &[
+            4, 41, 39, 177, 5, 18, 186, 227, 237, 220, 254, 70, 120, 40, 18, 139, 173, 41, 3, 38,
+            153, 25, 247, 8, 96, 105, 200, 196, 223, 108, 115, 40, 56, 199, 120, 121, 100, 234,
+            172, 0, 229, 146, 31, 177, 73, 138, 96, 244, 96, 103, 102, 179, 217, 104, 80, 1, 85,
+            141, 26, 151, 78, 115, 65, 81, 62,
+        ];
     }
 
     /// Prefix with u8 length
