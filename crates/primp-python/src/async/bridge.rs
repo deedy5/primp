@@ -1,9 +1,4 @@
-//! Rust-future → Python-coroutine bridge.
-//!
-//! `future_into_py` returns a bare `asyncio.Future` (rejected by
-//! `asyncio.create_task`) and leaks its tokio task past interpreter teardown
-//! (a pending future polled post-finalize panics; release builds abort).
-//! This returns a real coroutine and tracks every task for an exit hook.
+//! Rust→Python coroutine bridge; tracks tasks, never polls post-finalize.
 
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -79,9 +74,7 @@ impl Completer {
     }
 }
 
-/// Interpreter-exit hook: abort in-flight tasks, then wait (GIL released)
-/// for running deliveries — else a closure polls pyo3 after finalize
-/// (`panic = "abort"` in release → SIGABRT at exit).
+/// Exit hook: abort tasks, wait for deliveries before finalize.
 #[pyfunction]
 pub fn _primp_shutdown(py: Python<'_>) {
     // Stop `log!` forwarding: a tokio-worker log after finalize reaches

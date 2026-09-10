@@ -299,10 +299,8 @@ impl BytesIterator {
         BytesIterator {
             resp,
             chunk_size,
-            // Grow lazily — never `with_capacity(chunk_size * 2)`: `chunk_size`
-            // is validated only up to 1 GiB, so a 2 GiB eager reserve could
-            // abort under `panic = "abort"` before any data exists. Memory then
-            // scales with the body actually received.
+            // Grow lazily; a 2 GiB eager reserve could abort.
+            // Catch unwinds before FFI.
             buffer: Vec::new(),
             // An iterator created after the response was fully drained
             // (content/read/text/json, or a previous iterator) must raise
@@ -690,9 +688,7 @@ impl LinesIterator {
 mod tests {
     use encoding_rs::UTF_8;
 
-    /// `iter_bytes(1 << 30)` is legal (`chunk_size` ≤ MAX_CHUNK_SIZE), so the
-    /// buffer must not eagerly reserve 2 GiB — an abort under `panic = "abort"`
-    /// on a memory-constrained host.
+    /// `iter_bytes(1 << 30)` must not pre-reserve 2 GiB (alloc may panic).
     #[test]
     fn bytes_iterator_reserves_no_memory_at_cap() {
         use super::BytesIterator;

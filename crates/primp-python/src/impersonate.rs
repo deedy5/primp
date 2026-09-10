@@ -1,5 +1,3 @@
-use std::sync::Once;
-
 use anyhow::{anyhow, Result};
 pub use primp::imp::{Impersonate, ImpersonateOS};
 use rand::prelude::*;
@@ -13,17 +11,7 @@ pub const IMPERSONATEOS_LIST: &[ImpersonateOS] = &[
     ImpersonateOS::Windows,
 ];
 
-/// One-time flags for warnings
-static IMPERSONATE_WARNING: Once = Once::new();
-static IMPERSONATE_OS_WARNING: Once = Once::new();
-
-/// Select a random element from a slice.
-///
-/// The callers always pass a non-empty constant list (`IMPERSONATEOS_LIST`),
-/// so `choose` is effectively always `Some`. We still avoid a hard `unwrap()`
-/// on the client-construction path (the process runs under `panic = "abort"`,
-/// where an unwrap would kill the host interpreter), falling back to the first
-/// element instead.
+/// Pick random element; fallback to first (never panics).
 pub fn get_random_element<T>(slice: &[T]) -> &T {
     slice.choose(&mut rand::rng()).unwrap_or_else(|| &slice[0])
 }
@@ -96,26 +84,4 @@ pub fn parse_impersonate_os(s: &str) -> Result<ImpersonateOS> {
         "random" => Ok(*get_random_element(IMPERSONATEOS_LIST)),
         _ => Err(anyhow!("Invalid impersonate_os: {:?}", s)),
     }
-}
-
-/// Parse an `Impersonate` string, falling back to `Random` (with a one-time
-/// warning) if the value is unknown.
-pub fn parse_impersonate_with_fallback(s: &str) -> Impersonate {
-    parse_impersonate(s).unwrap_or_else(|_| {
-        IMPERSONATE_WARNING.call_once(|| {
-            tracing::warn!("Impersonate '{}' does not exist, using 'random'", s);
-        });
-        Impersonate::Random
-    })
-}
-
-/// Parse an `ImpersonateOS` string, falling back to a random OS (with a
-/// one-time warning) if the value is unknown.
-pub fn parse_impersonate_os_with_fallback(s: &str) -> ImpersonateOS {
-    parse_impersonate_os(s).unwrap_or_else(|_| {
-        IMPERSONATE_OS_WARNING.call_once(|| {
-            tracing::warn!("Impersonate OS '{}' does not exist, using 'random'", s);
-        });
-        *get_random_element(IMPERSONATEOS_LIST)
-    })
 }

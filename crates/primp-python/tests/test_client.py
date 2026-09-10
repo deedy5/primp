@@ -322,13 +322,7 @@ class TestClientSetters:
 
 
 class TestClientInvalidTimeouts:
-    """NaN/negative/infinite timeouts must raise ValueError, never abort.
-
-    Timeouts are converted with Duration::from_secs_f64, which panics on
-    NaN/negative/infinite values; the release profile aborts the whole
-    process (panic = "abort"), so the Python bindings must validate at the
-    boundary and raise ValueError instead.
-    """
+    """Invalid timeouts raise ValueError."""
 
     INVALID = [float("nan"), float("inf"), -1.0, -0.0001]
 

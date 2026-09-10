@@ -830,12 +830,11 @@ class TestRequestFiles:
             os.unlink(temp_path)
 
 
-class TestDataFilesConflict:
-    """data and files are mutually exclusive body sources."""
+class TestDataFilesCombined:
+    """`data`+`files` combine as multipart."""
 
-    def test_sync_data_and_files_conflict_raises(self, test_server: str) -> None:
-        """Passing both data and files must raise; they used to silently
-        overwrite each other."""
+    def test_sync_data_and_files_combine(self, test_server: str) -> None:
+        """Fields + files arrive as one multipart body."""
         base_url = test_server
 
         client = primp.Client()
@@ -843,18 +842,22 @@ class TestDataFilesConflict:
             f.write("content")
             temp_path = f.name
         try:
-            with pytest.raises(primp.PrimpError):
-                client.post(
-                    f"{base_url}/post",
-                    data={"field": "value"},
-                    files={"file": temp_path},
-                )
+            response = client.post(
+                f"{base_url}/post",
+                data={"field": "value"},
+                files={"file": temp_path},
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert "multipart/form-data" in data["headers"].get("content-type", "")
+            assert data["form"] == {"field": "value"}
+            assert "file" in data["files"]
         finally:
             os.unlink(temp_path)
 
     @pytest.mark.asyncio
-    async def test_async_data_and_files_conflict_raises(self, test_server: str) -> None:
-        """Async mirror of the data+files conflict check."""
+    async def test_async_data_and_files_combine(self, test_server: str) -> None:
+        """Async mirror of data+files check."""
         base_url = test_server
 
         client = primp.AsyncClient()
@@ -862,12 +865,16 @@ class TestDataFilesConflict:
             f.write("content")
             temp_path = f.name
         try:
-            with pytest.raises(primp.PrimpError):
-                await client.post(
-                    f"{base_url}/post",
-                    data={"field": "value"},
-                    files={"file": temp_path},
-                )
+            response = await client.post(
+                f"{base_url}/post",
+                data={"field": "value"},
+                files={"file": temp_path},
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert "multipart/form-data" in data["headers"].get("content-type", "")
+            assert data["form"] == {"field": "value"}
+            assert "file" in data["files"]
         finally:
             os.unlink(temp_path)
 
