@@ -192,6 +192,7 @@ pub enum Impersonate {
     ChromeV150,
     ChromeV151,
     ChromeV152,
+    ChromeV153,
     /// Random Chrome version
     Chrome,
     // Edge variants
@@ -203,6 +204,8 @@ pub enum Impersonate {
     EdgeV149,
     EdgeV150,
     EdgeV151,
+    EdgeV152,
+    EdgeV153,
     /// Random Edge version
     Edge,
     // Opera variants
@@ -270,6 +273,7 @@ pub fn random_impersonate() -> Impersonate {
         Impersonate::ChromeV150,
         Impersonate::ChromeV151,
         Impersonate::ChromeV152,
+        Impersonate::ChromeV153,
         Impersonate::EdgeV144,
         Impersonate::EdgeV145,
         Impersonate::EdgeV146,
@@ -278,6 +282,8 @@ pub fn random_impersonate() -> Impersonate {
         Impersonate::EdgeV149,
         Impersonate::EdgeV150,
         Impersonate::EdgeV151,
+        Impersonate::EdgeV152,
+        Impersonate::EdgeV153,
         Impersonate::OperaV126,
         Impersonate::OperaV127,
         Impersonate::OperaV128,
@@ -318,6 +324,7 @@ pub fn resolve_impersonate(version: Impersonate) -> Impersonate {
                 Impersonate::ChromeV150,
                 Impersonate::ChromeV151,
                 Impersonate::ChromeV152,
+                Impersonate::ChromeV153,
             ];
             *CHROME.choose(&mut rand::rng()).unwrap()
         }
@@ -331,6 +338,8 @@ pub fn resolve_impersonate(version: Impersonate) -> Impersonate {
                 Impersonate::EdgeV149,
                 Impersonate::EdgeV150,
                 Impersonate::EdgeV151,
+                Impersonate::EdgeV152,
+                Impersonate::EdgeV153,
             ];
             *EDGE.choose(&mut rand::rng()).unwrap()
         }
@@ -491,7 +500,8 @@ pub fn get_browser_settings(
         | Impersonate::ChromeV149
         | Impersonate::ChromeV150
         | Impersonate::ChromeV151
-        | Impersonate::ChromeV152 => chrome::build_chrome_settings(version, os_type),
+        | Impersonate::ChromeV152
+        | Impersonate::ChromeV153 => chrome::build_chrome_settings(version, os_type),
         Impersonate::EdgeV144
         | Impersonate::EdgeV145
         | Impersonate::EdgeV146
@@ -499,7 +509,9 @@ pub fn get_browser_settings(
         | Impersonate::EdgeV148
         | Impersonate::EdgeV149
         | Impersonate::EdgeV150
-        | Impersonate::EdgeV151 => edge::build_edge_settings(version, os_type),
+        | Impersonate::EdgeV151
+        | Impersonate::EdgeV152
+        | Impersonate::EdgeV153 => edge::build_edge_settings(version, os_type),
         Impersonate::OperaV126
         | Impersonate::OperaV127
         | Impersonate::OperaV128

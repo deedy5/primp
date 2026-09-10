@@ -29,6 +29,7 @@ pub fn parse_impersonate(s: &str) -> Result<Impersonate> {
         "chrome_150" => Ok(Impersonate::ChromeV150),
         "chrome_151" => Ok(Impersonate::ChromeV151),
         "chrome_152" => Ok(Impersonate::ChromeV152),
+        "chrome_153" => Ok(Impersonate::ChromeV153),
         "chrome" => Ok(Impersonate::Chrome),
         // Edge variants
         "edge_144" => Ok(Impersonate::EdgeV144),
@@ -39,6 +40,8 @@ pub fn parse_impersonate(s: &str) -> Result<Impersonate> {
         "edge_149" => Ok(Impersonate::EdgeV149),
         "edge_150" => Ok(Impersonate::EdgeV150),
         "edge_151" => Ok(Impersonate::EdgeV151),
+        "edge_152" => Ok(Impersonate::EdgeV152),
+        "edge_153" => Ok(Impersonate::EdgeV153),
         "edge" => Ok(Impersonate::Edge),
         // Opera variants
         "opera_126" => Ok(Impersonate::OperaV126),

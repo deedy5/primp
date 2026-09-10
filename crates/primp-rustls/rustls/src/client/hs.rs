@@ -84,7 +84,30 @@ fn emulator_extension_order(be: &BrowserEmulator) -> Option<Vec<ExtensionType>> 
 
     match be.browser_type {
         BrowserType::Chrome => {
-            if be.version.major == 152 {
+            if be.version.major >= 153 {
+                // Chrome 153 order.
+                Some(vec![
+                    grease_first,
+                    ServerName,
+                    PSKKeyExchangeModes,
+                    Unknown(0xCA34),
+                    EncryptedClientHello,
+                    CompressCertificate,
+                    ECPointFormats,
+                    SessionTicket,
+                    Unknown(0x44cd),
+                    SupportedVersions,
+                    EllipticCurves,
+                    StatusRequest,
+                    KeyShare,
+                    ALProtocolNegotiation,
+                    ExtendedMasterSecret,
+                    SCT,
+                    SignatureAlgorithms,
+                    RenegotiationInfo,
+                    grease_last,
+                ])
+            } else if be.version.major == 152 {
                 // Real Chrome 152:
                 // GREASE, renegotiation_info, server_name, ECH,
                 // compress_certificate, ec_point_formats, SCT,
@@ -236,7 +259,51 @@ fn emulator_extension_order(be: &BrowserEmulator) -> Option<Vec<ExtensionType>> 
             }
         }
         BrowserType::Edge => {
-            if be.version.major == 151 {
+            if be.version.major >= 153 {
+                // Edge 153 order.
+                Some(vec![
+                    grease_first,
+                    StatusRequest,
+                    SCT,
+                    SignatureAlgorithms,
+                    CompressCertificate,
+                    KeyShare,
+                    ExtendedMasterSecret,
+                    ServerName,
+                    SessionTicket,
+                    ECPointFormats,
+                    Unknown(0x44cd),
+                    SupportedVersions,
+                    EncryptedClientHello,
+                    EllipticCurves,
+                    RenegotiationInfo,
+                    PSKKeyExchangeModes,
+                    ALProtocolNegotiation,
+                    grease_last,
+                ])
+            } else if be.version.major == 152 {
+                // Edge 152 order (no trust_anchors).
+                Some(vec![
+                    grease_first,
+                    Unknown(0x44cd),
+                    EncryptedClientHello,
+                    ServerName,
+                    SessionTicket,
+                    EllipticCurves,
+                    ECPointFormats,
+                    PSKKeyExchangeModes,
+                    ALProtocolNegotiation,
+                    RenegotiationInfo,
+                    CompressCertificate,
+                    SignatureAlgorithms,
+                    ExtendedMasterSecret,
+                    StatusRequest,
+                    KeyShare,
+                    SupportedVersions,
+                    SCT,
+                    grease_last,
+                ])
+            } else if be.version.major == 151 {
                 // Real Edge 151:
                 // GREASE, SCT, signature_algorithms, extended_master_secret,
                 // ALPS(0x44cd), psk_key_exchange_modes, ECH, renegotiation_info,
@@ -749,13 +816,17 @@ fn named_groups_need_fips_fallback(groups: &[NamedGroup]) -> bool {
     groups.is_empty() || named_groups_degenerate(groups)
 }
 
-/// trust_anchors payload; empty is `00 00`.
+/// Empty `00 00` trust_anchors payload.
+///
+/// Chrome 152+ and Opera 136+ only. Edge never sends it.
 #[cfg(feature = "impersonate")]
-fn trust_anchors_payload(major: u16) -> Option<Payload<'static>> {
-    if major >= 152 {
-        Some(Payload::new(vec![0, 0]))
-    } else {
-        None
+fn trust_anchors_payload(be: &BrowserEmulator) -> Option<Payload<'static>> {
+    use crate::client::client_emulator::BrowserType;
+    match be.browser_type {
+        BrowserType::Chrome if be.version.major >= 152 => Some(Payload::new(vec![0, 0])),
+        // Opera 136+ is Chrome-152-based (Opera 135 == Chrome 151); future-proof.
+        BrowserType::Opera if be.version.major >= 136 => Some(Payload::new(vec![0, 0])),
+        _ => None,
     }
 }
 
@@ -1022,9 +1093,8 @@ fn emit_client_hello_for_retry(
                 v.extend_from_slice(b"\xC9\xBB\x32"); // һ2
                 exts.unknown_extensions
                     .push((ExtensionType::Unknown(0x44cd), Payload::new(v)));
-                // trust_anchors (0xCA34), Chrome 152+: empty list is `00 00`,
-                // not a zero-length extension (servers reject that).
-                if let Some(payload) = trust_anchors_payload(be.version.major) {
+                // trust_anchors (0xCA34): empty `00 00`.
+                if let Some(payload) = trust_anchors_payload(be) {
                     exts.unknown_extensions
                         .push((ExtensionType::Unknown(0xCA34), payload));
                 }
@@ -2360,17 +2430,28 @@ mod tests {
     #[test]
     fn trust_anchors_payload_is_00_00_on_152_plus() {
         use super::trust_anchors_payload;
+        use crate::client::client_emulator::BrowserVersion;
         // Chrome 152+: present with raw bytes [0x00, 0x00] (empty u16 list),
         // not zero-length (old Payload::empty() sent [] and was rejected).
         for major in [152, 153, 200] {
-            let payload = trust_anchors_payload(major).expect("must be present");
+            let be = BrowserEmulator::new(BrowserType::Chrome, BrowserVersion::new(major, 0, 0));
+            let payload = trust_anchors_payload(&be).expect("must be present");
             assert_eq!(payload.bytes(), &[0, 0], "wrong bytes for {major}");
         }
-        // Pre-152: absent.
+        // Pre-152 Chrome: absent.
         for major in [0, 148, 149, 150, 151] {
+            let be = BrowserEmulator::new(BrowserType::Chrome, BrowserVersion::new(major, 0, 0));
             assert!(
-                trust_anchors_payload(major).is_none(),
+                trust_anchors_payload(&be).is_none(),
                 "must be absent for {major}"
+            );
+        }
+        // Edge never sends trust_anchors (even 152/153 per real captures).
+        for major in [150, 151, 152, 153] {
+            let be = BrowserEmulator::new(BrowserType::Edge, BrowserVersion::new(major, 0, 0));
+            assert!(
+                trust_anchors_payload(&be).is_none(),
+                "Edge must never send trust_anchors (major={major})"
             );
         }
     }
@@ -2836,6 +2917,94 @@ mod tests {
             BrowserVersion::new(18, 5, 0),
         ))
         .is_none());
+
+        let chrome153 = emulator_extension_order(&BrowserEmulator::new(
+            BrowserType::Chrome,
+            BrowserVersion::new(153, 0, 0),
+        ))
+        .unwrap();
+        assert_eq!(
+            chrome153,
+            vec![
+                gf,
+                ServerName,
+                PSKKeyExchangeModes,
+                Unknown(0xCA34),
+                EncryptedClientHello,
+                CompressCertificate,
+                ECPointFormats,
+                SessionTicket,
+                Unknown(0x44cd),
+                SupportedVersions,
+                EllipticCurves,
+                StatusRequest,
+                KeyShare,
+                ALProtocolNegotiation,
+                ExtendedMasterSecret,
+                SCT,
+                SignatureAlgorithms,
+                RenegotiationInfo,
+                gl,
+            ]
+        );
+
+        let edge152 = emulator_extension_order(&BrowserEmulator::new(
+            BrowserType::Edge,
+            BrowserVersion::new(152, 0, 0),
+        ))
+        .unwrap();
+        assert_eq!(
+            edge152,
+            vec![
+                gf,
+                Unknown(0x44cd),
+                EncryptedClientHello,
+                ServerName,
+                SessionTicket,
+                EllipticCurves,
+                ECPointFormats,
+                PSKKeyExchangeModes,
+                ALProtocolNegotiation,
+                RenegotiationInfo,
+                CompressCertificate,
+                SignatureAlgorithms,
+                ExtendedMasterSecret,
+                StatusRequest,
+                KeyShare,
+                SupportedVersions,
+                SCT,
+                gl,
+            ]
+        );
+
+        let edge153 = emulator_extension_order(&BrowserEmulator::new(
+            BrowserType::Edge,
+            BrowserVersion::new(153, 0, 0),
+        ))
+        .unwrap();
+        assert_eq!(
+            edge153,
+            vec![
+                gf,
+                StatusRequest,
+                SCT,
+                SignatureAlgorithms,
+                CompressCertificate,
+                KeyShare,
+                ExtendedMasterSecret,
+                ServerName,
+                SessionTicket,
+                ECPointFormats,
+                Unknown(0x44cd),
+                SupportedVersions,
+                EncryptedClientHello,
+                EllipticCurves,
+                RenegotiationInfo,
+                PSKKeyExchangeModes,
+                ALProtocolNegotiation,
+                gl,
+            ]
+        );
     }
 
     #[derive(Debug)]
