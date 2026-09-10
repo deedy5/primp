@@ -1,6 +1,6 @@
 [package]
 name = "primp-h2"
-version = "0.4.18"  # based on upstream v0.4.18, cherry-picks through 2026-08-20
+version = "0.4.19"  # based on upstream v0.4.19, cherry-picks through 2026-09-09
 license = "MIT"
 authors = [
   "deedy5",
