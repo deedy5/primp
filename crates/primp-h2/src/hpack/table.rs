@@ -5,7 +5,7 @@ use http::header;
 use http::method::Method;
 
 use std::collections::VecDeque;
-use std::hash::{BuildHasher, Hash, Hasher};
+use std::hash::BuildHasher;
 use std::{cmp, mem};
 
 /// HPACK encoder table
@@ -669,9 +669,7 @@ fn probe_distance(mask: usize, hash: HashValue, current: usize) -> usize {
 fn hash_header(seed: &RandomState, header: &Header) -> HashValue {
     const MASK: u64 = (MAX_SIZE as u64) - 1;
 
-    let mut h = seed.build_hasher();
-    header.name().hash(&mut h);
-    HashValue((h.finish() & MASK) as usize)
+    HashValue((seed.hash_one(header.name()) & MASK) as usize)
 }
 
 /// Checks the static table for the header. If found, returns the index and a

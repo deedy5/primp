@@ -364,7 +364,7 @@ pub struct Builder {
     /// connection-level budget for DATA framing overhead.
     ///
     /// When this gets exhausted, we issue a GOAWAY with `ENHANCE_YOUR_CALM`.
-    data_frame_budget: usize,
+    data_frame_budget: proto::DataFrameBudget,
 }
 
 #[derive(Debug)]
@@ -689,7 +689,7 @@ impl Builder {
             headers_pseudo_order: None,
             headers_priority: None,
             headers_order: None,
-            data_frame_budget: proto::DEFAULT_DATA_FRAME_BUDGET,
+            data_frame_budget: proto::DataFrameBudget::Auto,
         }
     }
 
@@ -1279,8 +1279,12 @@ impl Builder {
     }
 
     /// Sets the connection-level budget for DATA framing overhead.
+    ///
+    /// By default, the budget is half the initial connection window, with a
+    /// minimum of 25,600 bytes. Increasing the connection window therefore
+    /// also increases the permitted framing overhead.
     pub fn data_frame_budget(&mut self, budget: usize) -> &mut Self {
-        self.data_frame_budget = budget;
+        self.data_frame_budget = proto::DataFrameBudget::Configured(budget);
         self
     }
 
@@ -1473,7 +1477,9 @@ where
                 remote_reset_stream_max: builder.pending_accept_reset_stream_max,
                 local_error_reset_streams_max: builder.local_max_error_reset_streams,
                 settings: builder.settings,
-                data_frame_budget: builder.data_frame_budget,
+                data_frame_budget: builder
+                    .data_frame_budget
+                    .resolve(builder.initial_target_connection_window_size),
                 headers_pseudo_order: builder.headers_pseudo_order.clone(),
                 headers_priority: builder.headers_priority,
                 headers_order: builder.headers_order.clone(),
@@ -1590,8 +1596,12 @@ where
     type Output = Result<(), crate::Error>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        self.inner.maybe_close_connection_if_no_streams();
+        // Snapshot before checking for shutdown: the last reference may be
+        // dropped after the shutdown check, before inner.poll registers a
+        // waker. A snapshot taken after that drop would be false and skip the
+        // self-wake below, leaving the connection pending without closing.
         let had_streams_or_refs = self.inner.has_streams_or_other_references();
+        self.inner.maybe_close_connection_if_no_streams();
         let result = self.inner.poll(cx).map_err(Into::into);
         // if we had streams/refs, and don't anymore, wake up one more time to
         // ensure proper shutdown
