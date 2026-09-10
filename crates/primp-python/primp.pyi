@@ -12,6 +12,43 @@ from typing import (
     Any,
 )
 
+__version__: str
+
+__all__ = [
+    "PrimpError",
+    "BuilderError",
+    "RequestError",
+    "ConnectError",
+    "TimeoutError",
+    "DNSError",
+    "DNSTimeoutError",
+    "StatusError",
+    "RedirectError",
+    "BodyError",
+    "DecodeError",
+    "UpgradeError",
+    "JSONDecodeError",
+    "Response",
+    "AsyncResponse",
+    "BytesIterator",
+    "TextIterator",
+    "LinesIterator",
+    "AsyncBytesIterator",
+    "AsyncTextIterator",
+    "AsyncLinesIterator",
+    "Client",
+    "AsyncClient",
+    "get",
+    "head",
+    "options",
+    "delete",
+    "post",
+    "put",
+    "patch",
+    "request",
+    "__version__",
+]
+
 # =============================================================================
 # Type Aliases
 # =============================================================================
@@ -19,6 +56,8 @@ from typing import (
 HeadersType = Mapping[str, str] | None
 ParamsType = Mapping[str, str] | None
 CookiesType = Mapping[str, str] | None
+# Runtime accepts filesystem paths only (IndexMap<String, String>); bytes/tuple
+# in-memory uploads are not yet implemented.
 FilesType = Mapping[str, str] | None
 AuthType = tuple[str, str | None] | None
 
@@ -304,7 +343,7 @@ class Client:
         ca_cert_file: str | None = None,
         https_only: bool = False,
         http2_only: bool = False,
-        dns_resolver: str | list[str] | None = None,
+        dns_resolver: str | list[str] | tuple[str, ...] | None = None,
         base_url: str | None = None,
         cookies: Mapping[str, str] | None = None,
     ) -> None: ...
@@ -513,7 +552,7 @@ class AsyncClient:
         ca_cert_file: str | None = None,
         https_only: bool = False,
         http2_only: bool = False,
-        dns_resolver: str | list[str] | None = None,
+        dns_resolver: str | list[str] | tuple[str, ...] | None = None,
         base_url: str | None = None,
         cookies: Mapping[str, str] | None = None,
     ) -> None: ...
@@ -692,6 +731,7 @@ def get(
     ca_cert_file: str | None = None,
     follow_redirects: bool | None = None,
     stream: bool = False,
+    proxy: str | None = None,
 ) -> Response:
     """Send a GET request with a temporary client."""
     ...
@@ -717,6 +757,7 @@ def head(
     ca_cert_file: str | None = None,
     follow_redirects: bool | None = None,
     stream: bool = False,
+    proxy: str | None = None,
 ) -> Response:
     """Send a HEAD request with a temporary client."""
     ...
@@ -742,6 +783,7 @@ def options(
     ca_cert_file: str | None = None,
     follow_redirects: bool | None = None,
     stream: bool = False,
+    proxy: str | None = None,
 ) -> Response:
     """Send an OPTIONS request with a temporary client."""
     ...
@@ -767,6 +809,7 @@ def delete(
     ca_cert_file: str | None = None,
     follow_redirects: bool | None = None,
     stream: bool = False,
+    proxy: str | None = None,
 ) -> Response:
     """Send a DELETE request with a temporary client."""
     ...
@@ -792,6 +835,7 @@ def post(
     ca_cert_file: str | None = None,
     follow_redirects: bool | None = None,
     stream: bool = False,
+    proxy: str | None = None,
 ) -> Response:
     """Send a POST request with a temporary client."""
     ...
@@ -817,6 +861,7 @@ def put(
     ca_cert_file: str | None = None,
     follow_redirects: bool | None = None,
     stream: bool = False,
+    proxy: str | None = None,
 ) -> Response:
     """Send a PUT request with a temporary client."""
     ...
@@ -842,6 +887,7 @@ def patch(
     ca_cert_file: str | None = None,
     follow_redirects: bool | None = None,
     stream: bool = False,
+    proxy: str | None = None,
 ) -> Response:
     """Send a PATCH request with a temporary client."""
     ...
@@ -868,6 +914,7 @@ def request(
     ca_cert_file: str | None = None,
     follow_redirects: bool | None = None,
     stream: bool = False,
+    proxy: str | None = None,
 ) -> Response:
     """Send a request with a custom HTTP method using a temporary client."""
     ...

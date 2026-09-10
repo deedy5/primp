@@ -67,6 +67,8 @@ pub enum PrimpErrorEnum {
     Anyhow(anyhow::Error),
     /// Custom error message.
     Custom(String),
+    /// Builder error → `BuilderError`.
+    Builder(String),
     /// HTTP status error (4xx/5xx).
     HttpStatus(u16, String, String),
     /// Invalid header value.
@@ -87,6 +89,7 @@ impl fmt::Display for PrimpErrorEnum {
             }
             PrimpErrorEnum::Anyhow(e) => write!(f, "{}", e),
             PrimpErrorEnum::Custom(e) => write!(f, "{}", e),
+            PrimpErrorEnum::Builder(e) => write!(f, "{}", e),
             PrimpErrorEnum::HttpStatus(status, reason, url) => {
                 write!(f, "HTTP {} {} for URL: {}", status, reason, url)
             }
@@ -222,9 +225,9 @@ pub(crate) fn primp_error_to_pyerr_with_py(py: Python<'_>, err: ::primp::Error) 
 
     // Use native primp error API - NO message parsing!
 
-    // Builder errors (includes URL and header errors)
+    // Builder errors: include the source chain (Display shows only "builder error").
     if err.is_builder() {
-        let message = err.to_string();
+        let message = format_with_source(&err);
         return BuilderError::new_err((message, url));
     }
 
@@ -333,7 +336,14 @@ pub fn convert_primp_error(py: Python<'_>, err: PrimpErrorEnum) -> PyErr {
             BuilderError::new_err(format!("Header error: {}", err))
         }
         PrimpErrorEnum::Anyhow(_) => PrimpError::new_err(err.to_string()),
-        PrimpErrorEnum::Custom(msg) => PrimpError::new_err(msg),
+        PrimpErrorEnum::Builder(msg) => BuilderError::new_err(msg),
+        PrimpErrorEnum::Custom(msg) => {
+            // Timeout, CA cert validation, impersonate and DNS resolver errors are builder errors (invalid client param)
+            if custom_msg_is_builder_error(&msg) {
+                return BuilderError::new_err(msg);
+            }
+            PrimpError::new_err(msg)
+        }
         PrimpErrorEnum::HttpStatus(status, reason, url) => {
             let message = format!("HTTP {} {} for URL: {}", status, reason, url);
             StatusError::new_err((status, message, Some(url)))
@@ -343,6 +353,27 @@ pub fn convert_primp_error(py: Python<'_>, err: PrimpErrorEnum) -> PyErr {
         }
         PrimpErrorEnum::InvalidURL(msg) => BuilderError::new_err(format!("URL error: {}", msg)),
     }
+}
+
+/// Is custom message a builder error?
+fn custom_msg_is_builder_error(msg: &str) -> bool {
+    // Strip "builder error:" prefix (case/space tolerant), match on detail.
+    let lower = msg.trim().to_ascii_lowercase();
+    let detail = lower
+        .strip_prefix("builder error:")
+        .map(|s| s.trim_start_matches([':', ' ', '\t']))
+        .unwrap_or(&lower);
+    let msg = detail;
+    msg.starts_with("timeout must")
+        || msg.starts_with("read_timeout must")
+        || msg.starts_with("extra_percent must")
+        || msg.starts_with("failed to read ca cert")
+        || msg.starts_with("failed to parse ca cert")
+        || msg.starts_with("invalid impersonate")
+        || msg.starts_with("invalid doh url")
+        || msg.starts_with("dns://")
+        || msg.starts_with("dns_resolver")
+        || msg.starts_with("each item in dns_resolver")
 }
 
 /// GIL-attaching variant of [`convert_primp_error`] for sync (GIL-held) paths
@@ -401,5 +432,59 @@ pub fn primp_body_error_to_pyerr(err: ::primp::Error) -> PyErr {
         DecodeError::new_err((msg, url))
     } else {
         BodyError::new_err((msg, url))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::custom_msg_is_builder_error;
+
+    #[test]
+    fn custom_validation_messages_are_builder_errors() {
+        for msg in [
+            "timeout must be a finite, non-negative number of seconds, got nan",
+            "read_timeout must be non-zero, got 0; use None to disable",
+            "extra_percent must be finite, got inf",
+            "extra_percent must be within [0.0, 1000.0], got 2000",
+            "failed to read CA cert file 'x': nope",
+            "failed to parse CA cert file 'x': nope",
+            "Invalid impersonate: nosuchbrowser",
+            "invalid DoH URL: nope",
+            "dns://1.1.1.1",
+            "dns_resolver must be ...",
+            "each item in dns_resolver must be ...",
+            // Core builder errors arrive with the kind prefix; the detail
+            // after it must still classify (see `builder_error_with_source`).
+            "builder error: read_timeout must be non-zero, got 0; use None to disable",
+            "builder error: extra_percent must be finite, got inf",
+        ] {
+            assert!(custom_msg_is_builder_error(msg), "{msg} must classify");
+        }
+    }
+
+    #[test]
+    fn custom_other_messages_are_not_builder_errors() {
+        for msg in ["boom", "", "timeoutX", "dns"] {
+            assert!(!custom_msg_is_builder_error(msg), "{msg} must not classify");
+        }
+    }
+
+    #[test]
+    fn builder_prefix_match_is_case_insensitive_and_trimmed() {
+        // Must not depend on exact prefix casing/spacing.
+        for msg in [
+            "Builder error: read_timeout must be non-zero, got 0",
+            "BUILDER ERROR: extra_percent must be finite, got inf",
+            "  builder error: timeout must be a finite number, got nan  ",
+        ] {
+            assert!(custom_msg_is_builder_error(msg), "{msg} must classify");
+        }
+    }
+
+    #[test]
+    fn builder_variant_maps_directly_without_sniffing() {
+        // Typed variant avoids message sniffing.
+        let err = super::PrimpErrorEnum::Builder("pool must have capacity".into());
+        assert!(format!("{err}").contains("pool must have capacity"));
     }
 }

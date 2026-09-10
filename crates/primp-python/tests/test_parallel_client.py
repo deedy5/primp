@@ -2,7 +2,10 @@
 
 from concurrent.futures import ThreadPoolExecutor
 import threading
+import time
 import asyncio
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from socketserver import ThreadingMixIn
 
 import primp
 
@@ -56,3 +59,58 @@ async def test_parallel_asyncclient_new_does_not_deadlock():
 
     results = await asyncio.gather(*[worker() for _ in range(num_tasks)])
     assert results == ["ok"] * num_tasks, results
+
+
+def test_two_blocking_gets_run_concurrently(monkeypatch):
+    """Two 1.5s GETs must overlap; needs clean proxy env."""
+    for key in (
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+        "PRIMP_PROXY",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            time.sleep(1.5)
+            body = b"ok"
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            try:
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
+    class Server(ThreadingMixIn, HTTPServer):
+        daemon_threads = True
+        allow_reuse_address = True
+
+    srv = Server(("127.0.0.1", 0), Handler)
+    port = srv.server_address[1]
+    th = threading.Thread(target=srv.serve_forever, daemon=True)
+    th.start()
+    time.sleep(0.1)
+
+    try:
+        def fetch() -> str:
+            return primp.Client().get(f"http://127.0.0.1:{port}/", timeout=10).text
+
+        start = time.monotonic()
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(fetch) for _ in range(2)]
+            results = [f.result(timeout=20) for f in futures]
+        elapsed = time.monotonic() - start
+
+        assert results == ["ok", "ok"], results
+        assert elapsed < 2.9, f"requests serialized ({elapsed:.2f}s >= 2.9s); runtime needs >= 2 workers"
+    finally:
+        srv.shutdown()
+        srv.server_close()

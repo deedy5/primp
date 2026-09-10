@@ -15,14 +15,27 @@ use pyo3::types::PyList;
 
 use crate::error::{PrimpErrorEnum, PrimpResult};
 use crate::impersonate::{
-    get_random_element, parse_impersonate_os_with_fallback, parse_impersonate_with_fallback,
-    IMPERSONATEOS_LIST,
+    get_random_element, parse_impersonate, parse_impersonate_os, IMPERSONATEOS_LIST,
 };
 use crate::traits::{HeaderMapExt, HeadersTraits};
 use crate::utils::load_ca_certs;
 
 /// Type alias for IndexMap with String keys and values.
 pub type IndexMapSSR = IndexMap<String, String, RandomState>;
+
+/// Map core builder error, keeping `source()` chain.
+pub(crate) fn builder_error_with_source(e: impl std::error::Error) -> PrimpErrorEnum {
+    let mut msg = e.to_string();
+    let mut src = e.source();
+    // Capped at 64 like `format_with_source`.
+    for _ in 0..64 {
+        let Some(s) = src else { break };
+        msg.push_str(": ");
+        msg.push_str(&s.to_string());
+        src = s.source();
+    }
+    PrimpErrorEnum::Builder(msg)
+}
 
 /// Parse a resolver string into an `Arc<dyn Resolve>`.
 ///
@@ -32,14 +45,21 @@ fn parse_single_resolver(s: &str) -> PrimpResult<Arc<dyn Resolve>> {
     if let Some(url) = s.strip_prefix("doh://") {
         let doh_url = format!("https://{url}");
         let resolver = primp::dns::doh::DohResolver::new(&doh_url)
-            .map_err(|e| PrimpErrorEnum::Custom(format!("invalid DoH URL: {e}")))?;
+            .map_err(|e| PrimpErrorEnum::Builder(format!("invalid DoH URL: {e}")))?;
         Ok(Arc::new(resolver))
     } else if let Some(host) = s.strip_prefix("dot://") {
+        if host.is_empty() {
+            return Err(PrimpErrorEnum::Builder(
+                "dot:// URL must have a host".into(),
+            ));
+        }
         Ok(Arc::new(primp::dns::dot::DotResolver::new(host)))
     } else {
         let host = s.strip_prefix("dns://").unwrap_or(s);
         if host.is_empty() {
-            return Err(PrimpErrorEnum::Custom("dns:// URL must have a host".into()));
+            return Err(PrimpErrorEnum::Builder(
+                "dns:// URL must have a host".into(),
+            ));
         }
         if host == "system" {
             return Ok(Arc::new(primp::dns::gai::GaiResolver::new()));
@@ -48,10 +68,24 @@ fn parse_single_resolver(s: &str) -> PrimpResult<Arc<dyn Resolve>> {
     }
 }
 
-/// Parse the `dns_resolver` Python argument into a `Vec<Arc<dyn Resolve>>`.
-///
-/// `None` → system default; `str` → single resolver; `list[str]` → fallback
-/// chain (first success wins).
+/// Parse `dns_resolver` item.
+fn parse_resolver_seq<'a>(
+    iter: impl Iterator<Item = Bound<'a, pyo3::types::PyAny>>,
+    kind: &str,
+) -> PrimpResult<Vec<Arc<dyn Resolve>>> {
+    let mut resolvers = Vec::new();
+    for item in iter {
+        let s = item.cast::<pyo3::types::PyString>().map_err(|_| {
+            PrimpErrorEnum::Builder(format!("each item in dns_resolver {kind} must be a string"))
+        })?;
+        resolvers.push(parse_single_resolver(
+            &s.to_cow()
+                .map_err(|e| PrimpErrorEnum::Builder(e.to_string()))?,
+        )?);
+    }
+    Ok(resolvers)
+}
+/// Parse `dns_resolver`.
 pub fn parse_dns_resolver(
     obj: Option<pyo3::Bound<'_, pyo3::types::PyAny>>,
 ) -> PrimpResult<Vec<Arc<dyn Resolve>>> {
@@ -61,24 +95,17 @@ pub fn parse_dns_resolver(
     if let Ok(s) = obj.cast::<pyo3::types::PyString>() {
         return Ok(vec![parse_single_resolver(
             &s.to_cow()
-                .map_err(|e| PrimpErrorEnum::Custom(e.to_string()))?,
+                .map_err(|e| PrimpErrorEnum::Builder(e.to_string()))?,
         )?]);
     }
     if let Ok(list) = obj.cast::<PyList>() {
-        let mut resolvers = Vec::with_capacity(list.len());
-        for item in list.iter() {
-            let s = item.cast::<pyo3::types::PyString>().map_err(|_| {
-                PrimpErrorEnum::Custom("each item in dns_resolver list must be a string".into())
-            })?;
-            resolvers.push(parse_single_resolver(
-                &s.to_cow()
-                    .map_err(|e| PrimpErrorEnum::Custom(e.to_string()))?,
-            )?);
-        }
-        return Ok(resolvers);
+        return parse_resolver_seq(list.iter(), "list");
     }
-    Err(PrimpErrorEnum::Custom(
-        "dns_resolver must be a string, list of strings, or None".into(),
+    if let Ok(tuple) = obj.cast::<pyo3::types::PyTuple>() {
+        return parse_resolver_seq(tuple.iter(), "tuple");
+    }
+    Err(PrimpErrorEnum::Builder(
+        "dns_resolver must be a string, list of strings, tuple of strings, or None".into(),
     ))
 }
 
@@ -109,16 +136,17 @@ pub fn configure_client_builder(
 ) -> PrimpResult<(ClientBuilder, Option<String>)> {
     // Impersonate
     if let Some(imp) = impersonate {
-        let imp_val = parse_impersonate_with_fallback(imp);
+        let imp_val = parse_impersonate(imp).map_err(|e| PrimpErrorEnum::Builder(e.to_string()))?;
         let imp_os = if let Some(os) = impersonate_os {
-            parse_impersonate_os_with_fallback(os)
+            parse_impersonate_os(os).map_err(|e| PrimpErrorEnum::Builder(e.to_string()))?
         } else {
             *get_random_element(IMPERSONATEOS_LIST)
         };
         builder = builder.impersonate_os(imp_os);
         builder = builder.impersonate(imp_val);
     } else if let Some(os) = impersonate_os {
-        let imp_os = parse_impersonate_os_with_fallback(os);
+        let imp_os =
+            parse_impersonate_os(os).map_err(|e| PrimpErrorEnum::Builder(e.to_string()))?;
         builder = builder.impersonate_os(imp_os);
     }
 
@@ -153,7 +181,9 @@ pub fn configure_client_builder(
 
     // Read timeout
     if let Some(seconds) = read_timeout {
-        builder = builder.read_timeout(crate::utils::timeout_duration(seconds)?);
+        builder = builder
+            .try_read_timeout(crate::utils::timeout_duration(seconds)?)
+            .map_err(builder_error_with_source)?;
     }
 
     // DNS resolution timeout
@@ -168,9 +198,9 @@ pub fn configure_client_builder(
         builder = builder.redirect(Policy::none());
     }
 
-    // Verify and ca_cert_file
+    // Verify and ca_cert_file (error if file cannot be read/parsed when verify=True)
     if verify.unwrap_or(true) {
-        if let Some(ca_certs) = load_ca_certs(&ca_cert_file) {
+        if let Some(ca_certs) = load_ca_certs(&ca_cert_file)? {
             for cert in ca_certs {
                 builder = builder.add_root_certificate(cert);
             }
@@ -310,7 +340,7 @@ pub fn parse_url_or_domain(input: &str) -> Result<Url, url::ParseError> {
 /// Removes the COOKIE header from a HeaderMap and returns the remaining headers as IndexMap.
 pub fn headers_without_cookie(headers: &HeaderMap) -> IndexMapSSR {
     let mut headers_map = headers.to_indexmap();
-    headers_map.swap_remove("cookie");
+    headers_map.shift_remove("cookie");
     headers_map
 }
 
@@ -395,4 +425,21 @@ pub fn client_set_cookies(
     let c = client.read().unwrap_or_else(|e| e.into_inner());
     c.set_cookies(&parsed, header_values);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_single_resolver;
+
+    #[test]
+    fn empty_dot_host_is_rejected_like_dns() {
+        // Empty host is a builder error.
+        assert!(parse_single_resolver("dot://").is_err());
+        assert!(parse_single_resolver("dns://").is_err());
+    }
+
+    #[test]
+    fn valid_dot_host_ok() {
+        assert!(parse_single_resolver("dot://1.1.1.1").is_ok());
+    }
 }

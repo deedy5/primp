@@ -1,17 +1,13 @@
 #![allow(clippy::too_many_arguments)]
 use std::sync::{Arc, RwLock};
 
-use ::primp::{multipart, Body, Client as PrimpClient, Method, Response as PrimpResponse, Url};
+use ::primp::{Client as PrimpClient, Method, Response as PrimpResponse, Url};
 use pyo3::prelude::*;
 use pyo3::sync::PyOnceLock;
 use pyo3::types::PyDict;
 use pythonize::depythonize;
 use serde_json::Value;
-use tokio::{
-    fs::File,
-    runtime::{self, Runtime},
-};
-use tokio_util::codec::{BytesCodec, FramedRead};
+use tokio::runtime::{self, Runtime};
 
 mod client_builder;
 use client_builder::{
@@ -37,11 +33,9 @@ use utils::extract_encoding;
 // Tokio global one-thread runtime
 static RUNTIME: PyOnceLock<Runtime> = PyOnceLock::new();
 
-/// Get the global Tokio runtime, initializing it via `PyOnceLock` if necessary.
+/// Global Tokio runtime.
 ///
-/// Returns a `PyErr` (not a panic) on creation failure, so a host-resource
-/// failure surfaces as a Python exception rather than aborting the interpreter
-/// under `panic = "abort"`.
+/// Returns `PyErr`, never panics (OOM/stack still abort).
 pub(crate) fn get_runtime(py: Python<'_>) -> PyResult<&Runtime> {
     RUNTIME.get_or_try_init(py, || {
         runtime::Builder::new_current_thread()
@@ -100,10 +94,8 @@ pub fn extract_cookies_to_indexmap(headers: &http::HeaderMap) -> IndexMapSSR {
     cookie_map
 }
 
-/// Convert a non-Object `serde_json::Value` to a raw string body.
-///
-/// Objects are routed through `.form()`/`.json()` instead, but a stray
-/// `Object` is serialized here rather than panicked, to avoid an FFI abort.
+/// Non-`Object` JSON value as raw string.
+/// Serialize stray `Object`s (never panic across FFI).
 pub(crate) fn body_value_to_string(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
@@ -275,32 +267,17 @@ impl Client {
             .map(depythonize)
             .transpose()
             .map_err(Into::<PrimpErrorEnum>::into)?;
-        if data.is_some() && files.is_some() {
-            return Err(PrimpErrorEnum::Custom(
-                "data and files cannot both be provided (use files alone for multipart uploads)"
-                    .into(),
-            )
-            .into());
-        }
         let json_value: Option<Value> = json
             .map(depythonize)
             .transpose()
             .map_err(Into::<PrimpErrorEnum>::into)?;
+        // One body wins, requests/httpx priority: content > files+data > data > json.
+        // `resolve_body` filters empty values so count and send agree.
+        let body = crate::utils::resolve_body(content, data_value, json_value, files);
 
         let resolved_timeout: Option<f64> = timeout.or(self.timeout);
 
-        // Resolve URL with base_url
-        let resolved_url = if let Some(ref base_url) = self.base_url {
-            if url.starts_with("http://") || url.starts_with("https://") {
-                url.to_string()
-            } else {
-                let base = base_url.trim_end_matches('/');
-                let path = url.trim_start_matches('/');
-                format!("{}/{}", base, path)
-            }
-        } else {
-            url.to_string()
-        };
+        let resolved_url = crate::utils::resolve_url(self.base_url.as_deref(), url);
 
         // Cookies: client-level persist in the store; per-request are merged
         // into a one-shot `Cookie` header so they don't leak into the store
@@ -340,9 +317,14 @@ impl Client {
                 request_builder = request_builder.redirect_override(override_policy);
             }
 
-            // Params
-            if let Some(p) = params.as_ref().or(self.params.as_ref()) {
-                request_builder = request_builder.query(p);
+            // Params (skip empty maps to match async path)
+            if let Some(p) = params
+                .as_ref()
+                .or(self.params.as_ref().filter(|m| !m.is_empty()))
+            {
+                if !p.is_empty() {
+                    request_builder = request_builder.query(p);
+                }
             }
 
             // Set the one-shot Cookie header (jar is merged per hop by the
@@ -364,39 +346,25 @@ impl Client {
                 request_builder = request_builder.headers(headers.to_headermap()?);
             }
 
-            // Body content (if provided)
-            if let Some(content) = content {
-                request_builder = request_builder.body(content);
-            }
-            // Form data (if provided) — only form-encode objects; send scalars as raw body
-            if let Some(form_data) = data_value {
-                match form_data {
-                    Value::Object(_) => {
-                        request_builder = request_builder.form(&form_data);
-                    }
-                    other => {
-                        let body = body_value_to_string(&other);
-                        request_builder = request_builder.body(body);
-                    }
+            // Body: one winner per requests/httpx priority.
+            match body {
+                crate::utils::ResolvedBody::None => {}
+                crate::utils::ResolvedBody::Content(b) => {
+                    request_builder = request_builder.body(b);
                 }
-            }
-            // JSON (if provided)
-            if let Some(json_data) = json_value {
-                request_builder = request_builder.json(&json_data);
-            }
-            // Files (if provided)
-            if let Some(files) = files {
-                let mut form = multipart::Form::new();
-                for (file_name, file_path) in files {
-                    let file = File::open(file_path)
-                        .await
-                        .map_err(Into::<PrimpErrorEnum>::into)?;
-                    let stream = FramedRead::new(file, BytesCodec::new());
-                    let file_body = Body::wrap_stream(stream);
-                    let part = multipart::Part::stream(file_body).file_name(file_name.clone());
-                    form = form.part(file_name, part);
+                crate::utils::ResolvedBody::Multipart { files, data } => {
+                    let form = crate::utils::build_multipart_form(files, data).await?;
+                    request_builder = request_builder.multipart(form);
                 }
-                request_builder = request_builder.multipart(form);
+                crate::utils::ResolvedBody::Form(form_data) => {
+                    request_builder = request_builder.form(&form_data);
+                }
+                crate::utils::ResolvedBody::RawBody(s) => {
+                    request_builder = request_builder.body(s);
+                }
+                crate::utils::ResolvedBody::Json(json_data) => {
+                    request_builder = request_builder.json(&json_data);
+                }
             }
 
             // Auth
@@ -415,7 +383,7 @@ impl Client {
             let resolved_read_timeout = read_timeout.or(self.read_timeout);
             if let Some(seconds) = resolved_read_timeout {
                 request_builder =
-                    request_builder.read_timeout(crate::utils::timeout_duration(seconds)?);
+                    request_builder.try_read_timeout(crate::utils::timeout_duration(seconds)?);
             }
 
             // Send the request and await the response
@@ -759,7 +727,7 @@ impl Client {
 
 /// Send a GET request with a temporary (throwaway) client.
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, dns_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, dns_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false, proxy=None))]
 fn get(
     py: Python,
     url: &str,
@@ -782,6 +750,7 @@ fn get(
     ca_cert_file: Option<String>,
     follow_redirects: Option<bool>,
     stream: bool,
+    proxy: Option<String>,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
         py,
@@ -791,7 +760,7 @@ fn get(
         headers,
         None,
         None,
-        None,
+        proxy,
         timeout,
         connect_timeout,
         None,
@@ -829,7 +798,7 @@ fn get(
 
 /// Send a HEAD request with a temporary (throwaway) client.
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, dns_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, dns_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false, proxy=None))]
 fn head(
     py: Python,
     url: &str,
@@ -852,6 +821,7 @@ fn head(
     ca_cert_file: Option<String>,
     follow_redirects: Option<bool>,
     stream: bool,
+    proxy: Option<String>,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
         py,
@@ -861,7 +831,7 @@ fn head(
         headers,
         None,
         None,
-        None,
+        proxy,
         timeout,
         connect_timeout,
         None,
@@ -899,7 +869,7 @@ fn head(
 
 /// Send an OPTIONS request with a temporary (throwaway) client.
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, dns_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, dns_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false, proxy=None))]
 fn options(
     py: Python,
     url: &str,
@@ -922,6 +892,7 @@ fn options(
     ca_cert_file: Option<String>,
     follow_redirects: Option<bool>,
     stream: bool,
+    proxy: Option<String>,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
         py,
@@ -931,7 +902,7 @@ fn options(
         headers,
         None,
         None,
-        None,
+        proxy,
         timeout,
         connect_timeout,
         None,
@@ -969,7 +940,7 @@ fn options(
 
 /// Send a DELETE request with a temporary (throwaway) client.
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, dns_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, dns_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false, proxy=None))]
 fn delete(
     py: Python,
     url: &str,
@@ -992,6 +963,7 @@ fn delete(
     ca_cert_file: Option<String>,
     follow_redirects: Option<bool>,
     stream: bool,
+    proxy: Option<String>,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
         py,
@@ -1001,7 +973,7 @@ fn delete(
         headers,
         None,
         None,
-        None,
+        proxy,
         timeout,
         connect_timeout,
         None,
@@ -1039,7 +1011,7 @@ fn delete(
 
 /// Send a POST request with a temporary (throwaway) client.
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, dns_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, dns_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false, proxy=None))]
 fn post(
     py: Python,
     url: &str,
@@ -1062,6 +1034,7 @@ fn post(
     ca_cert_file: Option<String>,
     follow_redirects: Option<bool>,
     stream: bool,
+    proxy: Option<String>,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
         py,
@@ -1071,7 +1044,7 @@ fn post(
         headers,
         None,
         None,
-        None,
+        proxy,
         timeout,
         connect_timeout,
         None,
@@ -1109,7 +1082,7 @@ fn post(
 
 /// Send a PUT request with a temporary (throwaway) client.
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, dns_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, dns_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false, proxy=None))]
 fn put(
     py: Python,
     url: &str,
@@ -1132,6 +1105,7 @@ fn put(
     ca_cert_file: Option<String>,
     follow_redirects: Option<bool>,
     stream: bool,
+    proxy: Option<String>,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
         py,
@@ -1141,7 +1115,7 @@ fn put(
         headers,
         None,
         None,
-        None,
+        proxy,
         timeout,
         connect_timeout,
         None,
@@ -1179,7 +1153,7 @@ fn put(
 
 /// Send a PATCH request with a temporary (throwaway) client.
 #[pyfunction]
-#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, dns_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
+#[pyo3(signature = (url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, dns_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false, proxy=None))]
 fn patch(
     py: Python,
     url: &str,
@@ -1202,6 +1176,7 @@ fn patch(
     ca_cert_file: Option<String>,
     follow_redirects: Option<bool>,
     stream: bool,
+    proxy: Option<String>,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
         py,
@@ -1211,7 +1186,7 @@ fn patch(
         headers,
         None,
         None,
-        None,
+        proxy,
         timeout,
         connect_timeout,
         None,
@@ -1249,7 +1224,7 @@ fn patch(
 
 /// Send a request with a custom method using a temporary (throwaway) client.
 #[pyfunction]
-#[pyo3(signature = (method, url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, dns_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false))]
+#[pyo3(signature = (method, url, params=None, headers=None, cookies=None, content=None, data=None, json=None, files=None, auth=None, auth_bearer=None,     timeout=None, connect_timeout=None, read_timeout=None, dns_timeout=None, impersonate=None, impersonate_os=None, verify=true, ca_cert_file=None, follow_redirects=None, stream=false, proxy=None))]
 fn request(
     py: Python,
     method: &str,
@@ -1273,6 +1248,7 @@ fn request(
     ca_cert_file: Option<String>,
     follow_redirects: Option<bool>,
     stream: bool,
+    proxy: Option<String>,
 ) -> PyResult<Py<PyAny>> {
     let client = Client::new(
         py,
@@ -1282,7 +1258,7 @@ fn request(
         headers,
         None,
         None,
-        None,
+        proxy,
         timeout,
         connect_timeout,
         None,
@@ -1323,8 +1299,8 @@ fn request(
 fn primp(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     pyo3_log::init();
 
-    // Async bridge: `_wrap_awaitable` coroutine + atexit abort of in-flight
-    // bridge tasks (prevents post-finalize panics under `panic = "abort"`).
+    // Async bridge: abort in-flight tasks at exit to avoid post-finalize
+    // panics (unwind; catch before FFI).
     crate::r#async::bridge::init(_py, m)?;
 
     // Re-export exception types from error module - new hierarchy
@@ -1420,6 +1396,44 @@ fn primp(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Version
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
+    // Keep runtime __all__ in sync with primp.pyi.
+    m.add(
+        "__all__",
+        vec![
+            "PrimpError",
+            "BuilderError",
+            "RequestError",
+            "ConnectError",
+            "TimeoutError",
+            "DNSError",
+            "DNSTimeoutError",
+            "StatusError",
+            "RedirectError",
+            "BodyError",
+            "DecodeError",
+            "UpgradeError",
+            "JSONDecodeError",
+            "Response",
+            "AsyncResponse",
+            "BytesIterator",
+            "TextIterator",
+            "LinesIterator",
+            "AsyncBytesIterator",
+            "AsyncTextIterator",
+            "AsyncLinesIterator",
+            "Client",
+            "AsyncClient",
+            "get",
+            "head",
+            "options",
+            "delete",
+            "post",
+            "put",
+            "patch",
+            "request",
+            "__version__",
+        ],
+    )?;
 
     Ok(())
 }

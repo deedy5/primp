@@ -180,7 +180,29 @@ class HttpbinRequestHandler(BaseHTTPRequestHandler):
         content_length = self.headers.get("Content-Length")
         if content_length:
             return self.rfile.read(int(content_length))
+        if "chunked" in self.headers.get("Transfer-Encoding", "").lower():
+            return self._read_chunked_body()
         return b""
+
+    def _read_chunked_body(self) -> bytes:
+        """Decode chunked body."""
+        body = bytearray()
+        while True:
+            size_line = self.rfile.readline().strip().split(b";")[0]
+            if not size_line:
+                continue
+            chunk_size = int(size_line, 16)
+            if chunk_size == 0:
+                # Consume trailers and final CRLF.
+                while True:
+                    trailer = self.rfile.readline()
+                    if trailer in (b"\r\n", b"\n", b""):
+                        break
+                break
+            body += self.rfile.read(chunk_size)
+            # Consume the CRLF after each chunk.
+            self.rfile.read(2)
+        return bytes(body)
     
     # GET endpoints
     def do_GET(self) -> None:

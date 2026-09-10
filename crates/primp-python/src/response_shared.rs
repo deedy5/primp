@@ -34,11 +34,7 @@ pub fn chars_to_byte_pos(s: &str, n: usize) -> usize {
     s.char_indices().nth(n).map(|(i, _)| i).unwrap_or(s.len())
 }
 
-/// Upper bound for a user-supplied `chunk_size`.
-///
-/// Iterators grow their buffer lazily with the received body; the cap keeps a
-/// single absurd chunk (e.g. `2**60`) from aborting on alloc failure under
-/// `panic = "abort"`.
+/// Upper bound for user `chunk_size` (1 GiB).
 pub(crate) const MAX_CHUNK_SIZE: usize = 1 << 30; // 1 GiB
 
 /// Validate a user-supplied `chunk_size` (bytes for `iter_bytes`, chars for
@@ -55,25 +51,22 @@ pub(crate) fn parse_chunk_size(chunk_size: Option<usize>) -> Result<usize, Strin
     Ok(size)
 }
 
-/// Raise HTTPError for 4xx/5xx status codes.
-pub fn raise_for_status(status_code: u16, url: &str) -> PyResult<()> {
-    if status_code >= 400 {
-        let reason = if status_code < 600 {
-            match status_code {
-                400 => "Bad Request",
-                401 => "Unauthorized",
-                403 => "Forbidden",
-                404 => "Not Found",
-                405 => "Method Not Allowed",
-                409 => "Conflict",
-                500 => "Internal Server Error",
-                502 => "Bad Gateway",
-                503 => "Service Unavailable",
-                _ => "Error",
-            }
+/// Raise HTTPError for 4xx/5xx.
+pub(crate) fn status_reason(status_code: u16) -> &'static str {
+    http::StatusCode::from_u16(status_code)
+        .ok()
+        .and_then(|c| c.canonical_reason())
+        .unwrap_or(if status_code < 600 {
+            "Error"
         } else {
             "Unknown Error"
-        };
+        })
+}
+
+/// Raise HTTPError for 4xx/5xx.
+pub fn raise_for_status(status_code: u16, url: &str) -> PyResult<()> {
+    if status_code >= 400 {
+        let reason = status_reason(status_code);
         return Err(PyErr::from(PrimpErrorEnum::HttpStatus(
             status_code,
             reason.to_string(),
@@ -395,5 +388,39 @@ mod tests {
             parse_chunk_size(Some(MAX_CHUNK_SIZE - 1)).unwrap(),
             MAX_CHUNK_SIZE - 1
         );
+    }
+
+    #[test]
+    fn status_reasons_come_from_raise_for_status() {
+        // Regression for 9-entry table returning "Error" for 429/418/etc.
+        // Exercises the production helper used by `raise_for_status`.
+        use super::status_reason;
+        assert_eq!(status_reason(429), "Too Many Requests");
+        assert_eq!(status_reason(418), "I'm a teapot");
+        assert_eq!(status_reason(408), "Request Timeout");
+        assert_eq!(status_reason(413), "Payload Too Large");
+        assert_eq!(status_reason(425), "Too Early");
+        assert_eq!(status_reason(431), "Request Header Fields Too Large");
+        assert_eq!(status_reason(451), "Unavailable For Legal Reasons");
+        assert_eq!(status_reason(404), "Not Found");
+        assert_eq!(status_reason(500), "Internal Server Error");
+        assert_eq!(status_reason(599), "Error");
+        assert_eq!(status_reason(600), "Unknown Error");
+    }
+
+    #[test]
+    fn raise_for_status_propagates_canonical_reason() {
+        // `raise_for_status` delegates to production `status_reason`; this
+        // exercises the real function (needs interpreter for PyErr).
+        pyo3::Python::initialize();
+        pyo3::Python::attach(|_| {
+            let err = super::raise_for_status(429, "http://example.com/").unwrap_err();
+            let msg = format!("{err:?}");
+            assert!(
+                msg.contains("Too Many Requests"),
+                "missing reason in {msg:?}"
+            );
+            assert!(super::raise_for_status(200, "http://example.com/").is_ok());
+        });
     }
 }

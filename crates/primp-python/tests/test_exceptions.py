@@ -102,6 +102,62 @@ class TestBuilderError:
         with pytest.raises(BuilderError):
             client.get(f"{test_server}/get", headers={"Invalid:Name": "value"})
 
+    def test_data_and_files_combine_as_multipart(self, test_server, tmp_path):
+        """`data`+`files` combine as multipart."""
+        client = primp.Client()
+        probe = tmp_path / "probe.txt"
+        probe.write_text("hello")
+        resp = client.post(
+            f"{test_server}/post",
+            data={"a": "1"},
+            files={"f": str(probe)},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["form"] == {"a": "1"}
+        assert "f" in body["files"]
+
+    def test_content_wins_over_json(self, test_server):
+        """`content` wins like httpx (json ignored)."""
+        client = primp.Client()
+        resp = client.post(
+            f"{test_server}/post",
+            content=b"raw-bytes",
+            json={"a": 1},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["data"] == "raw-bytes"
+
+    def test_unknown_impersonate_is_builder_error(self):
+        """Unknown profile raises BuilderError."""
+        with pytest.raises(BuilderError):
+            primp.Client(impersonate="bogus_browser_1.0")
+
+    def test_unknown_impersonate_os_is_builder_error(self):
+        """Unknown impersonate_os raises BuilderError."""
+        with pytest.raises(BuilderError):
+            primp.Client(impersonate="chrome_144", impersonate_os="plan9")
+
+    def test_bad_ca_cert_file_is_builder_error(self):
+        """Unreadable CA bundle raises BuilderError."""
+        with pytest.raises(BuilderError):
+            primp.Client(ca_cert_file="/nonexistent/path/ca-bundle.crt")
+
+    def test_zero_read_timeout_is_builder_error(self):
+        """Zero read_timeout raises BuilderError."""
+        with pytest.raises(BuilderError):
+            primp.Client(read_timeout=0)
+
+    def test_empty_body_containers_do_not_conflict(self, test_server):
+        """Empty body values count as absent."""
+        client = primp.Client()
+        # Two empties: no body at all, must not raise mutual exclusion.
+        resp = client.post(f"{test_server}/post", data={}, files={})
+        assert resp.status_code == 200
+        # Empty content + real json: only json counts.
+        resp = client.post(f"{test_server}/post", content=b"", json={"a": 1})
+        assert resp.status_code == 200
+
 
 class TestConnectError:
     """Test ConnectError exception with real scenarios."""

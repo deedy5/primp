@@ -57,13 +57,19 @@ impl HeadersTraits for HeaderMap {
             IndexMapSSR::with_capacity_and_hasher(self.len(), RandomState::default());
         for (key, value) in self {
             if let Ok(v) = value.to_str() {
-                // `IndexMap` stores a single value per key, but HTTP headers can
-                // appear multiple times. Join repeated values with ", " per RFC 7230
-                // so callers don't silently lose data (e.g. multiple `Vary` entries).
-                match index_map.entry(key.as_str().to_string()) {
+                let key_str = key.as_str().to_string();
+                let is_set_cookie = key_str.eq_ignore_ascii_case("set-cookie");
+                match index_map.entry(key_str) {
                     indexmap::map::Entry::Occupied(mut e) => {
-                        e.get_mut().push_str(", ");
-                        e.get_mut().push_str(v);
+                        // Set-Cookie must NOT be joined with ", " (Expires contains ", ").
+                        // Use "\n" to keep values separable and RFC 6265 compliant.
+                        if is_set_cookie {
+                            e.get_mut().push('\n');
+                            e.get_mut().push_str(v);
+                        } else {
+                            e.get_mut().push_str(", ");
+                            e.get_mut().push_str(v);
+                        }
                     }
                     indexmap::map::Entry::Vacant(e) => {
                         e.insert(v.to_string());
@@ -90,5 +96,46 @@ impl HeaderMapExt for HeaderMap {
         let (name, value) = try_make_header(&key, &value)?;
         self.insert(name, value);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::HeadersTraits;
+    use ::primp::header::{HeaderMap, HeaderValue, SET_COOKIE, VARY};
+
+    #[test]
+    fn set_cookie_with_expires_comma_uses_newline_separator() {
+        let mut headers = HeaderMap::new();
+        headers.append(
+            SET_COOKIE,
+            HeaderValue::from_static("a=1; Expires=Wed, 21 Oct 2015 07:28:00 GMT; Path=/"),
+        );
+        headers.append(
+            SET_COOKIE,
+            HeaderValue::from_static("b=2; Expires=Wed, 21 Oct 2015 07:28:00 GMT; Path=/"),
+        );
+        let map = headers.to_indexmap();
+        let v = map.get("set-cookie").expect("set-cookie present");
+        assert!(
+            v.contains('\n'),
+            "Set-Cookie must be newline-joined, got {v:?}"
+        );
+        let parts: Vec<&str> = v.split('\n').collect();
+        assert_eq!(parts.len(), 2, "must preserve 2 cookies, got {v:?}");
+        for p in &parts {
+            assert!(
+                p.contains("Expires=Wed, 21 Oct 2015"),
+                "Expires comma must survive, got {p:?}"
+            );
+        }
+        // Non-Set-Cookie keeps RFC7230 ", " join.
+        let mut other = HeaderMap::new();
+        other.append(VARY, HeaderValue::from_static("Accept-Encoding"));
+        other.append(VARY, HeaderValue::from_static("Origin"));
+        assert_eq!(
+            other.to_indexmap().get("vary").map(String::as_str),
+            Some("Accept-Encoding, Origin")
+        );
     }
 }

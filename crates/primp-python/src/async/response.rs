@@ -412,10 +412,8 @@ impl AsyncBytesIterator {
         AsyncBytesIterator {
             resp,
             chunk_size,
-            // Grow lazily — never `with_capacity(chunk_size * 2)`: `chunk_size`
-            // is validated only up to 1 GiB, so a 2 GiB eager reserve could
-            // abort under `panic = "abort"` on a constrained host. Memory then
-            // scales with the body actually received.
+            // Grow lazily; a 2 GiB eager reserve could abort.
+            // Catch unwinds before FFI.
             buffer: Arc::new(TMutex::new(Vec::new())),
             // An iterator created after a full-body drain must raise
             // StopAsyncIteration on the first `__anext__`, not re-poll the

@@ -1,13 +1,10 @@
 use std::sync::{Arc, RwLock};
 
-use ::primp::{multipart, Body, Client as PrimpClient, Method, Response as PrimpResponse, Url};
+use ::primp::{Client as PrimpClient, Method, Response as PrimpResponse, Url};
 use pyo3::prelude::*;
 use pythonize::depythonize;
 use serde_json::Value;
-use tokio::fs::File;
-use tokio_util::codec::{BytesCodec, FramedRead};
 
-use crate::body_value_to_string;
 use crate::client_builder::{
     build_request_cookie_header, configure_client_builder, parse_dns_resolver, IndexMapSSR,
 };
@@ -203,18 +200,7 @@ impl AsyncClient {
         let resolved_timeout: Option<f64> = timeout.or(self.timeout);
         let resolved_read_timeout: Option<f64> = read_timeout.or(self.read_timeout);
 
-        // Resolve URL with base_url
-        let resolved_url = if let Some(ref base_url) = self.base_url {
-            if url.starts_with("http://") || url.starts_with("https://") {
-                url.to_string()
-            } else {
-                let base = base_url.trim_end_matches('/');
-                let path = url.trim_start_matches('/');
-                format!("{}/{}", base, path)
-            }
-        } else {
-            url.to_string()
-        };
+        let resolved_url = crate::utils::resolve_url(self.base_url.as_deref(), url);
 
         let params = match (params, self.params.as_ref()) {
             (Some(p), _) => Some(p),
@@ -225,17 +211,13 @@ impl AsyncClient {
             .map(depythonize)
             .transpose()
             .map_err(Into::<PrimpErrorEnum>::into)?;
-        if data.is_some() && files.is_some() {
-            return Err(PrimpErrorEnum::Custom(
-                "data and files cannot both be provided (use files alone for multipart uploads)"
-                    .into(),
-            )
-            .into());
-        }
         let json_value: Option<Value> = json
             .map(depythonize)
             .transpose()
             .map_err(Into::<PrimpErrorEnum>::into)?;
+        // One body wins, requests/httpx priority: content > files+data > data > json.
+        // `resolve_body` filters empty values so count and send agree.
+        let body = crate::utils::resolve_body(content, data_value, json_value, files);
         let auth = auth.or(self.auth.clone());
         let auth_bearer = auth_bearer.or(self.auth_bearer.clone());
 
@@ -285,9 +267,11 @@ impl AsyncClient {
                 request_builder = request_builder.redirect_override(override_policy);
             }
 
-            // Params
+            // Params (skip empty maps to match sync path)
             if let Some(p) = &params {
-                request_builder = request_builder.query(p);
+                if !p.is_empty() {
+                    request_builder = request_builder.query(p);
+                }
             }
 
             // Set the one-shot Cookie header (jar is merged per hop by the
@@ -309,39 +293,25 @@ impl AsyncClient {
                 request_builder = request_builder.headers(headers.to_headermap()?);
             }
 
-            // Body content (if provided)
-            if let Some(content) = content {
-                request_builder = request_builder.body(content);
-            }
-            // Form data (if provided) — only form-encode objects; send scalars as raw body
-            if let Some(form_data) = data_value {
-                match form_data {
-                    Value::Object(_) => {
-                        request_builder = request_builder.form(&form_data);
-                    }
-                    other => {
-                        let body = body_value_to_string(&other);
-                        request_builder = request_builder.body(body);
-                    }
+            // Body: one winner per requests/httpx priority.
+            match body {
+                crate::utils::ResolvedBody::None => {}
+                crate::utils::ResolvedBody::Content(b) => {
+                    request_builder = request_builder.body(b);
                 }
-            }
-            // JSON (if provided)
-            if let Some(json_data) = json_value {
-                request_builder = request_builder.json(&json_data);
-            }
-            // Files (if provided)
-            if let Some(files) = files {
-                let mut form = multipart::Form::new();
-                for (file_name, file_path) in files {
-                    let file = File::open(file_path)
-                        .await
-                        .map_err(Into::<PrimpErrorEnum>::into)?;
-                    let stream = FramedRead::new(file, BytesCodec::new());
-                    let file_body = Body::wrap_stream(stream);
-                    let part = multipart::Part::stream(file_body).file_name(file_name.clone());
-                    form = form.part(file_name, part);
+                crate::utils::ResolvedBody::Multipart { files, data } => {
+                    let form = crate::utils::build_multipart_form(files, data).await?;
+                    request_builder = request_builder.multipart(form);
                 }
-                request_builder = request_builder.multipart(form);
+                crate::utils::ResolvedBody::Form(form_data) => {
+                    request_builder = request_builder.form(&form_data);
+                }
+                crate::utils::ResolvedBody::RawBody(s) => {
+                    request_builder = request_builder.body(s);
+                }
+                crate::utils::ResolvedBody::Json(json_data) => {
+                    request_builder = request_builder.json(&json_data);
+                }
             }
 
             // Auth
@@ -359,7 +329,7 @@ impl AsyncClient {
             // Per-request read timeout (falls back to client-level setting)
             if let Some(seconds) = resolved_read_timeout {
                 request_builder =
-                    request_builder.read_timeout(crate::utils::timeout_duration(seconds)?);
+                    request_builder.try_read_timeout(crate::utils::timeout_duration(seconds)?);
             }
 
             // Send the request and await the response
