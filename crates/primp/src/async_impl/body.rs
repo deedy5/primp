@@ -378,11 +378,11 @@ where
     ) -> Poll<Option<Result<hyper::body::Frame<Self::Data>, Self::Error>>> {
         let mut this = self.project();
 
-        // Start the `Sleep` if not active.
+        let deadline = tokio::time::Instant::now() + *this.timeout;
         let sleep_pinned = if let Some(some) = this.sleep.as_mut().as_pin_mut() {
             some
         } else {
-            this.sleep.set(Some(tokio::time::sleep(*this.timeout)));
+            this.sleep.set(Some(tokio::time::sleep_until(deadline)));
             // Unreachable: the field was just set to `Some`. Surface a
             // body error rather than panicking under `panic = "abort"`.
             match this.sleep.as_mut().as_pin_mut() {
@@ -402,8 +402,10 @@ where
 
         let item = ready!(this.inner.poll_frame(cx))
             .map(|opt_chunk| opt_chunk.map_err(crate::error::body));
-        // a ready frame means timeout is reset
-        this.sleep.set(None);
+        // a ready frame means timeout is reset for the next chunk
+        if let Some(some) = this.sleep.as_mut().as_pin_mut() {
+            some.reset(tokio::time::Instant::now() + *this.timeout);
+        }
         Poll::Ready(item)
     }
 

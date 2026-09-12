@@ -348,11 +348,11 @@ pub(crate) mod service {
         type Output = Result<Response<ResBody>, S::Error>;
 
         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-            let cookie_store = self.cookie_store.clone();
-            let url = self.url.clone();
-            let res = ready!(self.project().future.as_mut().poll(cx)?);
+            let this = self.project();
+            let res = ready!(this.future.poll(cx)?);
 
-            if let (Some(cookie_store), Some(url)) = (cookie_store.as_ref(), url.as_ref()) {
+            if let (Some(cookie_store), Some(url)) = (this.cookie_store.as_ref(), this.url.as_ref())
+            {
                 let mut cookies = cookie::extract_response_cookie_headers(res.headers()).peekable();
                 if cookies.peek().is_some() {
                     cookie_store.set_cookies(&mut cookies, url);

@@ -969,6 +969,13 @@ impl PoolClient {
         // sent empty after a previous (refused) attempt already drained a
         // clone. For streaming (non-replayable) bodies this is `None`.
         let body_source = body.try_clone();
+        // Bodyless requests (GET, HEAD, DELETE without body) must close the
+        // stream on HEADERS (END_STREAM) instead of sending a trailing empty
+        // DATA frame. primp-h2 0.4.19 counts empty DATA toward a lifetime
+        // flood guard (100); 101+ bodyless requests on one reused connection
+        // would otherwise trip GOAWAY ENHANCE_YOUR_CALM and surface as
+        // BrokenPipe (see h2_pool_saturation).
+        let is_empty_body = http_body::Body::is_end_stream(&body);
 
         // Clone send_request: send_request() takes self by value, and a
         // partial move of PooledSendRequest would skip its Drop impl.
@@ -991,7 +998,7 @@ impl PoolClient {
             }
 
             let (response_fut, send_stream) =
-                match tx.send_request(Request::from_parts(parts.clone(), ()), false) {
+                match tx.send_request(Request::from_parts(parts.clone(), ()), is_empty_body) {
                     Ok(v) => v,
                     Err(e) => {
                         // send_request failed after poll_ready succeeded — the
@@ -1004,94 +1011,107 @@ impl PoolClient {
                 };
 
             // Stream the request body frame by frame instead of buffering.
-            let mut send_stream = Some(send_stream);
-            // On attempt 0 we stream the original `body`. On every retry we
-            // stream a *fresh* clone of `body_source` so a replayable body is
-            // never sent empty after a previous refusal already drained a
-            // clone (C1 / RFC 9113 §8.7).
-            let mut streaming_body: crate::async_impl::body::Body = if attempt == 0 {
-                std::mem::take(&mut body)
-            } else {
-                match body_source.as_ref().and_then(|b| b.try_clone()) {
-                    Some(b) => b,
-                    // Defensive: retries are gated on `body_source.is_some()`
-                    // below, and a Reusable body's `try_clone()` cannot fail
-                    // (body.rs), so this arm is unreachable in practice. Fail
-                    // cleanly with a truthful error rather than falling
-                    // through to the misleading "maximum retries" tail.
-                    None => {
-                        return Err(error::request(
-                            "h2 stream refused: request body cannot be replayed for retry",
-                        ));
-                    }
+            // Bodyless requests already closed the stream on HEADERS above;
+            // skip streaming and the trailing empty DATA frame entirely.
+            if is_empty_body {
+                drop(send_stream);
+                if attempt == 0 {
+                    let _ = std::mem::take(&mut body);
                 }
-            };
-            while let Some(frame) = streaming_body.frame().await {
-                let frame = frame.map_err(error::request)?;
-                match frame.into_data() {
-                    Ok(data) => {
-                        if !data.is_empty() {
-                            match send_stream.as_mut() {
-                                Some(stream) => {
-                                    // Gate large chunks on flow-control window to
-                                    // bound memory; small bodies use direct send.
-                                    if data.len() <= 1024 {
-                                        stream.send_data(data, false).map_err(error::request)?;
-                                    } else {
-                                        let mut remaining = data;
-                                        while !remaining.is_empty() {
-                                            let len = remaining.len();
-                                            stream.reserve_capacity(len);
-                                            let capacity =
-                                                std::future::poll_fn(|cx| stream.poll_capacity(cx))
-                                                    .await;
-                                            let capacity = match capacity {
-                                                Some(Ok(c)) => c,
-                                                Some(Err(e)) => {
-                                                    return Err(error::request(e));
-                                                }
-                                                None => {
-                                                    return Err(error::request(
+            } else {
+                let mut send_stream = Some(send_stream);
+                // On attempt 0 we stream the original `body`. On every retry we
+                // stream a *fresh* clone of `body_source` so a replayable body is
+                // never sent empty after a previous refusal already drained a
+                // clone (C1 / RFC 9113 §8.7).
+                let mut streaming_body: crate::async_impl::body::Body = if attempt == 0 {
+                    std::mem::take(&mut body)
+                } else {
+                    match body_source.as_ref().and_then(|b| b.try_clone()) {
+                        Some(b) => b,
+                        // Defensive: retries are gated on `body_source.is_some()`
+                        // below, and a Reusable body's `try_clone()` cannot fail
+                        // (body.rs), so this arm is unreachable in practice. Fail
+                        // cleanly with a truthful error rather than falling
+                        // through to the misleading "maximum retries" tail.
+                        None => {
+                            return Err(error::request(
+                                "h2 stream refused: request body cannot be replayed for retry",
+                            ));
+                        }
+                    }
+                };
+                while let Some(frame) = streaming_body.frame().await {
+                    let frame = frame.map_err(error::request)?;
+                    match frame.into_data() {
+                        Ok(data) => {
+                            if !data.is_empty() {
+                                match send_stream.as_mut() {
+                                    Some(stream) => {
+                                        // Gate large chunks on flow-control window to
+                                        // bound memory; small bodies use direct send.
+                                        if data.len() <= 1024 {
+                                            stream
+                                                .send_data(data, false)
+                                                .map_err(error::request)?;
+                                        } else {
+                                            let mut remaining = data;
+                                            while !remaining.is_empty() {
+                                                let len = remaining.len();
+                                                stream.reserve_capacity(len);
+                                                let capacity = std::future::poll_fn(|cx| {
+                                                    stream.poll_capacity(cx)
+                                                })
+                                                .await;
+                                                let capacity = match capacity {
+                                                    Some(Ok(c)) => c,
+                                                    Some(Err(e)) => {
+                                                        return Err(error::request(e));
+                                                    }
+                                                    None => {
+                                                        return Err(error::request(
                                                         "h2 stream closed while waiting for capacity",
                                                     ));
+                                                    }
+                                                };
+                                                if capacity == 0 {
+                                                    tokio::task::yield_now().await;
+                                                    continue;
                                                 }
-                                            };
-                                            if capacity == 0 {
-                                                tokio::task::yield_now().await;
-                                                continue;
+                                                let to_send =
+                                                    std::cmp::min(capacity, remaining.len());
+                                                let chunk = remaining.split_to(to_send);
+                                                stream
+                                                    .send_data(chunk, false)
+                                                    .map_err(error::request)?;
                                             }
-                                            let to_send = std::cmp::min(capacity, remaining.len());
-                                            let chunk = remaining.split_to(to_send);
-                                            stream
-                                                .send_data(chunk, false)
-                                                .map_err(error::request)?;
                                         }
                                     }
-                                }
-                                None => {
-                                    // Data after trailers — protocol violation.
-                                    return Err(error::request("data frame after trailers"));
+                                    None => {
+                                        // Data after trailers — protocol violation.
+                                        return Err(error::request("data frame after trailers"));
+                                    }
                                 }
                             }
                         }
-                    }
-                    Err(frame) => {
-                        if let Ok(trailers) = frame.into_trailers() {
-                            if let Some(mut stream) = send_stream.take() {
-                                stream.send_trailers(trailers).map_err(error::request)?;
+                        Err(frame) => {
+                            if let Ok(trailers) = frame.into_trailers() {
+                                if let Some(mut stream) = send_stream.take() {
+                                    stream.send_trailers(trailers).map_err(error::request)?;
+                                }
                             }
+                            // Frame is not data — must be trailers. If into_trailers()
+                            // also fails, skip the unknown frame type.
                         }
-                        // Frame is not data — must be trailers. If into_trailers()
-                        // also fails, skip the unknown frame type.
                     }
                 }
-            }
-            // Signal end of request body.
-            if let Some(mut stream) = send_stream.take() {
-                stream
-                    .send_data(Bytes::new(), true)
-                    .map_err(error::request)?;
-            }
+                // Signal end of request body.
+                if let Some(mut stream) = send_stream.take() {
+                    stream
+                        .send_data(Bytes::new(), true)
+                        .map_err(error::request)?;
+                }
+            } // end non-empty body streaming
 
             match response_fut.await {
                 Ok(response) => {
