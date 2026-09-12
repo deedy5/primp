@@ -793,10 +793,7 @@ impl ClientBuilder {
                             // HTTP/1.1 over it without a second handshake.
                             // When the caller forces HTTP/1, only offer
                             // http/1.1 so the legacy h1 parser is used.
-                            h2_tls.alpn_protocols = h2_alpn_for_pref(config.http_version_pref)
-                                .into_iter()
-                                .map(|v| v.into())
-                                .collect();
+                            h2_tls.alpn_protocols = h2_alpn_for_pref(config.http_version_pref);
                         }
                         // tls_proxy: no ALPN, for TLS-to-proxy connections.
                         let mut h2_tls_proxy = (*conn).clone();
