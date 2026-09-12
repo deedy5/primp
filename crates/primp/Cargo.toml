@@ -1,6 +1,6 @@
 [package]
 name = "primp"
-version = "2.0.0"
+version = "2.0.1"
 description = "HTTP client with browser impersonation capabilities"
 keywords = ["http", "request", "client", "impersonate"]
 categories = ["web-programming::http-client"]
@@ -110,8 +110,8 @@ env_logger = "0.11"
 hyper = { version = "1.8", default-features = false, features = ["http1", "http2", "client", "server"] }
 hyper-util = { version = "0.1", features = ["http1", "http2", "client", "client-legacy", "server-auto", "server-graceful", "tokio"] }
 flate2 = "1.0.13"
-brotli_crate = { package = "brotli", version = "8" }
-zstd_crate = { package = "zstd", version = "0.13" }
+brotli_crate = { package = "brotli", version = "9" }
+zstd_crate = { package = "zstd", version = "0.14" }
 doc-comment = "0.3"
 futures-util = { version = "0.3.28", default-features = false, features = ["std", "alloc"] }
 tower = { version = "0.5.2", default-features = false, features = ["limit"] }

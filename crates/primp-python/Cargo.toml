@@ -1,6 +1,6 @@
 [package]
 name = "primp-python"
-version = "2.0.0"
+version = "2.0.1"
 edition = "2021"
 rust-version = "1.89"
 description = "HTTP client that can impersonate web browsers"
@@ -33,7 +33,7 @@ tokio-util = { version = "0.7.18", features = ["codec"] }  # for multipart
 html2text = "0.17"
 pythonize = "0.29"
 serde_json = "1.0.149"
-jiter = { version = "0.16", features = ["python"] }
+jiter = { version = "0.17", features = ["python"] }
 http = "1.4"
 mime = "0.3.17"
 rand = "0.10"
