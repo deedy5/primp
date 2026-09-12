@@ -6,10 +6,12 @@ rust-version = "1.89"
 license = "Apache-2.0 OR ISC OR MIT"
 readme = "README.md"
 description = "A fork of the original rustls crate."
+repository = "https://github.com/deedy5/primp"
+documentation = "https://docs.rs/primp-rustls"
 categories = ["network-programming", "cryptography"]
 autobenches = false
 autotests = false
-exclude = ["src/testdata", "tests/**"]
+exclude = ["src/testdata"]
 build = "build.rs"
 
 # Aliases

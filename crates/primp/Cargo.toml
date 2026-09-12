@@ -15,7 +15,10 @@ include = [
     "README.md",
     "Cargo.toml",
     "LICENSE",
-    "src/**/*.rs"
+    "src/**/*.rs",
+    "tests/**/*.rs",
+    "examples/**/*.rs",
+    "benches/**/*.rs",
 ]
 
 [package.metadata.docs.rs]
@@ -78,7 +81,7 @@ http-body = "1"
 http-body-util = "0.1.2"
 hyper = { version = "1.8", features = ["http1", "http2", "client"] }
 hyper-util = { version = "0.1", features = ["http1", "http2", "client", "client-legacy", "client-proxy", "tokio"] }
-h2 = { version = "0.4", path = "../primp-h2", package = "primp-h2", features = ["unstable"] }
+h2 = { version = "0.4.19", path = "../primp-h2", package = "primp-h2", features = ["unstable"] }
 log = "0.4.17"
 percent-encoding = "2.3"
 tokio = { version = "1.0", default-features = false, features = ["net", "time", "io-util", "macros", "sync"] }
@@ -88,7 +91,7 @@ tower-http = { version = "0.7.0", default-features = false, features = ["follow-
 pin-project-lite = "0.2.11"
 rustls-pki-types = { version = "1.9.0", features = ["std"] }
 mime = { version = "0.3.16", optional = true }
-rustls = { version = "0.23", path = "../primp-rustls/rustls", package = "primp-rustls", default-features = false, features = ["std", "tls12", "impersonate", "aws-lc-rs", "zlib", "ml-dsa"] }
+rustls = { version = "0.23.43", path = "../primp-rustls/rustls", package = "primp-rustls", default-features = false, features = ["std", "tls12", "impersonate", "aws-lc-rs", "zlib", "ml-dsa"] }
 webpki-roots = { version = "1" }
 rustls-native-certs = { version = "0.8" }
 cookie_crate = { version = "0.18.0", package = "cookie", optional = true }

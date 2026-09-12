@@ -8,6 +8,8 @@ authors = [
   "Sean McArthur <sean@seanmonstar.com>",
 ]
 description = "A fork of the HTTP/2 client and server library from hyperium"
+repository = "https://github.com/deedy5/primp"
+documentation = "https://docs.rs/primp-h2"
 edition = "2021"
 rust-version = "1.89"
 include = ["Cargo.toml", "LICENSE", "README.md", "src/**/*.rs"]
