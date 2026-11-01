@@ -189,7 +189,7 @@ mod tests {
         conn.process_new_packets().unwrap();
 
         let KxState::Start(skxg) = &conn.kx_state else {
-            panic!("unexpected kx_state");
+            ::core::panic!("unexpected kx_state");
         };
         assert_eq!(skxg.name(), FAKE_FFDHE_GROUP.name());
     }

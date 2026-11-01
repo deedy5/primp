@@ -386,30 +386,13 @@ mod tests {
         assert_eq!(json.akamai_hash, CHROME150_AKAMAI_HASH);
         assert_eq!(json.akamai_text, CHROME150_AKAMAI_TEXT);
     }
-    /// tls.peet.ws `/api/all` subset used by the Chrome 156 check.
-    #[derive(Debug, Deserialize)]
-    struct PeetTls {
-        ja3: String,
-        ja4: String,
-        peetprint_hash: String,
-    }
-    #[derive(Debug, Deserialize)]
-    struct PeetHttp2 {
-        akamai_fingerprint_hash: String,
-    }
-    #[derive(Debug, Deserialize)]
-    struct PeetResponse {
-        user_agent: String,
-        tls: PeetTls,
-        http2: PeetHttp2,
-    }
-
-    // Values from a real Chrome 156 (Windows) capture on tls.peet.ws.
+    // Expected values from a real Chrome 156 (Windows) capture. The JA3 text
+    // (cipher + extension wire order) is asserted by the offline test below.
     const CHROME156_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36";
-    const CHROME156_JA3: &str = "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,5-45-65281-27-10-51764-65037-16-0-13-23-43-11-18-17613-35-51,4588-29-23-24,0";
+    // 17 extensions: Chrome 150's 16 plus trust_anchors (0xCA34).
     const CHROME156_JA4: &str = "t13d1517h2_8daaf6152771_cb7bf5808d99";
-    const CHROME156_PEETPRINT_HASH: &str = "fc97c1cdfb1409c9a9326c1b726d1dee";
     const CHROME156_AKAMAI_HASH: &str = "52d84b11737d980aef856699f885ca86";
+    const CHROME156_AKAMAI_TEXT: &str = "1:65536;2:0;4:6291456;6:262144|15663105|0|m,a,s,p";
 
     #[tokio::test]
     #[cfg(feature = "impersonate")]
@@ -421,18 +404,17 @@ mod tests {
             .unwrap();
 
         let response = client
-            .get("https://tls.peet.ws/api/all")
+            .get("https://tls.browserleaks.com/json")
             .send()
             .await
             .unwrap();
 
-        let json: PeetResponse = response.json().await.unwrap();
+        let json: BrowserLeaksResponse = response.json().await.unwrap();
 
         assert_eq!(json.user_agent, CHROME156_USER_AGENT);
-        assert_eq!(json.tls.ja3, CHROME156_JA3);
-        assert_eq!(json.tls.ja4, CHROME156_JA4);
-        assert_eq!(json.tls.peetprint_hash, CHROME156_PEETPRINT_HASH);
-        assert_eq!(json.http2.akamai_fingerprint_hash, CHROME156_AKAMAI_HASH);
+        assert_eq!(json.ja4, CHROME156_JA4);
+        assert_eq!(json.akamai_hash, CHROME156_AKAMAI_HASH);
+        assert_eq!(json.akamai_text, CHROME156_AKAMAI_TEXT);
     }
 
     /// Reads the first TLS record (the ClientHello) the client sends to a local
