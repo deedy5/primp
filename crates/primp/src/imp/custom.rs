@@ -18,9 +18,9 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use http::header::{HeaderMap, HeaderName, HeaderValue};
 #[cfg(feature = "http2")]
 use h2::frame::{PseudoId, PseudoOrder, SettingId, SettingsOrder};
+use http::header::{HeaderMap, HeaderName, HeaderValue};
 use rustls::{CipherSuite, NamedGroup, SignatureScheme};
 
 use crate::imp::{BrowserSettings, Http2Data};
@@ -210,10 +210,7 @@ impl ProfileOverrides {
     /// like `user_agent`, `sec_ch_ua`, `extra_headers`, and `headers_order`
     /// must be supplied separately — the peet.ws clean endpoint does not
     /// return them.
-    pub fn from_peet_api(
-        peetprint: &str,
-        akamai: &str,
-    ) -> Result<Self, FingerprintParseError> {
+    pub fn from_peet_api(peetprint: &str, akamai: &str) -> Result<Self, FingerprintParseError> {
         let peet = PeetFingerprint::parse(peetprint)?;
         let ak = AkamaiFingerprint::parse(akamai)?;
 
@@ -316,8 +313,10 @@ fn apply_http2_overrides(
     max_header_list_size: Option<u32>,
 ) {
     if let Some(order) = headers_order {
-        let names: Result<Vec<HeaderName>, _> =
-            order.iter().map(|s| HeaderName::try_from(s.as_str())).collect();
+        let names: Result<Vec<HeaderName>, _> = order
+            .iter()
+            .map(|s| HeaderName::try_from(s.as_str()))
+            .collect();
         if let Ok(names) = names {
             http2.headers_order = Some(names);
         }
@@ -376,7 +375,8 @@ fn apply_http2_overrides(
                         http2.no_rfc7540_priorities = Some(*value != 0);
                         b = b.push(SettingId::NoRfc7540Priorities);
                     }
-                    _ => { /* unknown SETTINGS id: ignore for order but still preserve any prior */ }
+                    _ => { /* unknown SETTINGS id: ignore for order but still preserve any prior */
+                    }
                 }
             }
             http2.settings_order = Some(b.build_without_extend());
@@ -492,6 +492,9 @@ mod tests {
         assert_eq!(ov.named_groups.as_ref().unwrap().len(), 4);
         assert_eq!(ov.http2_settings.as_ref().unwrap().len(), 4);
         assert_eq!(ov.http2_initial_connection_window_size, Some(15663105));
-        assert_eq!(ov.http2_pseudo_order.as_ref().unwrap(), &vec!['m', 'a', 's', 'p']);
+        assert_eq!(
+            ov.http2_pseudo_order.as_ref().unwrap(),
+            &vec!['m', 'a', 's', 'p']
+        );
     }
 }

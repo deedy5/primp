@@ -248,7 +248,10 @@ pub fn parse_profile_overrides(dict: &Bound<'_, PyDict>) -> PyResult<ProfileOver
             &mut ov.http2_initial_connection_window_size,
         ),
         ("http2_header_table_size", &mut ov.http2_header_table_size),
-        ("http2_max_header_list_size", &mut ov.http2_max_header_list_size),
+        (
+            "http2_max_header_list_size",
+            &mut ov.http2_max_header_list_size,
+        ),
     ] {
         if let Some(item) = dict.get_item(dict_key)? {
             *field = Some(item.extract::<u32>()?);
@@ -273,7 +276,9 @@ fn seed_from_peet_response(ov: &mut ProfileOverrides, resp: &Bound<'_, PyDict>) 
         let http2 = resp
             .get_item("http2")?
             .and_then(|v| v.cast::<PyDict>().ok().map(|d| d.clone()));
-        let pp = tls.as_ref().and_then(|d| get_str(d, "peetprint").ok().flatten());
+        let pp = tls
+            .as_ref()
+            .and_then(|d| get_str(d, "peetprint").ok().flatten());
         let ak = http2
             .as_ref()
             .and_then(|d| get_str(d, "akamai_fingerprint").ok().flatten());
@@ -297,10 +302,7 @@ fn seed_from_peet_response(ov: &mut ProfileOverrides, resp: &Bound<'_, PyDict>) 
 
 /// Extract HTTP-level details (User-Agent, sec-ch-ua*, headers_order, header
 /// PRIORITY) from an `/api/all` payload's `sent_frames` HEADERS entry.
-fn seed_http_from_api_all(
-    ov: &mut ProfileOverrides,
-    resp: &Bound<'_, PyDict>,
-) -> PyResult<()> {
+fn seed_http_from_api_all(ov: &mut ProfileOverrides, resp: &Bound<'_, PyDict>) -> PyResult<()> {
     if let Some(ua_item) = resp.get_item("user_agent")? {
         if let Ok(ua) = ua_item.extract::<String>() {
             if !ua.is_empty() && ov.user_agent.is_none() {
@@ -354,9 +356,7 @@ fn seed_http_from_api_all(
                     }
 
                     match name.as_str() {
-                        "sec-ch-ua" if ov.sec_ch_ua.is_none() => {
-                            ov.sec_ch_ua = Some(value)
-                        }
+                        "sec-ch-ua" if ov.sec_ch_ua.is_none() => ov.sec_ch_ua = Some(value),
                         "sec-ch-ua-platform" if ov.sec_ch_ua_platform.is_none() => {
                             ov.sec_ch_ua_platform = Some(value)
                         }

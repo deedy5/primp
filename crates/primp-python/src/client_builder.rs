@@ -22,9 +22,9 @@ use crate::impersonate::{
     get_random_element, parse_impersonate_os_with_fallback, parse_impersonate_with_fallback,
     IMPERSONATEOS_LIST,
 };
-use primp::ProfileOverrides;
 use crate::traits::{HeaderMapExt, HeadersTraits};
 use crate::utils::load_ca_certs;
+use primp::ProfileOverrides;
 
 /// Type alias for IndexMap with String keys and values.
 pub type IndexMapSSR = IndexMap<String, String, RandomState>;
