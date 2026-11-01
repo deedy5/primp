@@ -715,6 +715,7 @@ impl Prioritize {
         let _e = span.enter();
 
         loop {
+            #[allow(clippy::question_mark)]
             match self.pending_send.pop(store) {
                 Some(mut stream) => {
                     let span = tracing::trace_span!("popped", ?stream.id, ?stream.state);

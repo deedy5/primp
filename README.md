@@ -86,6 +86,19 @@ let client = Client::builder()
 
 For a fully hand-built profile, use `.impersonate_settings(BrowserSettings)`.
 
+## Releasing
+
+Releases are automatic. CI (`.github/workflows/ci.yml`) builds wheels for
+Linux (glibc + musl), Windows and macOS plus an sdist on every pull request to
+`main`. When a PR is merged, CI checks the `version` in `Cargo.toml` (it must
+match `crates/primp` and `crates/primp-python`); if there is no `v<version>`
+tag yet, it creates the tag and a GitHub Release with all wheels attached.
+
+To release: bump the version in those three `Cargo.toml` files in your PR and
+merge it. A PR that doesn't bump the version builds and tests but releases
+nothing. If a `PYPI_API_TOKEN` secret is set, the wheels are also uploaded to
+PyPI.
+
 ____
 ### Disclaimer
 

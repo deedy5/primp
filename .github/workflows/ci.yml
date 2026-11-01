@@ -1,25 +1,84 @@
 name: CI
 
+# Pull requests into main: lint, test and build wheels for every platform.
+# Push to main (i.e. a merged PR): same, then — if the version in Cargo.toml
+# has no `v<version>` tag yet — create that tag and a GitHub Release with all
+# wheels + sdist attached. Bump `version` in Cargo.toml, crates/primp and
+# crates/primp-python to cut a new release.
 on:
   push:
     branches:
       - main
-      - '*'
-    tags:
-      - '*'
   pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+      release: ${{ steps.v.outputs.release }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Read version and check for an existing tag
+        id: v
+        shell: bash
+        run: |
+          set -euo pipefail
+          ws=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          core=$(sed -n 's/^version = "\(.*\)"/\1/p' crates/primp/Cargo.toml | head -1)
+          py=$(sed -n 's/^version = "\(.*\)"/\1/p' crates/primp-python/Cargo.toml | head -1)
+          if [ "$ws" != "$core" ] || [ "$ws" != "$py" ]; then
+            echo "::error::Version mismatch: Cargo.toml=$ws crates/primp=$core crates/primp-python=$py"
+            exit 1
+          fi
+          tag="v$ws"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+            exists=true
+          else
+            exists=false
+          fi
+          release=false
+          if [ "$exists" = false ] && [ "$GITHUB_REF" = "refs/heads/main" ] \
+             && { [ "$GITHUB_EVENT_NAME" = push ] || [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; }; then
+            release=true
+          fi
+          echo "version=$ws" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Version \`$ws\`"
+            if [ "$exists" = true ]; then
+              echo "Tag \`$tag\` already exists — merging this will **not** create a release. Bump the version to release."
+            elif [ "$release" = true ]; then
+              echo "Release \`$tag\` will be created once all builds pass."
+            else
+              echo "Tag \`$tag\` does not exist yet — merging into main will create release \`$tag\`."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$exists" = true ] && [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            echo "::warning::Version $ws is already released ($tag). Bump the version if this PR should produce a release."
+          fi
+
   rust:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
+      # Pinned so new clippy lints in future stable releases can't block a release.
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: 1.97.0
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
@@ -307,24 +366,48 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
-    if: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
-    needs: [linux, musllinux, windows, macos, sdist]
+    needs: [version, linux, musllinux, windows, macos, sdist]
+    if: ${{ needs.version.outputs.release == 'true' }}
+    concurrency:
+      group: release
+      cancel-in-progress: false
     permissions:
       id-token: write
       contents: write
       attestations: write
+    env:
+      HAS_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN != '' }}
     steps:
       - uses: actions/download-artifact@v7
+        with:
+          pattern: wheels-*
+          path: dist
+          merge-multiple: true
+      - name: List release files
+        run: ls -l dist
       - name: Generate artifact attestation
+        # Attestations are unavailable for private repos on some plans; never block the release on it.
+        continue-on-error: true
         uses: actions/attest@v4
         with:
-          subject-path: 'wheels-*/*'
+          subject-path: 'dist/*'
+      - name: Create tag and GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          gh release create "$TAG" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --generate-notes
       - name: Install uv
-        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        if: ${{ env.HAS_PYPI_TOKEN == 'true' }}
         uses: astral-sh/setup-uv@v7
-      - name: Publish to PyPI
-        if: ${{ startsWith(github.ref, 'refs/tags/') }}
-        run: uv publish 'wheels-*/*'
+      - name: Publish to PyPI (only if PYPI_API_TOKEN secret is set)
+        if: ${{ env.HAS_PYPI_TOKEN == 'true' }}
+        run: uv publish 'dist/*'
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
 
@@ -332,7 +415,7 @@ jobs:
     permissions:
       contents: write
     runs-on: ubuntu-latest
-    needs: [linux]
+    needs: [version, linux]
     steps:
       - uses: actions/checkout@v6
         with:
@@ -358,7 +441,7 @@ jobs:
         working-directory: crates/primp-python/benchmark
         run: python benchmark.py
       - name: Commit and push benchmark image
-        if: "startsWith(github.ref, 'refs/tags/')"
+        if: ${{ needs.version.outputs.release == 'true' }}
         uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: Update python benchmark image

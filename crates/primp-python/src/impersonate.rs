@@ -272,10 +272,10 @@ fn seed_from_peet_response(ov: &mut ProfileOverrides, resp: &Bound<'_, PyDict>) 
     let (peetprint, akamai) = if is_api_all {
         let tls = resp
             .get_item("tls")?
-            .and_then(|v| v.cast::<PyDict>().ok().map(|d| d.clone()));
+            .and_then(|v| v.cast::<PyDict>().ok().cloned());
         let http2 = resp
             .get_item("http2")?
-            .and_then(|v| v.cast::<PyDict>().ok().map(|d| d.clone()));
+            .and_then(|v| v.cast::<PyDict>().ok().cloned());
         let pp = tls
             .as_ref()
             .and_then(|d| get_str(d, "peetprint").ok().flatten());
@@ -328,7 +328,7 @@ fn seed_http_from_api_all(ov: &mut ProfileOverrides, resp: &Bound<'_, PyDict>) -
         let Ok(frame_dict) = frame.cast::<PyDict>() else {
             continue;
         };
-        let ftype = get_str(&frame_dict, "frame_type")?.unwrap_or_default();
+        let ftype = get_str(frame_dict, "frame_type")?.unwrap_or_default();
         if ftype != "HEADERS" {
             continue;
         }

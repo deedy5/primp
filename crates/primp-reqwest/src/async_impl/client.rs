@@ -1050,7 +1050,7 @@ impl ClientBuilder {
         let redirect_policy_desc = if config.redirect_policy.is_default() {
             None
         } else {
-            Some(format!("{:?}", &config.redirect_policy))
+            Some(format!("{:?}", config.redirect_policy))
         };
 
         let hyper_client = builder.build(connector_builder.build(config.connector_layers));
@@ -2776,7 +2776,7 @@ impl Client {
         let desc = if policy.is_default() {
             None
         } else {
-            Some(format!("{:?}", &policy))
+            Some(format!("{:?}", policy))
         };
         Arc::make_mut(&mut self.inner).redirect_policy_desc = desc;
     }
