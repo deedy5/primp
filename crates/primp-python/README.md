@@ -55,7 +55,7 @@ asyncio.run(main())
 
 | Browser | Profiles |
 |:--------|:---------|
-| Chrome | `chrome_144`, `chrome_145`, `chrome_146`, `chrome_147`, `chrome_148`, `chrome_150`, `chrome_150_0_7871_187`, `chrome` |
+| Chrome | `chrome_144`, `chrome_145`, `chrome_146`, `chrome_147`, `chrome_148`, `chrome_150`, `chrome_150_0_7871_187`, `chrome_156`, `chrome` |
 
 Need to match a browser build that isn't in this table? Pass
 `impersonate_overrides={"peet_api_response": ..., "user_agent": ..., ...}` to

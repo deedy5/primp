@@ -52,7 +52,7 @@ cargo test --workspace
 
 | Browser | Profiles |
 |:--------|:---------|
-| Chrome | `chrome_144`, `chrome_145`, `chrome_146`, `chrome_147`, `chrome_148`, `chrome_150`, `chrome` |
+| Chrome | `chrome_144`, `chrome_145`, `chrome_146`, `chrome_147`, `chrome_148`, `chrome_150`, `chrome_150_0_7871_187`, `chrome_156`, `chrome` |
 | Safari | `safari_18.5`, `safari_26`, `safari_26.3`, `safari` |
 | Edge | `edge_144`, `edge_145`, `edge_146`, `edge_147`, `edge_148`, `edge` |
 | Firefox | `firefox_140`, `firefox_146`, `firefox_147`, `firefox_148`, `firefox` |

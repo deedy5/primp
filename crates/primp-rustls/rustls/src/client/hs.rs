@@ -14,12 +14,16 @@ use crate::bs_debug;
 use crate::check::inappropriate_handshake_message;
 use crate::client::client_conn::ClientConnectionData;
 #[cfg(feature = "impersonate")]
+use crate::client::client_emulator::BrowserEmulator;
+#[cfg(feature = "impersonate")]
 use crate::client::client_emulator::BrowserType;
 use crate::client::common::ClientHelloDetails;
 use crate::client::ech::EchState;
 use crate::client::{tls13, ClientConfig, EchMode, EchStatus};
 use crate::common_state::{CommonState, HandshakeKind, KxState, State};
 use crate::conn::ConnectionRandoms;
+#[cfg(feature = "impersonate")]
+use crate::crypto::emulation;
 use crate::crypto::{ActiveKeyExchange, KeyExchangeAlgorithm};
 use crate::enums::{
     AlertDescription, CertificateType, CipherSuite, ContentType, HandshakeType, ProtocolVersion,
@@ -60,6 +64,20 @@ const GREASE_EXT_FIRST_PLACEHOLDER: u16 = 0x6a6a;
 /// Must match the value used in contiguous_extensions and unknown_extensions.
 #[cfg(feature = "impersonate")]
 const GREASE_EXT_LAST_PLACEHOLDER: u16 = 0x0a0a;
+
+/// `trust_anchors` (0xCA34) payload for the emulated browser, if it sends one.
+///
+/// Only Chrome 156+ profiles send it; older Chrome, Edge and Opera profiles
+/// keep their previously captured 16-extension fingerprints.
+#[cfg(feature = "impersonate")]
+fn trust_anchors_payload(be: &BrowserEmulator) -> Option<Vec<u8>> {
+    match be.browser_type {
+        BrowserType::Chrome if be.version.major >= 156 => {
+            Some(emulation::trust_anchors::CHROME_156.to_vec())
+        }
+        _ => None,
+    }
+}
 
 #[cfg(feature = "impersonate")]
 fn generate_distinct_grease(random: &[u8; 32]) -> (u16, u16, u16, u16) {
@@ -370,6 +388,13 @@ fn emit_client_hello_for_retry(
                 v.extend_from_slice(b"\xC9\xBB\x32"); // һ2
                 exts.unknown_extensions
                     .push((ExtensionType::Unknown(0x44cd), Payload::new(v)));
+                // trust_anchors (0xCA34, TLS Trust Anchor IDs) — sent by Chrome 156+.
+                if let Some(payload) = trust_anchors_payload(be) {
+                    exts.unknown_extensions.push((
+                        ExtensionType::Unknown(emulation::trust_anchors::EXTENSION_TYPE),
+                        Payload::new(payload),
+                    ));
+                }
                 // GREASE extensions for Chrome fingerprinting (RFC 8701)
                 // Chrome places GREASE at first and last positions in the extension list
                 exts.unknown_extensions.push((
@@ -731,7 +756,36 @@ fn emit_client_hello_for_retry(
     // This must be done AFTER all extensions are added
     #[cfg(feature = "impersonate")]
     if let Some(be) = config.browser_emulation.as_ref() {
-        if matches!(be.browser_type, BrowserType::Chrome | BrowserType::Edge) {
+        if be.browser_type == BrowserType::Chrome && be.version.major >= 156 {
+            // Real Chrome 156 order (tls.peet.ws capture):
+            // GREASE, status_request, psk_key_exchange_modes, renegotiation_info,
+            // compress_certificate, supported_groups, trust_anchors(0xCA34), ECH,
+            // ALPN, server_name, signature_algorithms, extended_master_secret,
+            // supported_versions, ec_point_formats, SCT, ALPS(0x44cd),
+            // session_ticket, key_share, GREASE
+            exts.contiguous_extensions = vec![
+                ExtensionType::Unknown(GREASE_EXT_FIRST_PLACEHOLDER), // GREASE (first)
+                ExtensionType::StatusRequest,                         // 5
+                ExtensionType::PSKKeyExchangeModes,                   // 45
+                ExtensionType::RenegotiationInfo,                     // 65281
+                ExtensionType::CompressCertificate,                   // 27
+                ExtensionType::EllipticCurves,                        // 10
+                ExtensionType::Unknown(emulation::trust_anchors::EXTENSION_TYPE), // 51764
+                ExtensionType::EncryptedClientHello,                  // 65037
+                ExtensionType::ALProtocolNegotiation,                 // 16
+                ExtensionType::ServerName,                            // 0
+                ExtensionType::SignatureAlgorithms,                   // 13
+                ExtensionType::ExtendedMasterSecret,                  // 23
+                ExtensionType::SupportedVersions,                     // 43
+                ExtensionType::ECPointFormats,                        // 11
+                ExtensionType::SCT,                                   // 18
+                ExtensionType::Unknown(0x44cd),                       // ALPS (17613)
+                ExtensionType::SessionTicket,                         // 35
+                ExtensionType::KeyShare,                              // 51
+                ExtensionType::Unknown(GREASE_EXT_LAST_PLACEHOLDER),  // GREASE (last)
+            ];
+            exts.ech_before_trailing_grease = false;
+        } else if matches!(be.browser_type, BrowserType::Chrome | BrowserType::Edge) {
             // GREASE, ECH, supported_versions, SCT, ALPS(0x44cd), supported_groups,
             // renegotiation_info, key_share, status_request, session_ticket, server_name,
             // signature_algorithms, ALPN, ec_point_formats, compress_certificate,
